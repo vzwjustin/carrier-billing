@@ -35,9 +35,10 @@ const d = RUN_FULL_E2E ? test.describe : test.describe.skip;
 
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/e2e-sample.pdf');
 const STRIPE_TEST_CARD = process.env.E2E_STRIPE_TEST_CARD ?? '4242424242424242';
-// Per-run throwaway password: random bytes guarantee no committed credential
-// trips secret scanners, and the user is destroyed at end-of-run anyway.
-const TEST_PASSWORD = `e2e-${randomBytes(16).toString('hex')}-Aa1!`;
+// Per-run throwaway: 32 hex chars from CSPRNG. No static literal in source
+// (so secret scanners don't pattern-match), and the test user is torn down
+// at the end of the run.
+const TEST_PASSWORD = randomBytes(16).toString('hex');
 const COMPLETION_TIMEOUT_MS = 5 * 60 * 1000; // up to 5 min for Anthropic.
 
 // State carried across the chained tests in this describe block.
