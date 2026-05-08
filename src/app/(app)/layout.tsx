@@ -39,6 +39,12 @@ export default async function AppLayout({
               <Link href="/settings" className="hover:text-neutral-900">
                 Settings
               </Link>
+              <Link
+                href="/settings/billing"
+                className="hover:text-neutral-900"
+              >
+                Billing
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">

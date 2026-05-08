@@ -6,6 +6,7 @@ import type Stripe from 'stripe';
 import { env } from '@/env';
 import { getStripe } from '@/lib/stripe/client';
 import { deriveUserIdFromEventObject } from '@/lib/stripe/events';
+import { handleStripeEvent } from '@/lib/stripe/handlers';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(request: Request): Promise<Response> {
@@ -79,9 +80,28 @@ export async function POST(request: Request): Promise<Response> {
       return new Response('Internal error', { status: 500 });
     }
 
-    // Phase 0: just observe. Phase 4 will branch on event.type to mutate
-    // profiles.audit_credits / subscription_status here.
     console.log('[stripe.webhook]', event.type, event.id);
+
+    // Phase 4: branch on event.type to mutate profiles. The event row has
+    // already been persisted, so if the handler throws we capture to Sentry
+    // and still ack the webhook — Stripe will not retry, but we can replay
+    // from `billing_events` later. (Alternative: return 500 to force a Stripe
+    // retry. We prefer ack-and-replay because Stripe's retry budget is
+    // limited and we'd rather repair manually than lose visibility.)
+    try {
+      await handleStripeEvent(event, supabase);
+    } catch (handlerErr) {
+      console.error(
+        '[stripe.webhook] handler failed',
+        event.type,
+        event.id,
+        handlerErr,
+      );
+      Sentry.captureException(handlerErr, {
+        tags: { area: 'stripe.webhook.handler', stripe_event_type: event.type },
+        extra: { stripe_event_id: event.id },
+      });
+    }
 
     return Response.json({ received: true });
   } catch (err) {

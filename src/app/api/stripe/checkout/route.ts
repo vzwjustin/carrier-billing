@@ -1,15 +1,143 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+import * as Sentry from '@sentry/nextjs';
+import { z } from 'zod';
+
+import { env } from '@/env';
+import { getStripe } from '@/lib/stripe/client';
+import { getAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
+
+const BodySchema = z.object({
+  mode: z.enum(['one_time', 'subscription']),
+});
+
 /**
- * Stripe Checkout session creation.
+ * Create a Stripe Checkout session for the authenticated user.
  *
- * TODO(phase-4): create Stripe Checkout session. Should accept a `mode` flag
- * (one_time | subscription), look up the relevant `STRIPE_PRICE_ID_*`, set
- * `client_reference_id` to the authenticated user's id, success URL to
- * `${NEXT_PUBLIC_APP_URL}/dashboard?checkout=success`, cancel URL to
- * `${NEXT_PUBLIC_APP_URL}/pricing`.
+ * - Validates body with zod (`mode: 'one_time' | 'subscription'`).
+ * - Looks up the caller's profile via the service-role client. If they don't
+ *   yet have a Stripe customer, we create one and persist the id.
+ * - Builds a Checkout session keyed to the configured price id and redirects
+ *   the client to Stripe's hosted page.
+ *
+ * Idempotency: Stripe sessions are themselves transient — retrying the request
+ * just creates another session. The state-changing event (purchase) is handled
+ * by the webhook, which is gated by `billing_events.stripe_event_id`.
  */
-export async function POST(): Promise<Response> {
-  return Response.json({ error: 'not_implemented' }, { status: 501 });
+export async function POST(request: Request): Promise<Response> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: 'invalid_body' }, { status: 400 });
+    }
+
+    const parsed = BodySchema.safeParse(body);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'invalid_mode', issues: parsed.error.issues },
+        { status: 400 },
+      );
+    }
+    const { mode } = parsed.data;
+
+    const admin = getAdminClient();
+
+    // Pull the profile for the authenticated user. We use the service role so
+    // we can also update `stripe_customer_id` if missing.
+    const profileResult = await admin
+      .from('profiles')
+      .select('id, stripe_customer_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profileResult.error) {
+      throw new Error(
+        `profile lookup failed: ${profileResult.error.message}`,
+      );
+    }
+
+    const profile = profileResult.data as {
+      id: string;
+      stripe_customer_id: string | null;
+    } | null;
+
+    if (!profile) {
+      return Response.json({ error: 'profile_missing' }, { status: 400 });
+    }
+
+    const stripe = getStripe();
+
+    let stripeCustomerId = profile.stripe_customer_id;
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: user.email ?? undefined,
+        metadata: { userId: user.id },
+      });
+      stripeCustomerId = customer.id;
+
+      const { error: updateErr } = await admin
+        .from('profiles')
+        .update({
+          stripe_customer_id: stripeCustomerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+      if (updateErr) {
+        throw new Error(
+          `persist stripe_customer_id failed: ${updateErr.message}`,
+        );
+      }
+    }
+
+    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+
+    const sharedParams = {
+      customer: stripeCustomerId,
+      client_reference_id: user.id,
+      success_url: `${appUrl}/dashboard?checkout=success`,
+      cancel_url: `${appUrl}/pricing`,
+      metadata: { userId: user.id, mode },
+      allow_promotion_codes: true,
+    } as const;
+
+    const session =
+      mode === 'one_time'
+        ? await stripe.checkout.sessions.create({
+            ...sharedParams,
+            mode: 'payment',
+            line_items: [
+              { price: env.STRIPE_PRICE_ID_ONE_TIME, quantity: 1 },
+            ],
+          })
+        : await stripe.checkout.sessions.create({
+            ...sharedParams,
+            mode: 'subscription',
+            line_items: [
+              { price: env.STRIPE_PRICE_ID_SUBSCRIPTION, quantity: 1 },
+            ],
+          });
+
+    if (!session.url) {
+      throw new Error('Stripe session has no url');
+    }
+
+    return Response.json({ url: session.url });
+  } catch (err) {
+    console.error('[stripe.checkout] unexpected error', err);
+    Sentry.captureException(err, { tags: { area: 'stripe.checkout' } });
+    return Response.json({ error: 'internal_error' }, { status: 500 });
+  }
 }

@@ -43,6 +43,17 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+// The Phase 4 access gate runs before the audit is created. Its own behavior
+// is covered by tests/access/*; here we just stub it to "subscription" so the
+// pre-existing happy-path / error-path tests behave as they did before.
+vi.mock('@/lib/access/gate', () => ({
+  assertCanRunAudit: async () => ({ ok: true, reason: 'subscription' }),
+}));
+
+vi.mock('@/lib/access/decrement', () => ({
+  decrementAuditCreditAtomically: async () => ({ remaining: 0 }),
+}));
+
 vi.mock('@/env', () => ({
   env: {
     NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',

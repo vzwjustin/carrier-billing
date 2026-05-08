@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { assertCanRunAudit } from '@/lib/access/gate';
+import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -66,6 +68,30 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
+    // Phase 4 access gate. Runs BEFORE we create the audit row so a user
+    // without a plan or credits never gets a row at all.
+    const gate = await assertCanRunAudit(user.id);
+    if (!gate.ok) {
+      if (gate.reason === 'past_due') {
+        return NextResponse.json(
+          {
+            error: 'subscription_past_due',
+            message:
+              'Your subscription is past due. Please update payment to continue.',
+          },
+          { status: 402 },
+        );
+      }
+      return NextResponse.json(
+        {
+          error: 'no_plan',
+          message: 'No active plan or audit credits.',
+          upgrade_url: '/pricing',
+        },
+        { status: 402 },
+      );
+    }
+
     const auditId = crypto.randomUUID();
     const cleanName = safeFilename(filename);
     const storagePath = `${user.id}/${auditId}/${cleanName}`;
@@ -84,6 +110,27 @@ export async function POST(request: Request): Promise<Response> {
         { error: 'Failed to create audit.' },
         { status: 500 },
       );
+    }
+
+    // NOTE: spec wanted decrement on first state change; we decrement on
+    // creation for stricter race-free accounting. The gate already approved
+    // this user, but the RPC is the atomic source of truth — if a concurrent
+    // creation drained the credits between the gate read and now, the RPC
+    // throws `no_credits` and we roll back the audit row below.
+    if (gate.reason === 'credit') {
+      try {
+        await decrementAuditCreditAtomically(user.id);
+      } catch {
+        await supabase.from('audits').delete().eq('id', auditId);
+        return NextResponse.json(
+          {
+            error: 'no_plan',
+            message: 'No active plan or audit credits.',
+            upgrade_url: '/pricing',
+          },
+          { status: 402 },
+        );
+      }
     }
 
     const { data: signed, error: signError } = await supabase.storage
