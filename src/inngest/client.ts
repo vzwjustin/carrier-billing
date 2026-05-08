@@ -9,11 +9,6 @@ import { env } from '@/env';
  * `{ data: <payload> }` per the Inngest typed-events API.
  */
 export type Events = {
-  'demo/hello': {
-    data: {
-      name?: string;
-    };
-  };
   'bill.uploaded': {
     data: {
       auditId: string;
