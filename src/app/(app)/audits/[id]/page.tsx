@@ -6,6 +6,7 @@ import {
   AuditViewer,
   type AuditStatusPayload,
 } from '@/components/audits/audit-viewer';
+import { trackServer } from '@/lib/analytics/events';
 import { createClient } from '@/lib/supabase/server';
 import { buildReportData } from '@/reports/builder';
 import type {
@@ -182,6 +183,26 @@ export default async function AuditDetailPage({
       credits: (creditsRes.data ?? []) as ReportCreditRow[],
       dppInstallments: (dppRes.data ?? []) as ReportDppInstallmentRow[],
     });
+
+    // Phase 5 analytics: fire `report_viewed` server-side. Resolve user from
+    // the SSR auth client so we get a stable distinctId. Errors swallowed —
+    // analytics must never break the report viewer.
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await trackServer(
+          {
+            name: 'report_viewed',
+            properties: { auditId, isPublic: false },
+          },
+          user.id,
+        );
+      }
+    } catch {
+      // ignore
+    }
   }
 
   return (

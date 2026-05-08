@@ -2,6 +2,8 @@ import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 
+import { trackServer } from '@/lib/analytics/events';
+
 /**
  * Stripe event handler. Branches on `event.type` and applies the corresponding
  * mutation to `public.profiles`.
@@ -87,6 +89,7 @@ async function onCheckoutSessionCompleted(
         stripe_customer_id: customerId,
       });
     }
+    await trackCheckoutCompleted('one_time', userId);
     return;
   }
 
@@ -98,6 +101,7 @@ async function onCheckoutSessionCompleted(
     };
     if (customerId) patch.stripe_customer_id = customerId;
     await updateProfile(supabase, userId, patch);
+    await trackCheckoutCompleted('subscription', userId);
     return;
   }
 
@@ -188,6 +192,20 @@ async function onInvoicePaymentFailed(
 
   if (error) {
     throw new Error(`profile past_due update failed: ${error.message}`);
+  }
+}
+
+async function trackCheckoutCompleted(
+  mode: 'one_time' | 'subscription',
+  userId: string,
+): Promise<void> {
+  try {
+    await trackServer(
+      { name: 'checkout_completed', properties: { mode, userId } },
+      userId,
+    );
+  } catch {
+    // Analytics must never break a webhook handler.
   }
 }
 

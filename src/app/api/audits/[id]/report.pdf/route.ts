@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { trackServer } from '@/lib/analytics/events';
 import { buildReportData } from '@/reports/builder';
 import type {
   ReportAccountRow,
@@ -134,6 +135,7 @@ export async function GET(
   const cached = await admin.storage.from('reports').download(storagePath);
   if (cached.data) {
     const arrayBuf = await cached.data.arrayBuffer();
+    await trackPdfDownload(auditId, audit.user_id, token);
     return pdfResponse(new Uint8Array(arrayBuf), auditId);
   }
 
@@ -208,5 +210,30 @@ export async function GET(
     upsert: true,
   });
 
+  await trackPdfDownload(auditId, audit.user_id, token);
   return pdfResponse(pdfBytes, auditId);
+}
+
+/**
+ * Fire-and-forget analytics for a PDF download. Errors swallowed — the user
+ * already has the PDF; analytics must never delay or fail the response.
+ *
+ * distinctId: the share token for public downloads, the user id otherwise.
+ */
+async function trackPdfDownload(
+  auditId: string,
+  userId: string,
+  shareToken: string | null,
+): Promise<void> {
+  try {
+    await trackServer(
+      {
+        name: 'report_pdf_downloaded',
+        properties: { auditId, isPublic: shareToken !== null },
+      },
+      shareToken ?? userId,
+    );
+  } catch {
+    // ignore
+  }
 }

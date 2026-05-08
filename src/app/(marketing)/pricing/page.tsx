@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 
 import { PricingCards } from '@/components/marketing/pricing-cards';
+import { SiteFooter } from '@/components/marketing/site-footer';
+import { SiteNav } from '@/components/marketing/site-nav';
 
 export const metadata: Metadata = {
   title: 'Pricing — CarrierAudit',
@@ -10,20 +12,27 @@ export const metadata: Metadata = {
 
 export default function PricingPage(): React.ReactElement {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 py-16">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl">
-          Simple, honest pricing
-        </h1>
-        <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
-          Audit any Verizon, AT&amp;T, or T-Mobile business wireless bill in
-          under five minutes. Pay per bill, or audit everything every month.
-        </p>
-      </div>
-      <PricingCards />
-      <p className="text-center text-xs text-neutral-500">
-        Prices in USD. Cancel anytime from the customer portal.
-      </p>
+    <div className="flex min-h-screen flex-col bg-white text-neutral-900">
+      <SiteNav />
+      <main className="flex-1">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 py-16">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl">
+              Simple, honest pricing
+            </h1>
+            <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
+              Audit any Verizon, AT&amp;T, or T-Mobile business wireless bill
+              in under five minutes. Pay per bill, or audit everything every
+              month.
+            </p>
+          </div>
+          <PricingCards />
+          <p className="text-center text-xs text-neutral-500">
+            Prices in USD. Cancel anytime from the customer portal.
+          </p>
+        </div>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

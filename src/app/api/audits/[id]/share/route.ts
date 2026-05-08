@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { env } from '@/env';
+import { trackServer } from '@/lib/analytics/events';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -25,6 +26,17 @@ function generateToken(): string {
 function buildShareUrl(token: string): string {
   const base = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
   return `${base}/share/${token}`;
+}
+
+async function trackShared(auditId: string, userId: string): Promise<void> {
+  try {
+    await trackServer(
+      { name: 'report_shared', properties: { auditId } },
+      userId,
+    );
+  } catch {
+    // analytics never breaks product flow
+  }
 }
 
 export async function POST(
@@ -64,6 +76,8 @@ export async function POST(
     }
 
     if (existing.share_token) {
+      // Track even on the idempotent path — every "Share" click is a signal.
+      await trackShared(existing.id, user.id);
       return NextResponse.json({ url: buildShareUrl(existing.share_token) });
     }
 
@@ -80,6 +94,7 @@ export async function POST(
       );
     }
 
+    await trackShared(existing.id, user.id);
     return NextResponse.json({ url: buildShareUrl(token) });
   } catch {
     return NextResponse.json(

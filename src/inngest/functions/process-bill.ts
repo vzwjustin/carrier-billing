@@ -12,6 +12,7 @@ import type {
 import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
+import { trackServer } from '@/lib/analytics/events';
 
 /**
  * process-bill Inngest function (Phase 1 + Phase 2).
@@ -316,6 +317,40 @@ export const processBillFn = inngest.createFunction(
         auditId,
         findingCount: findings.length,
       });
+
+      // Phase 5 analytics: fire `audit_completed`. Wrapped + try/catch so a
+      // PostHog outage cannot fail an already-completed audit. trackServer is
+      // already defensive but we belt-and-suspenders here.
+      try {
+        const monthlySavings = findings.reduce<number>(
+          (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
+          0,
+        );
+        const highSeverityCount = findings.filter(
+          (f) => f.severity === ('high' as Severity),
+        ).length;
+        await trackServer(
+          {
+            name: 'audit_completed',
+            properties: {
+              auditId,
+              carrier: bill.carrier,
+              finding_count: findings.length,
+              high_severity_count: highSeverityCount,
+              estimated_monthly_savings_cents: monthlySavings,
+            },
+          },
+          userId,
+        );
+      } catch (analyticsErr) {
+        logger.error('processBill: trackServer failed (audit still completed)', {
+          auditId,
+          message:
+            analyticsErr instanceof Error
+              ? analyticsErr.message
+              : 'unknown analytics error',
+        });
+      }
 
       // ─────────────────────────────────────────────────────────────────────
       // Phase 3: send-trigger — fire `audit.completed` so the email pipeline

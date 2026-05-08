@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Dropzone } from '@/components/upload/dropzone';
+import { trackClient } from '@/lib/analytics/client';
 
 type Phase = 'idle' | 'preparing' | 'uploading' | 'starting' | 'redirecting';
 
@@ -92,6 +93,14 @@ export function UploadForm(): React.JSX.Element {
       if (!startRes.ok) {
         throw new Error(extractError(startBody, 'Failed to start analysis.'));
       }
+
+      // Phase 5 analytics: fire `audit_uploaded` once the audit row exists
+      // and the pipeline has been kicked off, but BEFORE the redirect so the
+      // event has a chance to flush.
+      trackClient({
+        name: 'audit_uploaded',
+        properties: { auditId, sizeBytes: file.size },
+      });
 
       // Step 4: redirect.
       setPhase('redirecting');

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { ReportView } from '@/components/audits/report-view';
+import { trackServer } from '@/lib/analytics/events';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { buildReportData } from '@/reports/builder';
 import type {
@@ -140,6 +141,20 @@ export default async function ShareReportPage({
     credits: (creditsRes.data ?? []) as ReportCreditRow[],
     dppInstallments: (dppRes.data ?? []) as ReportDppInstallmentRow[],
   });
+
+  // Phase 5 analytics: fire `report_viewed` for the public share. The share
+  // token serves as the anonymous distinctId — viewers aren't logged in.
+  try {
+    await trackServer(
+      {
+        name: 'report_viewed',
+        properties: { auditId, isPublic: true },
+      },
+      token,
+    );
+  } catch {
+    // ignore
+  }
 
   return (
     <div className="space-y-6">

@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { ReportView } from '@/components/audits/report-view';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { ReportData } from '@/reports/types';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -151,6 +152,7 @@ export function AuditViewer({
   }
 
   const showSummary = ['analyzing', 'completed'].includes(data.status);
+  const inFlight = ACTIVE_STATUSES.has(data.status);
 
   return (
     <div className="space-y-6">
@@ -159,6 +161,11 @@ export function AuditViewer({
       <div className="rounded-lg border border-neutral-200 bg-white p-6">
         <p className="text-sm text-neutral-500">Current step</p>
         <p className="text-lg font-medium text-neutral-900">{data.currentStep}</p>
+        {data.status === 'pending' ? (
+          <p className="mt-2 text-xs text-neutral-500">
+            Waiting for upload to finish.
+          </p>
+        ) : null}
         <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
           <div
             className="h-full bg-neutral-900 transition-all"
@@ -169,6 +176,21 @@ export function AuditViewer({
           <p className="mt-3 text-xs text-red-600">{error}</p>
         ) : null}
       </div>
+
+      {inFlight ? (
+        <div
+          className="space-y-3 rounded-lg border border-neutral-200 bg-white p-6"
+          aria-label="Loading audit results"
+        >
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-10 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        </div>
+      ) : null}
 
       {showSummary ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

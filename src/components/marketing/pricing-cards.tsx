@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { trackClient } from '@/lib/analytics/client';
 import { cn } from '@/lib/utils';
 
 type Mode = 'one_time' | 'subscription';
@@ -64,6 +65,12 @@ function PricingCard(props: PricingCardProps): React.ReactElement {
 
   function onClick(): void {
     setError(null);
+    // Phase 5 analytics: fire `checkout_started` BEFORE the network call so
+    // we capture intent even when checkout fails or the user is unauthed.
+    trackClient({
+      name: 'checkout_started',
+      properties: { mode: props.mode },
+    });
     startTransition(async () => {
       try {
         const res = await fetch('/api/stripe/checkout', {
