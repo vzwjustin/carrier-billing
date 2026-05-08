@@ -1,0 +1,191 @@
+{
+  "carrier": "tmobile",
+  "billing_period_start": "2026-04-10",
+  "billing_period_end": "2026-05-09",
+  "total_charges_cents": 62550,
+  "accounts": [
+    {
+      "account_number_last4": "0001",
+      "label": "T-Mobile Business — Operations",
+      "total_charges_cents": 62550,
+      "taxes_fees_cents": 3100,
+      "account_level_credits": [],
+      "lines": [
+        {
+          "mdn_last4": "0000",
+          "user_label": "Employee A",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0001",
+          "user_label": "Employee B",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Ultimate",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Protection<360>",
+              "category": "insurance",
+              "monthly_cents": 1800
+            },
+            {
+              "name": "Microsoft 365 Business",
+              "category": "cloud",
+              "monthly_cents": 1250
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0002",
+          "user_label": "Employee C",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0003",
+          "user_label": "Employee D",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0004",
+          "user_label": "Employee E",
+          "device": "T-Mobile Hotspot Inseego MiFi X PRO",
+          "plan_name": "Business Mobile Hotspot Pro",
+          "plan_base_cents": 5000,
+          "data_used_gb": 0.08,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Mobile Hotspot Premium",
+              "category": "hotspot",
+              "monthly_cents": 0
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0005",
+          "user_label": "Employee F",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0006",
+          "user_label": "Employee G",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Stateside International Talk",
+              "category": "international",
+              "monthly_cents": 1500
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0007",
+          "user_label": "Employee H",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0008",
+          "user_label": "Employee I",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": [
+            {
+              "device": "Galaxy S23 128GB",
+              "monthly_cents": 2500,
+              "remaining_payments": 0,
+              "total_payments": 24
+            }
+          ]
+        },
+        {
+          "mdn_last4": "0009",
+          "user_label": "Employee J",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Synthetic fixture — medium T-Mobile for Business bill (10 lines).",
+    "Mix of insurance, cloud, hotspot under-utilization, international, and completed DPP."
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "carrier": "tmobile",
+  "billing_period_start": "2026-04-10",
+  "billing_period_end": "2026-05-09",
+  "total_charges_cents": 25633,
+  "accounts": [
+    {
+      "account_number_last4": "0001",
+      "label": "T-Mobile Business",
+      "total_charges_cents": 25633,
+      "taxes_fees_cents": 1700,
+      "account_level_credits": [],
+      "lines": [
+        {
+          "mdn_last4": "0000",
+          "user_label": "Employee A",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Ultimate",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Protection<360>",
+              "category": "insurance",
+              "monthly_cents": 1800
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0001",
+          "user_label": "Employee B",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": [
+            {
+              "device": "iPhone 15 128GB",
+              "monthly_cents": 3333,
+              "remaining_payments": 12,
+              "total_payments": 24
+            }
+          ]
+        },
+        {
+          "mdn_last4": "0002",
+          "user_label": "Employee C",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Select",
+          "plan_base_cents": 4500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0003",
+          "user_label": "Employee D",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Advanced",
+          "plan_base_cents": 5500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [
+            {
+              "name": "iPhone Trade-In Promo",
+              "monthly_cents": -1500,
+              "expires_on": "2026-04-15",
+              "is_promo": true
+            }
+          ],
+          "dpp_installments": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Synthetic fixture — small T-Mobile for Business bill (4 lines).",
+    "Includes a near-expiry promo credit for rule coverage."
+  ]
+}

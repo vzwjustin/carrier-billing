@@ -381,6 +381,390 @@ function tmobileBusinessLarge(): ExtractedBill {
   };
 }
 
+// --- Fixture 5: Verizon, large (25 lines across 2 accounts, mixed promos) ---
+function verizonBusinessLarge(): ExtractedBill {
+  const acct1Lines: ExtractedLine[] = [];
+  for (let i = 0; i < 13; i++) {
+    if (i === 0) {
+      acct1Lines.push(
+        makeLine(i, {
+          device: 'iPhone 15 Pro',
+          credits: [makeCredit('iPhone 15 Pro Trade-In Promo', -2000, '2028-04-01', true)],
+          dpp_installments: [makeDpp('iPhone 15 Pro 256GB', 4583, 24, 36)],
+        }),
+      );
+      continue;
+    }
+    if (i === 4) {
+      acct1Lines.push(
+        makeLine(i, {
+          device: 'iPhone 14',
+          credits: [makeCredit('iPhone 14 Trade-In Promo', -1000, '2026-05-15', true)],
+          dpp_installments: [makeDpp('iPhone 14 128GB', 2999, 6, 36)],
+        }),
+      );
+      continue;
+    }
+    if (i === 8) {
+      acct1Lines.push(
+        makeLine(i, {
+          features: [makeFeature('Verizon Cloud 600GB', 'cloud', 800)],
+        }),
+      );
+      continue;
+    }
+    acct1Lines.push(makeLine(i));
+  }
+  const acct1Total = acct1Lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.plan_base_cents ?? 0) +
+      l.features.reduce((a, f) => a + f.monthly_cents, 0) +
+      l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0) +
+      l.credits.reduce((a, c) => a + c.monthly_cents, 0),
+    0,
+  );
+  const acct1: ExtractedAccount = {
+    account_number_last4: '0001',
+    label: 'Verizon Business — HQ',
+    total_charges_cents: acct1Total,
+    taxes_fees_cents: 5400,
+    account_level_credits: [
+      makeCredit('Volume Discount Promo', -3000, '2026-06-01', true),
+    ],
+    lines: acct1Lines,
+  };
+
+  const acct2Lines: ExtractedLine[] = [];
+  for (let i = 13; i < 25; i++) {
+    if (i === 15) {
+      acct2Lines.push(
+        makeLine(i, {
+          device: 'Samsung Galaxy S24',
+          features: [makeFeature('Mobile Protect Pro', 'insurance', 1700)],
+        }),
+      );
+      continue;
+    }
+    if (i === 19) {
+      acct2Lines.push(
+        makeLine(i, {
+          features: [makeFeature('TravelPass', 'international', 1000)],
+        }),
+      );
+      continue;
+    }
+    if (i === 22) {
+      acct2Lines.push(
+        makeLine(i, {
+          is_suspended: true,
+          plan_base_cents: 4000,
+          data_used_gb: 0,
+          voice_used_min: 0,
+          sms_used_count: 0,
+        }),
+      );
+      continue;
+    }
+    acct2Lines.push(makeLine(i));
+  }
+  const acct2Total = acct2Lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.plan_base_cents ?? 0) +
+      l.features.reduce((a, f) => a + f.monthly_cents, 0),
+    0,
+  );
+  const acct2: ExtractedAccount = {
+    account_number_last4: '0002',
+    label: 'Verizon Business — Field',
+    total_charges_cents: acct2Total,
+    taxes_fees_cents: 4200,
+    account_level_credits: [],
+    lines: acct2Lines,
+  };
+
+  return {
+    carrier: 'verizon',
+    billing_period_start: '2026-04-01',
+    billing_period_end: '2026-04-30',
+    total_charges_cents: acct1Total + acct2Total,
+    accounts: [acct1, acct2],
+    notes: [
+      'Synthetic fixture — large Verizon Business bill (25 lines, 2 accounts).',
+      'Mix of active promos, near-expiry promos, suspended line, and account-level discount.',
+    ],
+  };
+}
+
+// --- Fixture 6: AT&T, small (5 lines, 1 account) ---
+function attBusinessSmall(): ExtractedBill {
+  const lines: ExtractedLine[] = [
+    makeLine(0, {
+      plan_name: 'Business Unlimited Premium',
+      plan_base_cents: 7000,
+      features: [makeFeature('AT&T Mobile Insurance', 'insurance', 1700)],
+    }),
+    makeLine(1, {
+      plan_name: 'Business Unlimited Performance',
+      plan_base_cents: 6500,
+    }),
+    makeLine(2, {
+      plan_name: 'Business Unlimited Performance',
+      plan_base_cents: 6500,
+      dpp_installments: [makeDpp('Samsung Galaxy S24 256GB', 3333, 0, 36)],
+    }),
+    makeLine(3, {
+      plan_name: 'Business Unlimited Starter',
+      plan_base_cents: 5500,
+    }),
+    makeLine(4, {
+      plan_name: 'Business Unlimited Performance',
+      plan_base_cents: 6500,
+      features: [makeFeature('AT&T International Day Pass', 'international', 1000)],
+    }),
+  ];
+  const total = lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.plan_base_cents ?? 0) +
+      l.features.reduce((a, f) => a + f.monthly_cents, 0) +
+      l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0),
+    0,
+  );
+  const account: ExtractedAccount = {
+    account_number_last4: '0001',
+    label: 'AT&T Business Mobility',
+    total_charges_cents: total,
+    taxes_fees_cents: 1900,
+    account_level_credits: [],
+    lines,
+  };
+  return {
+    carrier: 'att',
+    billing_period_start: '2026-04-05',
+    billing_period_end: '2026-05-04',
+    total_charges_cents: total,
+    accounts: [account],
+    notes: [
+      'Synthetic fixture — small AT&T Business bill (5 lines).',
+      'Includes a completed-but-billed DPP and a single international add-on.',
+    ],
+  };
+}
+
+// --- Fixture 7: AT&T, multi-account (12 lines, 2 accounts) ---
+function attBusinessMultiAccount(): ExtractedBill {
+  const acct1Lines: ExtractedLine[] = [];
+  for (let i = 0; i < 6; i++) {
+    if (i === 2) {
+      acct1Lines.push(
+        makeLine(i, {
+          plan_name: 'Business Unlimited Premium',
+          plan_base_cents: 7000,
+          features: [makeFeature('AT&T Protect Advantage for 1', 'insurance', 1700)],
+          dpp_installments: [makeDpp('iPhone 15 128GB', 3500, 18, 36)],
+        }),
+      );
+      continue;
+    }
+    acct1Lines.push(
+      makeLine(i, { plan_name: 'Business Unlimited Performance', plan_base_cents: 6500 }),
+    );
+  }
+  const acct1Total = acct1Lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.plan_base_cents ?? 0) +
+      l.features.reduce((a, f) => a + f.monthly_cents, 0) +
+      l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0),
+    0,
+  );
+  const acct1: ExtractedAccount = {
+    account_number_last4: '0001',
+    label: 'AT&T Business — Sales',
+    total_charges_cents: acct1Total,
+    taxes_fees_cents: 2300,
+    account_level_credits: [makeCredit('Business Discount', -1500, '2026-07-01', true)],
+    lines: acct1Lines,
+  };
+
+  const acct2Lines: ExtractedLine[] = [];
+  for (let i = 6; i < 12; i++) {
+    if (i === 9) {
+      acct2Lines.push(
+        makeLine(i, {
+          device: 'AT&T Nighthawk MR1100',
+          plan_name: 'AT&T Business Mobile Hotspot',
+          plan_base_cents: 7000,
+          data_used_gb: 0.02,
+          features: [],
+        }),
+      );
+      continue;
+    }
+    acct2Lines.push(
+      makeLine(i, { plan_name: 'Business Unlimited Performance', plan_base_cents: 6500 }),
+    );
+  }
+  const acct2Total = acct2Lines.reduce((acc, l) => acc + (l.plan_base_cents ?? 0), 0);
+  const acct2: ExtractedAccount = {
+    account_number_last4: '0002',
+    label: 'AT&T Business — Field Ops',
+    total_charges_cents: acct2Total,
+    taxes_fees_cents: 2100,
+    account_level_credits: [],
+    lines: acct2Lines,
+  };
+
+  return {
+    carrier: 'att',
+    billing_period_start: '2026-04-05',
+    billing_period_end: '2026-05-04',
+    total_charges_cents: acct1Total + acct2Total,
+    accounts: [acct1, acct2],
+    notes: [
+      'Synthetic fixture — multi-account AT&T Business bill (12 lines, 2 accounts).',
+      'Includes hotspot under-utilization and account-level promo expiring within 90 days.',
+    ],
+  };
+}
+
+// --- Fixture 8: T-Mobile, small (4 lines, 1 account) ---
+function tmobileBusinessSmall(): ExtractedBill {
+  const lines: ExtractedLine[] = [
+    makeLine(0, {
+      plan_name: 'Business Unlimited Ultimate',
+      plan_base_cents: 6500,
+      features: [makeFeature('Protection<360>', 'insurance', 1800)],
+    }),
+    makeLine(1, {
+      plan_name: 'Business Unlimited Advanced',
+      plan_base_cents: 5500,
+      dpp_installments: [makeDpp('iPhone 15 128GB', 3333, 12, 24)],
+    }),
+    makeLine(2, {
+      plan_name: 'Business Unlimited Select',
+      plan_base_cents: 4500,
+    }),
+    makeLine(3, {
+      plan_name: 'Business Unlimited Advanced',
+      plan_base_cents: 5500,
+      credits: [makeCredit('iPhone Trade-In Promo', -1500, '2026-04-15', true)],
+    }),
+  ];
+  const total = lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.plan_base_cents ?? 0) +
+      l.features.reduce((a, f) => a + f.monthly_cents, 0) +
+      l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0) +
+      l.credits.reduce((a, c) => a + c.monthly_cents, 0),
+    0,
+  );
+  const account: ExtractedAccount = {
+    account_number_last4: '0001',
+    label: 'T-Mobile Business',
+    total_charges_cents: total,
+    taxes_fees_cents: 1700,
+    account_level_credits: [],
+    lines,
+  };
+  return {
+    carrier: 'tmobile',
+    billing_period_start: '2026-04-10',
+    billing_period_end: '2026-05-09',
+    total_charges_cents: total,
+    accounts: [account],
+    notes: [
+      'Synthetic fixture — small T-Mobile for Business bill (4 lines).',
+      'Includes a near-expiry promo credit for rule coverage.',
+    ],
+  };
+}
+
+// --- Fixture 9: T-Mobile, medium (10 lines, 1 account, mixed features) ---
+function tmobileBusinessMedium(): ExtractedBill {
+  const lines: ExtractedLine[] = [];
+  for (let i = 0; i < 10; i++) {
+    if (i === 1) {
+      lines.push(
+        makeLine(i, {
+          plan_name: 'Business Unlimited Ultimate',
+          plan_base_cents: 6500,
+          features: [
+            makeFeature('Protection<360>', 'insurance', 1800),
+            makeFeature('Microsoft 365 Business', 'cloud', 1250),
+          ],
+        }),
+      );
+      continue;
+    }
+    if (i === 4) {
+      lines.push(
+        makeLine(i, {
+          device: 'T-Mobile Hotspot Inseego MiFi X PRO',
+          plan_name: 'Business Mobile Hotspot Pro',
+          plan_base_cents: 5000,
+          data_used_gb: 0.08,
+          features: [makeFeature('Mobile Hotspot Premium', 'hotspot', 0)],
+        }),
+      );
+      continue;
+    }
+    if (i === 6) {
+      lines.push(
+        makeLine(i, {
+          plan_name: 'Business Unlimited Advanced',
+          plan_base_cents: 5500,
+          features: [makeFeature('Stateside International Talk', 'international', 1500)],
+        }),
+      );
+      continue;
+    }
+    if (i === 8) {
+      lines.push(
+        makeLine(i, {
+          plan_name: 'Business Unlimited Advanced',
+          plan_base_cents: 5500,
+          dpp_installments: [makeDpp('Galaxy S23 128GB', 2500, 0, 24)],
+        }),
+      );
+      continue;
+    }
+    lines.push(
+      makeLine(i, { plan_name: 'Business Unlimited Advanced', plan_base_cents: 5500 }),
+    );
+  }
+  const total = lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.plan_base_cents ?? 0) +
+      l.features.reduce((a, f) => a + f.monthly_cents, 0) +
+      l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0),
+    0,
+  );
+  const account: ExtractedAccount = {
+    account_number_last4: '0001',
+    label: 'T-Mobile Business — Operations',
+    total_charges_cents: total,
+    taxes_fees_cents: 3100,
+    account_level_credits: [],
+    lines,
+  };
+  return {
+    carrier: 'tmobile',
+    billing_period_start: '2026-04-10',
+    billing_period_end: '2026-05-09',
+    total_charges_cents: total,
+    accounts: [account],
+    notes: [
+      'Synthetic fixture — medium T-Mobile for Business bill (10 lines).',
+      'Mix of insurance, cloud, hotspot under-utilization, international, and completed DPP.',
+    ],
+  };
+}
+
 type Fixture = {
   filename: string;
   bill: ExtractedBill;
@@ -392,7 +776,15 @@ const FIXTURES: readonly Fixture[] = [
     filename: 'verizon-business-multi-account.expected.json',
     bill: verizonBusinessMultiAccount(),
   },
+  { filename: 'verizon-business-large.expected.json', bill: verizonBusinessLarge() },
+  { filename: 'att-business-small.expected.json', bill: attBusinessSmall() },
   { filename: 'att-business-medium.expected.json', bill: attBusinessMedium() },
+  {
+    filename: 'att-business-multi-account.expected.json',
+    bill: attBusinessMultiAccount(),
+  },
+  { filename: 'tmobile-business-small.expected.json', bill: tmobileBusinessSmall() },
+  { filename: 'tmobile-business-medium.expected.json', bill: tmobileBusinessMedium() },
   { filename: 'tmobile-business-large.expected.json', bill: tmobileBusinessLarge() },
 ];
 

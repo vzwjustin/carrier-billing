@@ -15,7 +15,8 @@
     "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "fixtures:generate": "tsx scripts/generate-fixtures.ts",
+    "fixtures:generate": "tsx scripts/generate-fixtures.ts && tsx scripts/generate-fixture-pdf.ts",
+    "fixtures:generate:pdfs": "tsx scripts/generate-fixture-pdf.ts",
     "bootstrap": "tsx scripts/bootstrap.ts"
   },
   "dependencies": {

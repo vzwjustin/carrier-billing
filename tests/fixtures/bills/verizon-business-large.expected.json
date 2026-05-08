@@ -1,0 +1,433 @@
+{
+  "carrier": "verizon",
+  "billing_period_start": "2026-04-01",
+  "billing_period_end": "2026-04-30",
+  "total_charges_cents": 156082,
+  "accounts": [
+    {
+      "account_number_last4": "0001",
+      "label": "Verizon Business — HQ",
+      "total_charges_cents": 83382,
+      "taxes_fees_cents": 5400,
+      "account_level_credits": [
+        {
+          "name": "Volume Discount Promo",
+          "monthly_cents": -3000,
+          "expires_on": "2026-06-01",
+          "is_promo": true
+        }
+      ],
+      "lines": [
+        {
+          "mdn_last4": "0000",
+          "user_label": "Employee A",
+          "device": "iPhone 15 Pro",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [
+            {
+              "name": "iPhone 15 Pro Trade-In Promo",
+              "monthly_cents": -2000,
+              "expires_on": "2028-04-01",
+              "is_promo": true
+            }
+          ],
+          "dpp_installments": [
+            {
+              "device": "iPhone 15 Pro 256GB",
+              "monthly_cents": 4583,
+              "remaining_payments": 24,
+              "total_payments": 36
+            }
+          ]
+        },
+        {
+          "mdn_last4": "0001",
+          "user_label": "Employee B",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0002",
+          "user_label": "Employee C",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0003",
+          "user_label": "Employee D",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0004",
+          "user_label": "Employee E",
+          "device": "iPhone 14",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [
+            {
+              "name": "iPhone 14 Trade-In Promo",
+              "monthly_cents": -1000,
+              "expires_on": "2026-05-15",
+              "is_promo": true
+            }
+          ],
+          "dpp_installments": [
+            {
+              "device": "iPhone 14 128GB",
+              "monthly_cents": 2999,
+              "remaining_payments": 6,
+              "total_payments": 36
+            }
+          ]
+        },
+        {
+          "mdn_last4": "0005",
+          "user_label": "Employee F",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0006",
+          "user_label": "Employee G",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0007",
+          "user_label": "Employee H",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0008",
+          "user_label": "Employee I",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Verizon Cloud 600GB",
+              "category": "cloud",
+              "monthly_cents": 800
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0009",
+          "user_label": "Employee J",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0010",
+          "user_label": "Employee K",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0011",
+          "user_label": "Employee L",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0012",
+          "user_label": "Employee M",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        }
+      ]
+    },
+    {
+      "account_number_last4": "0002",
+      "label": "Verizon Business — Field",
+      "total_charges_cents": 72700,
+      "taxes_fees_cents": 4200,
+      "account_level_credits": [],
+      "lines": [
+        {
+          "mdn_last4": "0013",
+          "user_label": "Employee N",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0014",
+          "user_label": "Employee O",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0015",
+          "user_label": "Employee P",
+          "device": "Samsung Galaxy S24",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Mobile Protect Pro",
+              "category": "insurance",
+              "monthly_cents": 1700
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0016",
+          "user_label": "Employee Q",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0017",
+          "user_label": "Employee R",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0018",
+          "user_label": "Employee S",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0019",
+          "user_label": "Employee T",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "TravelPass",
+              "category": "international",
+              "monthly_cents": 1000
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0020",
+          "user_label": "Employee U",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0021",
+          "user_label": "Employee V",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0022",
+          "user_label": "Employee W",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 4000,
+          "data_used_gb": 0,
+          "voice_used_min": 0,
+          "sms_used_count": 0,
+          "is_suspended": true,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0023",
+          "user_label": "Employee X",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0024",
+          "user_label": "Employee Y",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Synthetic fixture — large Verizon Business bill (25 lines, 2 accounts).",
+    "Mix of active promos, near-expiry promos, suspended line, and account-level discount."
+  ]
+}
