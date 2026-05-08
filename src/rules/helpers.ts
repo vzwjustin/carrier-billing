@@ -85,60 +85,137 @@ export function isHotspotDevice(device: string | null): boolean {
 }
 
 /**
- * Per-carrier patterns matching legacy/deprecated plan names. Used by the
- * `legacy_unlimited_plan` rule. Patterns are intentionally narrow: they must
- * not match any current business unlimited tier on each carrier.
- *
- * TODO(domain): Justin to validate regex set + add savings model when
- * modern-equivalent plan price is known per carrier.
+ * A deprecated/legacy plan pattern paired with its modern replacement and a
+ * conservative monthly-savings estimate per affected line.
  */
-const VERIZON_LEGACY_PATTERNS: RegExp[] = [
-  /More\s*Everything/i,
-  // Match "Verizon Plan Unlimited" but NOT the current "Business Unlimited
-  // Pro/Plus/Start 2.0" tiers.
-  /Verizon\s+Plan\s+Unlimited(?!\s+(Pro|Plus|Start))/i,
-  /Nationwide\s+\d+/i,
-  /Single\s+Line\s+Plan/i,
+export type LegacyPlanPattern = {
+  carrier: Carrier | 'all';
+  pattern: RegExp;
+  replacement_plan: string;
+  estimated_monthly_savings_cents: number;
+  source_note: string;
+};
+
+// Savings model: $5–$15/mo per line moving from a legacy/grandfathered tier to
+// the current carrier-equivalent business unlimited tier. Numbers are
+// intentionally conservative — actual delta depends on the customer's chosen
+// replacement tier, line-count discount band, and whether the legacy plan
+// carried a frozen-rate grandfathered price. Source URLs in source_note.
+export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
+  // Verizon — verizon.com/support/no-longer-supported-plans/
+  {
+    carrier: 'verizon',
+    pattern: /More\s*Everything/i,
+    replacement_plan: 'Business Unlimited Plus 2.0',
+    estimated_monthly_savings_cents: 1000,
+    source_note: 'verizon.com/support/no-longer-supported-plans',
+  },
+  // "Verizon Plan Unlimited" but NOT current "Verizon Plan Unlimited Pro/Plus/Start"
+  {
+    carrier: 'verizon',
+    pattern: /Verizon\s+Plan\s+Unlimited(?!\s+(Pro|Plus|Start))/i,
+    replacement_plan: 'Business Unlimited Plus 2.0',
+    estimated_monthly_savings_cents: 800,
+    source_note: 'verizon.com/support/verizon-plan-unlimited-faqs',
+  },
+  {
+    carrier: 'verizon',
+    pattern: /Nationwide\s+\d+/i,
+    replacement_plan: 'Business Unlimited Start 2.0',
+    estimated_monthly_savings_cents: 1500,
+    source_note: 'verizon.com/support/no-longer-supported-plans',
+  },
+  {
+    carrier: 'verizon',
+    pattern: /Single\s+Line\s+Plan/i,
+    replacement_plan: 'Business Unlimited Start 2.0',
+    estimated_monthly_savings_cents: 700,
+    source_note: 'verizon.com/support/no-longer-supported-plans',
+  },
+
+  // AT&T — att.com/support/article/wireless/KM1119192 + retired Mobile Share PDFs
+  // "Mobile Share" but NOT current "Mobile Share Plus" / "Mobile Share Premium"
+  {
+    carrier: 'att',
+    pattern: /Mobile\s*Share(?!\s+(Plus|Premium))/i,
+    replacement_plan: 'Business Unlimited Performance',
+    estimated_monthly_savings_cents: 1000,
+    source_note: 'business.att.com/legal/mobile-share-for-business-retired',
+  },
+  {
+    carrier: 'att',
+    pattern: /Family\s*Talk/i,
+    replacement_plan: 'Business Unlimited Starter',
+    estimated_monthly_savings_cents: 500,
+    source_note: 'att.com/support/article/wireless/KM1119192',
+  },
+  {
+    carrier: 'att',
+    pattern: /Nation\s+\d+/i,
+    replacement_plan: 'Business Unlimited Starter',
+    estimated_monthly_savings_cents: 500,
+    source_note: 'att.com/support/article/wireless/KM1119192',
+  },
+  // Legacy "Unlimited Plus" (consumer) but NOT the "Unlimited Plus for iPhone" bundle
+  {
+    carrier: 'att',
+    pattern: /Unlimited\s+Plus(?!\s+for\s+iPhone)/i,
+    replacement_plan: 'Business Unlimited Premium',
+    estimated_monthly_savings_cents: 800,
+    source_note: 'att.com/support/article/wireless/KM1119192',
+  },
+
+  // T-Mobile — t-mobile.com/community grandfathered-plan-changes
+  {
+    carrier: 'tmobile',
+    pattern: /Simple\s+Choice/i,
+    replacement_plan: 'Business Unlimited Advanced',
+    estimated_monthly_savings_cents: 800,
+    source_note: 't-mobile.com/community/grandfathered-plan-changes',
+  },
+  // "Magenta" but NOT current "Magenta Plus" / "Magenta Max" / "Magenta Business"
+  {
+    carrier: 'tmobile',
+    pattern: /Magenta(?!\s+(Plus|Max|Business))/i,
+    replacement_plan: 'Business Unlimited Advanced',
+    estimated_monthly_savings_cents: 700,
+    source_note: 'phonearena.com/news/i-just-ditched-my-grandfathered-t-mobile-magenta-plan',
+  },
+  {
+    carrier: 'tmobile',
+    pattern: /T-Mobile\s+ONE(?!\s+Business)/i,
+    replacement_plan: 'Business Unlimited Advanced',
+    estimated_monthly_savings_cents: 700,
+    source_note: 'phonearena.com/news/t-mobile-legacy-plan-migration-2026',
+  },
 ];
 
-const ATT_LEGACY_PATTERNS: RegExp[] = [
-  // Match legacy "Mobile Share" but not "Mobile Share Plus" or
-  // "Mobile Share Premium" (still active variants).
-  /Mobile\s*Share(?!\s+(Plus|Premium))/i,
-  /Family\s*Talk/i,
-  /Nation\s+\d+/i,
-  // Match legacy "Unlimited Plus" (consumer) but not the iPhone bundle.
-  /Unlimited\s+Plus(?!\s+for\s+iPhone)/i,
-];
-
-const TMOBILE_LEGACY_PATTERNS: RegExp[] = [
-  /Simple\s+Choice/i,
-  // Match "Magenta" but not "Magenta Plus", "Magenta Max", or
-  // "Magenta Business" which are current.
-  /Magenta(?!\s+(Plus|Max|Business))/i,
-  /T-Mobile\s+ONE(?!\s+Business)/i,
-];
+function patternsForCarrier(carrier: Carrier): LegacyPlanPattern[] {
+  if (carrier === 'unknown') return LEGACY_PLAN_PATTERNS;
+  return LEGACY_PLAN_PATTERNS.filter(
+    (p) => p.carrier === carrier || p.carrier === 'all',
+  );
+}
 
 /**
  * Returns the legacy-plan regex set for a given carrier. For 'unknown' or
- * when running rules carrier-agnostically, callers should fall through to
- * the union of all sets.
+ * when running rules carrier-agnostically, callers fall through to the union
+ * of all sets.
  */
 export function getCarrierPlanPatterns(carrier: Carrier): RegExp[] {
-  switch (carrier) {
-    case 'verizon':
-      return VERIZON_LEGACY_PATTERNS;
-    case 'att':
-      return ATT_LEGACY_PATTERNS;
-    case 'tmobile':
-      return TMOBILE_LEGACY_PATTERNS;
-    case 'unknown':
-      return [
-        ...VERIZON_LEGACY_PATTERNS,
-        ...ATT_LEGACY_PATTERNS,
-        ...TMOBILE_LEGACY_PATTERNS,
-      ];
-  }
+  return patternsForCarrier(carrier).map((p) => p.pattern);
+}
+
+/**
+ * Finds the first legacy-plan entry whose regex matches `planName`, or null.
+ * Carrier-scoped: passing 'unknown' searches the union of all sets.
+ */
+export function findMatchingLegacyPlan(
+  planName: string | null,
+  carrier: Carrier,
+): LegacyPlanPattern | null {
+  if (planName === null) return null;
+  return patternsForCarrier(carrier).find((p) => p.pattern.test(planName)) ?? null;
 }
 
 /**

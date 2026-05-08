@@ -28,7 +28,14 @@ describe('legacy_unlimited_plan rule — Verizon patterns', () => {
     const f = findings[0];
     if (!f) throw new Error('expected finding');
     expect(f.severity).toBe('low');
-    expect(f.confidence).toBe(0.65);
+    expect(f.confidence).toBe(0.75);
+    expect(f.estimated_monthly_savings_cents).toBeGreaterThanOrEqual(500);
+    expect(f.estimated_monthly_savings_cents).toBeLessThanOrEqual(1500);
+    expect(f.evidence).toMatchObject({
+      plan_name: plan,
+      carrier: 'verizon',
+      replacement_plan: expect.stringMatching(/Business Unlimited/i),
+    });
   });
 
   it.each([
@@ -99,6 +106,48 @@ describe('legacy_unlimited_plan rule — unknown carrier', () => {
       ctx('unknown', 'Business Unlimited Pro 2.0'),
     );
     expect(findings).toHaveLength(0);
+  });
+});
+
+describe('legacy_unlimited_plan rule — replacement plan + savings', () => {
+  it('recommends Business Unlimited Performance for AT&T Mobile Share', async () => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('att', 'Mobile Share 5GB'));
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.evidence).toMatchObject({
+      replacement_plan: 'Business Unlimited Performance',
+      carrier: 'att',
+    });
+    expect(f.estimated_monthly_savings_cents).toBe(1000);
+  });
+
+  it('recommends Business Unlimited Advanced for T-Mobile ONE', async () => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', 'T-Mobile ONE'));
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.evidence).toMatchObject({
+      replacement_plan: 'Business Unlimited Advanced',
+      carrier: 'tmobile',
+    });
+    expect(f.estimated_monthly_savings_cents).toBe(700);
+  });
+
+  it('all carrier-specific savings stay within the $5–$15/mo conservative band', async () => {
+    const cases: Array<[Carrier, string]> = [
+      ['verizon', 'More Everything 10GB'],
+      ['verizon', 'Nationwide 450'],
+      ['att', 'Family Talk 1400'],
+      ['att', 'Unlimited Plus'],
+      ['tmobile', 'Simple Choice Unlimited'],
+      ['tmobile', 'Magenta'],
+    ];
+    for (const [c, plan] of cases) {
+      const findings = await legacyUnlimitedPlanRule.evaluate(ctx(c, plan));
+      const f = findings[0];
+      if (!f) throw new Error(`expected finding for ${c}/${plan}`);
+      expect(f.estimated_monthly_savings_cents).toBeGreaterThanOrEqual(500);
+      expect(f.estimated_monthly_savings_cents).toBeLessThanOrEqual(1500);
+    }
   });
 });
 
