@@ -1,0 +1,3 @@
+-- CarrierAudit local development seed file.
+-- This file is intentionally empty. Add any local-only fixtures or sample
+-- rows you need for development here. It is NOT applied in production.
