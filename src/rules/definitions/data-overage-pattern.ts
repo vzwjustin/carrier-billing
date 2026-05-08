@@ -54,7 +54,7 @@ export const dataOveragePatternRule: Rule = {
           if (ratio < SOFT_CAP_WARN_RATIO) return;
 
           const exceeded = used > softCap;
-          const severity: Severity = exceeded ? 'low' : 'low';
+          const severity: Severity = exceeded ? 'medium' : 'low';
           const title = exceeded
             ? `Line over soft cap on "${line.plan_name}" — ${used.toFixed(0)}/${softCap} GB`
             : `Line approaching soft cap on "${line.plan_name}" — ${used.toFixed(0)}/${softCap} GB`;
