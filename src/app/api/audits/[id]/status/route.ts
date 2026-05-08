@@ -19,9 +19,9 @@ const STATUS_PROGRESS: Record<string, number> = {
 };
 
 const STATUS_STEP: Record<string, string> = {
-  pending: 'Waiting to start',
-  extracting: 'Extracting bill contents',
-  analyzing: 'Analyzing for waste',
+  pending: 'Queued',
+  extracting: 'Reading PDF and extracting bill data',
+  analyzing: 'Running audit rules',
   completed: 'Done',
   failed: 'Failed',
 };

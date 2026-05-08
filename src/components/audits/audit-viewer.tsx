@@ -196,14 +196,58 @@ export function AuditViewer({
         </div>
       ) : null}
 
-      {data.status === 'completed' ? (
-        <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-6">
-          <h2 className="text-base font-medium text-neutral-900">Findings</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Findings coming in Phase 3.
-          </p>
+      {data.status === 'completed' ? <SavingsSummary data={data} /> : null}
+    </div>
+  );
+}
+
+function SavingsSummary({
+  data,
+}: {
+  data: AuditStatusPayload;
+}): React.JSX.Element {
+  const monthly = data.estimated_monthly_savings_cents ?? 0;
+  const annual = data.estimated_annual_savings_cents ?? monthly * 12;
+  const findingCount = data.finding_count ?? 0;
+  const highSeverityCount = data.high_severity_count ?? 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6">
+        <p className="text-xs uppercase tracking-wide text-emerald-700">
+          Estimated savings
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <p className="text-3xl font-semibold text-emerald-900">
+              {formatCents(monthly)}
+              <span className="ml-1 text-sm font-normal text-emerald-800">
+                / month
+              </span>
+            </p>
+          </div>
+          <div>
+            <p className="text-3xl font-semibold text-emerald-900">
+              {formatCents(annual)}
+              <span className="ml-1 text-sm font-normal text-emerald-800">
+                / year
+              </span>
+            </p>
+          </div>
         </div>
-      ) : null}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <SummaryCard label="Findings" value={String(findingCount)} />
+        <SummaryCard
+          label="High severity"
+          value={String(highSeverityCount)}
+        />
+      </div>
+
+      <p className="text-xs text-neutral-500">
+        Detailed findings list arrives in Phase 3.
+      </p>
     </div>
   );
 }

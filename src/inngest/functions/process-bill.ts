@@ -9,28 +9,33 @@ import type {
   ExtractedAccount,
   ExtractedLine,
 } from '@/extraction/schema';
+import { runRules } from '@/rules/runner';
+import { ALL_RULES } from '@/rules/registry';
+import type { Finding, RuleContext, Severity } from '@/rules/types';
 
 /**
- * Phase 1 — process-bill Inngest function.
+ * process-bill Inngest function (Phase 1 + Phase 2).
  *
  * Trigger: `bill.uploaded` event with `{ auditId, userId, storagePath }`.
  *
  * Pipeline:
- *   1. mark-extracting: flip the audit row to status='extracting' and stash the run id
- *   2. extract:        download PDF from storage, run the extraction pipeline,
- *                      return the parsed `ExtractedBill` (a JSON-serializable value
- *                      so it can cross step boundaries on retry)
- *   3. mark-analyzing: persist top-level audit metadata (carrier, totals, counts)
- *                      and move status to 'analyzing'
- *   4. persist-bill:   delete + reinsert all child rows (accounts, lines, features,
- *                      credits, dpp installments). Delete-first makes the step
- *                      idempotent — Inngest can retry safely without dupes.
+ *   1. mark-extracting:   flip the audit row to status='extracting' + stash run id
+ *   2. extract:           download PDF from storage, run the extraction pipeline,
+ *                         return the parsed `ExtractedBill` (JSON-serializable so
+ *                         it can cross step boundaries on retry)
+ *   3. mark-analyzing:    persist top-level audit metadata + move status to 'analyzing'
+ *   4. persist-bill:      delete + reinsert all child rows; returns generated UUIDs
+ *                         in stable order. Delete-first makes the step idempotent.
+ *   5. run-rules:         pure evaluation against the in-memory bill via @/rules
+ *   6. persist-findings:  delete + reinsert findings (idempotent on retry); maps
+ *                         rule-emitted indexes to the UUIDs from step 4
+ *   7. mark-completed:    aggregate counts + savings, flip status to 'completed'
  *
- * Phase 1 stops with status='analyzing'. Phase 2 will append run-rules + mark-completed.
+ * Every step is idempotent so Inngest can retry safely.
  *
  * PII discipline (CLAUDE.md §1#9): we only ever log auditId/userId/step IDs and
- * generic error messages. We never log raw bill content, employee names,
- * phone numbers, or account numbers.
+ * generic counts. We never log raw bill content, employee names, phone numbers,
+ * account numbers, or finding evidence.
  */
 
 const FAILURE_REASON_MAX = 500;
@@ -67,6 +72,24 @@ type ExtractionStepResult = {
   pageCount: number;
   sizeBytes: number;
   neededOcr: boolean;
+};
+
+/**
+ * Output of the persist-bill step. Returned (and therefore Inngest-cached)
+ * so downstream steps can map rule-emitted 0-based indexes to UUIDs without
+ * re-querying the DB.
+ *
+ * `lineIds[accountIdx][lineIdx]` is the id of the line at that position
+ * inside `bill.accounts[accountIdx].lines[lineIdx]`.
+ */
+type PersistBillResult = {
+  accountIds: string[];
+  lineIds: string[][];
+};
+
+type RuleStepResult = {
+  findings: Finding[];
+  errors: Array<{ rule_id: string; message: string }>;
 };
 
 export const processBillFn = inngest.createFunction(
@@ -177,21 +200,128 @@ export const processBillFn = inngest.createFunction(
       // ─────────────────────────────────────────────────────────────────────
       // Step 4: persist-bill — delete-then-insert all child rows.
       // Idempotent across retries because the delete fully resets prior state.
+      // Returns the inserted UUIDs in stable order so downstream steps can
+      // resolve rule-finding indexes (which are 0-based positions) to ids.
       // ─────────────────────────────────────────────────────────────────────
-      await step.run('persist-bill', async () => {
-        await persistBill(auditId, bill);
+      const persistResult = (await step.run('persist-bill', async () => {
+        const ids = await persistBill(auditId, bill);
+        const result: PersistBillResult = {
+          accountIds: ids.accountIds,
+          lineIds: ids.lineIds,
+        };
+        return result;
+      })) as PersistBillResult;
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 5: run-rules — pure function over the in-memory ExtractedBill.
+      // The `bill` is already in scope from `extract`, so this step is
+      // deterministic + fast. Per-rule errors are captured and surfaced; they
+      // don't fail the audit. (CLAUDE.md §6 Phase 2 task #2.)
+      // ─────────────────────────────────────────────────────────────────────
+      const ruleResult = (await step.run('run-rules', async () => {
+        const ctx: RuleContext = {
+          bill,
+          today: new Date(),
+          carrier: bill.carrier,
+        };
+        const out = await runRules(ctx, ALL_RULES);
+        const r: RuleStepResult = {
+          findings: out.findings,
+          errors: out.errors,
+        };
+        return r;
+      })) as RuleStepResult;
+
+      const findings = ruleResult.findings;
+      const ruleErrors = ruleResult.errors;
+
+      logger.info('processBill: rules ran', {
+        auditId,
+        findingCount: findings.length,
+        ruleErrorCount: ruleErrors.length,
+      });
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 6: persist-findings — delete-then-insert for idempotent retries.
+      // Resolve rule-emitted indexes into the audit's actual UUIDs.
+      // ─────────────────────────────────────────────────────────────────────
+      await step.run('persist-findings', async () => {
+        await persistFindings(auditId, findings, persistResult);
+        if (ruleErrors.length > 0) {
+          // Lazy import so we don't pull Sentry into cold paths.
+          try {
+            const Sentry = await import('@sentry/nextjs');
+            Sentry.addBreadcrumb({
+              category: 'rules',
+              level: 'warning',
+              message: 'rule_evaluation_errors',
+              data: {
+                auditId,
+                count: ruleErrors.length,
+                rule_ids: ruleErrors.map((e) => e.rule_id),
+              },
+            });
+            Sentry.captureMessage('rule_evaluation_errors', {
+              level: 'warning',
+              extra: {
+                auditId,
+                errors: ruleErrors,
+              },
+            });
+          } catch {
+            // Sentry is optional in some environments; never let telemetry
+            // failure block the pipeline.
+          }
+        }
+        return { ok: true, inserted: findings.length };
+      });
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 7: mark-completed — aggregate totals + flip status.
+      // ─────────────────────────────────────────────────────────────────────
+      await step.run('mark-completed', async () => {
+        const findingCount = findings.length;
+        const highSeverityCount = findings.filter(
+          (f) => f.severity === ('high' as Severity),
+        ).length;
+        const monthlySavings = findings.reduce<number>(
+          (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
+          0,
+        );
+        const annualSavings = monthlySavings * 12;
+        const now = new Date().toISOString();
+
+        const supabase = getAdminClient();
+        const { error } = await supabase
+          .from('audits')
+          .update({
+            status: 'completed',
+            completed_at: now,
+            finding_count: findingCount,
+            high_severity_count: highSeverityCount,
+            estimated_monthly_savings_cents: monthlySavings,
+            estimated_annual_savings_cents: annualSavings,
+            updated_at: now,
+          })
+          .eq('id', auditId);
+        if (error) {
+          throw new Error(
+            `audits update (mark-completed) failed: ${error.message}`,
+          );
+        }
         return { ok: true };
       });
 
-      // PHASE-2: run-rules + mark-completed
-      logger.info('processBill: phase 1 complete (status=analyzing)', {
+      logger.info('processBill: phase 2 complete (status=completed)', {
         auditId,
+        findingCount: findings.length,
       });
       return {
         auditId,
         carrier: bill.carrier,
         accountCount: bill.accounts.length,
         lineCount,
+        findingCount: findings.length,
       };
     } catch (err) {
       // Failure path: mark the audit failed before re-throwing so Inngest
@@ -243,7 +373,7 @@ export const processBillFn = inngest.createFunction(
 async function persistBill(
   auditId: string,
   bill: ExtractedBill,
-): Promise<void> {
+): Promise<PersistBillResult> {
   const supabase = getAdminClient();
 
   // Delete in dependency order. bill_features / bill_credits / bill_dpp_installments
@@ -383,6 +513,93 @@ async function persistBill(
     if (error) {
       throw new Error(`insert bill_dpp_installments failed: ${error.message}`);
     }
+  }
+
+  // Build the per-account nested line id list. Walk lineOrigin in-order.
+  const lineIds: string[][] = bill.accounts.map((a) =>
+    new Array<string>(a.lines.length),
+  );
+  insertedLineIds.forEach((id, idx) => {
+    const origin = lineOrigin[idx];
+    if (!origin) return;
+    const bucket = lineIds[origin.accountIndex];
+    if (!bucket) return;
+    bucket[origin.lineIndex] = id;
+  });
+
+  return {
+    accountIds: insertedAccounts,
+    lineIds,
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Findings persistence
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Idempotent: deletes any existing findings for the audit and inserts the
+ * new batch. The rule contract is that `affected_line_indexes` are 0-based
+ * positions inside the FLATTENED `bill.accounts[].lines[]` (per
+ * src/rules/types.ts). We resolve them to UUIDs using the order produced by
+ * `persist-bill`.
+ */
+async function persistFindings(
+  auditId: string,
+  findings: Finding[],
+  ids: PersistBillResult,
+): Promise<void> {
+  const supabase = getAdminClient();
+
+  // Always clear first so retries don't double-insert.
+  const { error: delErr } = await supabase
+    .from('findings')
+    .delete()
+    .eq('audit_id', auditId);
+  if (delErr) {
+    throw new Error(`delete findings failed: ${delErr.message}`);
+  }
+
+  if (findings.length === 0) return;
+
+  // Flatten lineIds[accountIdx][lineIdx] in account-major order, matching the
+  // flattened layout that rule authors index against.
+  const flatLineIds: string[] = [];
+  for (const bucket of ids.lineIds) {
+    for (const id of bucket) {
+      flatLineIds.push(id);
+    }
+  }
+
+  const rows = findings.map((f) => {
+    const lineUuids: string[] = [];
+    for (const idx of f.affected_line_indexes) {
+      const id = flatLineIds[idx];
+      if (typeof id === 'string') lineUuids.push(id);
+    }
+    const accountUuids: string[] = [];
+    for (const idx of f.affected_account_indexes) {
+      const id = ids.accountIds[idx];
+      if (typeof id === 'string') accountUuids.push(id);
+    }
+    return {
+      audit_id: auditId,
+      rule_id: f.rule_id,
+      severity: f.severity,
+      title: f.title,
+      description: f.description,
+      recommended_action: f.recommended_action,
+      estimated_monthly_savings_cents: f.estimated_monthly_savings_cents,
+      confidence: f.confidence,
+      affected_line_ids: lineUuids,
+      affected_account_ids: accountUuids,
+      evidence: f.evidence as Record<string, unknown>,
+    };
+  });
+
+  const { error: insErr } = await supabase.from('findings').insert(rows);
+  if (insErr) {
+    throw new Error(`insert findings failed: ${insErr.message}`);
   }
 }
 
