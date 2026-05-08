@@ -1,0 +1,217 @@
+{
+  "carrier": "att",
+  "billing_period_start": "2026-04-05",
+  "billing_period_end": "2026-05-04",
+  "total_charges_cents": 84900,
+  "accounts": [
+    {
+      "account_number_last4": "0001",
+      "label": "AT&T Business Mobility",
+      "total_charges_cents": 84900,
+      "taxes_fees_cents": 4200,
+      "account_level_credits": [],
+      "lines": [
+        {
+          "mdn_last4": "0000",
+          "user_label": "Employee A",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0001",
+          "user_label": "Employee B",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0002",
+          "user_label": "Employee C",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0003",
+          "user_label": "Employee D",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Premium",
+          "plan_base_cents": 7000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "AT&T International Day Pass",
+              "category": "international",
+              "monthly_cents": 1000
+            },
+            {
+              "name": "AT&T International Day Pass",
+              "category": "international",
+              "monthly_cents": 1000
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0004",
+          "user_label": "Employee E",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0005",
+          "user_label": "Employee F",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0006",
+          "user_label": "Employee G",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0007",
+          "user_label": "Employee H",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "AT&T Mobile Insurance",
+              "category": "insurance",
+              "monthly_cents": 1700
+            },
+            {
+              "name": "AT&T Protect Advantage for 1",
+              "category": "insurance",
+              "monthly_cents": 1700
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0008",
+          "user_label": "Employee I",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0009",
+          "user_label": "Employee J",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0010",
+          "user_label": "Employee K",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "AT&T International Day Pass",
+              "category": "international",
+              "monthly_cents": 1000
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        },
+        {
+          "mdn_last4": "0011",
+          "user_label": "Employee L",
+          "device": "iPhone 15",
+          "plan_name": "Business Unlimited Performance",
+          "plan_base_cents": 6500,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Synthetic fixture — medium AT&T Business bill (12 lines).",
+    "Includes duplicate protection features and a stale international add-on for rule coverage."
+  ]
+}

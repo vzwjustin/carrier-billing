@@ -1,0 +1,90 @@
+{
+  "carrier": "verizon",
+  "billing_period_start": "2026-04-01",
+  "billing_period_end": "2026-04-30",
+  "total_charges_cents": 27282,
+  "accounts": [
+    {
+      "account_number_last4": "0001",
+      "label": "Main Business Account",
+      "total_charges_cents": 27282,
+      "taxes_fees_cents": 1850,
+      "account_level_credits": [],
+      "lines": [
+        {
+          "mdn_last4": "0000",
+          "user_label": "Employee A",
+          "device": "iPhone 15 Pro",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [
+            {
+              "name": "iPhone Trade-In Promo",
+              "monthly_cents": -1500,
+              "expires_on": "2026-02-01",
+              "is_promo": true
+            }
+          ],
+          "dpp_installments": [
+            {
+              "device": "iPhone 15 Pro 256GB",
+              "monthly_cents": 4583,
+              "remaining_payments": 18,
+              "total_payments": 36
+            }
+          ]
+        },
+        {
+          "mdn_last4": "0001",
+          "user_label": "Employee B",
+          "device": "iPhone 14",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [],
+          "credits": [],
+          "dpp_installments": [
+            {
+              "device": "iPhone 14 128GB",
+              "monthly_cents": 2999,
+              "remaining_payments": 0,
+              "total_payments": 36
+            }
+          ]
+        },
+        {
+          "mdn_last4": "0002",
+          "user_label": "Employee C",
+          "device": "Samsung Galaxy S24",
+          "plan_name": "Business Unlimited Pro 2.0",
+          "plan_base_cents": 6000,
+          "data_used_gb": 8.5,
+          "voice_used_min": 120,
+          "sms_used_count": 80,
+          "is_suspended": false,
+          "features": [
+            {
+              "name": "Mobile Protect Pro",
+              "category": "insurance",
+              "monthly_cents": 1700
+            }
+          ],
+          "credits": [],
+          "dpp_installments": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Synthetic fixture — small Verizon Business bill.",
+    "Includes one expired promo credit and one completed-but-billed DPP for rule engine coverage."
+  ]
+}

@@ -1,0 +1,26 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`runRules — full pipeline > produces findings from a multi-rule fixture (snapshot) 1`] = `
+[
+  {
+    "rule_id": "completed_device_payment_still_billed",
+    "savings": 2799,
+    "severity": "high",
+  },
+  {
+    "rule_id": "expired_promo_credit",
+    "savings": 2500,
+    "severity": "high",
+  },
+  {
+    "rule_id": "orphan_insurance",
+    "savings": 1700,
+    "severity": "high",
+  },
+  {
+    "rule_id": "suspended_line_billed",
+    "savings": 4500,
+    "severity": "high",
+  },
+]
+`;
