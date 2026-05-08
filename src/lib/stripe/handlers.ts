@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 
 import { trackServer } from '@/lib/analytics/events';
+import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
 
 /**
  * Stripe event handler. Branches on `event.type` and applies the corresponding
@@ -125,7 +126,7 @@ async function onSubscriptionUpserted(
     .from('profiles')
     .update({
       subscription_id: subscription.id,
-      subscription_status: subscription.status,
+      subscription_status: normalizeSubscriptionStatus(subscription.status),
       updated_at: new Date().toISOString(),
     })
     .eq('stripe_customer_id', customerId);
