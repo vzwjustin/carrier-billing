@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+import * as Sentry from '@sentry/nextjs';
 import type Stripe from 'stripe';
 import { env } from '@/env';
 import { getStripe } from '@/lib/stripe/client';
@@ -69,6 +70,12 @@ export async function POST(request: Request): Promise<Response> {
         event.id,
         insertResult.error,
       );
+      // We catch + return manually here, so Next's onRequestError hook never
+      // fires. Capture explicitly so the failure shows up in Sentry.
+      Sentry.captureException(insertResult.error, {
+        tags: { area: 'stripe.webhook', stripe_event_type: event.type },
+        extra: { stripe_event_id: event.id },
+      });
       return new Response('Internal error', { status: 500 });
     }
 
@@ -79,6 +86,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ received: true });
   } catch (err) {
     console.error('[stripe.webhook] unexpected error', err);
+    Sentry.captureException(err, { tags: { area: 'stripe.webhook' } });
     return new Response('Internal error', { status: 500 });
   }
 }
