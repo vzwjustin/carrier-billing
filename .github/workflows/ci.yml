@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   quality:
     name: Lint, typecheck, test, build
@@ -16,7 +20,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.33.0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -24,17 +28,29 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
+      - name: Diagnostics
+        run: |
+          echo "=== Versions ==="
+          node --version
+          pnpm --version
+          echo "=== package.json packageManager ==="
+          node -e "console.log(require('./package.json').packageManager)"
+          echo "=== pnpm-lock.yaml head ==="
+          head -5 pnpm-lock.yaml
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile 2>&1 | tee /tmp/install.log
+          echo "=== install exit ok ==="
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm lint 2>&1 | tee /tmp/lint.log
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm typecheck 2>&1 | tee /tmp/typecheck.log
 
       - name: Unit tests
-        run: pnpm test
+        run: pnpm test 2>&1 | tee /tmp/test.log
 
       - name: Build
         env:
@@ -43,4 +59,27 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_placeholder
           NEXT_PUBLIC_APP_URL: http://localhost:3000
-        run: pnpm build
+        run: pnpm build 2>&1 | tee /tmp/build.log
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo '### CI failure log (truncated)'
+            echo
+            for f in install lint typecheck test build; do
+              if [ -f "/tmp/$f.log" ]; then
+                echo "<details><summary>$f.log (last 80 lines)</summary>"
+                echo
+                echo '```'
+                tail -80 "/tmp/$f.log" || true
+                echo '```'
+                echo '</details>'
+                echo
+              fi
+            done
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md || true
