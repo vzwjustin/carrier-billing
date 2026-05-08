@@ -1,0 +1,453 @@
+import { inngest } from '../client';
+import { getAdminClient } from '@/lib/supabase/admin';
+import {
+  runExtractionPipeline,
+  PipelineError,
+} from '@/extraction/pipeline';
+import type {
+  ExtractedBill,
+  ExtractedAccount,
+  ExtractedLine,
+} from '@/extraction/schema';
+
+/**
+ * Phase 1 — process-bill Inngest function.
+ *
+ * Trigger: `bill.uploaded` event with `{ auditId, userId, storagePath }`.
+ *
+ * Pipeline:
+ *   1. mark-extracting: flip the audit row to status='extracting' and stash the run id
+ *   2. extract:        download PDF from storage, run the extraction pipeline,
+ *                      return the parsed `ExtractedBill` (a JSON-serializable value
+ *                      so it can cross step boundaries on retry)
+ *   3. mark-analyzing: persist top-level audit metadata (carrier, totals, counts)
+ *                      and move status to 'analyzing'
+ *   4. persist-bill:   delete + reinsert all child rows (accounts, lines, features,
+ *                      credits, dpp installments). Delete-first makes the step
+ *                      idempotent — Inngest can retry safely without dupes.
+ *
+ * Phase 1 stops with status='analyzing'. Phase 2 will append run-rules + mark-completed.
+ *
+ * PII discipline (CLAUDE.md §1#9): we only ever log auditId/userId/step IDs and
+ * generic error messages. We never log raw bill content, employee names,
+ * phone numbers, or account numbers.
+ */
+
+const FAILURE_REASON_MAX = 500;
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
+}
+
+function deriveFailureReason(err: unknown): string {
+  if (err instanceof PipelineError) {
+    // PipelineError surfaces `.step` for diagnostics; safe to include.
+    const stepLabel = typeof err.step === 'string' ? err.step : 'unknown';
+    return truncate(`extraction:${stepLabel}: ${err.message}`, FAILURE_REASON_MAX);
+  }
+  if (err instanceof Error) {
+    return truncate(err.message, FAILURE_REASON_MAX);
+  }
+  return 'Unknown failure';
+}
+
+function isNotAWirelessBill(err: unknown): boolean {
+  if (!(err instanceof PipelineError)) return false;
+  // The extraction layer surfaces this either via a `code` field or by wrapping
+  // the LLM's `{error:'not_a_wireless_bill'}` sentinel into the message.
+  const maybeCode = (err as unknown as { code?: unknown }).code;
+  if (typeof maybeCode === 'string' && maybeCode === 'not_a_wireless_bill') {
+    return true;
+  }
+  return /not[_ ]a[_ ]wireless[_ ]bill/i.test(err.message);
+}
+
+type ExtractionStepResult = {
+  bill: ExtractedBill;
+  pageCount: number;
+  sizeBytes: number;
+  neededOcr: boolean;
+};
+
+export const processBillFn = inngest.createFunction(
+  { id: 'process-bill', concurrency: { limit: 5 }, retries: 2 },
+  { event: 'bill.uploaded' },
+  async ({ event, step, logger }) => {
+    const { auditId, userId, storagePath } = event.data;
+
+    logger.info('processBill: start', {
+      auditId,
+      userId,
+      runId: event.id,
+    });
+
+    try {
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 1: mark-extracting
+      // ─────────────────────────────────────────────────────────────────────
+      await step.run('mark-extracting', async () => {
+        const supabase = getAdminClient();
+        const { error } = await supabase
+          .from('audits')
+          .update({
+            status: 'extracting',
+            inngest_run_id: event.id ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', auditId);
+        if (error) {
+          throw new Error(`audits update (mark-extracting) failed: ${error.message}`);
+        }
+        return { ok: true };
+      });
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 2: extract — does ALL buffer-based I/O in one step.
+      // We collapse fetch-pdf + extract-text + carrier-detect + llm-extract
+      // because Buffers aren't JSON-serializable across step boundaries.
+      // The output of this step IS serializable.
+      // ─────────────────────────────────────────────────────────────────────
+      const extractResult = (await step.run('extract', async () => {
+        const supabase = getAdminClient();
+        const download = await supabase.storage
+          .from('bills')
+          .download(storagePath);
+        if (download.error || !download.data) {
+          throw new Error(
+            `storage download failed: ${download.error?.message ?? 'no data'}`,
+          );
+        }
+        const arrayBuffer = await download.data.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const sizeBytes = buffer.length;
+
+        const pipeline = await runExtractionPipeline({ buffer });
+        const result: ExtractionStepResult = {
+          bill: pipeline.bill,
+          pageCount: pipeline.pageCount,
+          sizeBytes,
+          neededOcr: pipeline.neededOcr,
+        };
+        return result;
+      })) as ExtractionStepResult;
+
+      const { bill, pageCount, sizeBytes, neededOcr } = extractResult;
+      const lineCount = bill.accounts.reduce<number>(
+        (sum: number, a: ExtractedAccount) => sum + a.lines.length,
+        0,
+      );
+
+      logger.info('processBill: extraction ok', {
+        auditId,
+        carrier: bill.carrier,
+        pageCount,
+        accountCount: bill.accounts.length,
+        lineCount,
+        neededOcr,
+      });
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 3: mark-analyzing — persist audit-level summary
+      // ─────────────────────────────────────────────────────────────────────
+      await step.run('mark-analyzing', async () => {
+        const supabase = getAdminClient();
+        const { error } = await supabase
+          .from('audits')
+          .update({
+            status: 'analyzing',
+            carrier: bill.carrier,
+            billing_period_start: bill.billing_period_start,
+            billing_period_end: bill.billing_period_end,
+            total_charges_cents: bill.total_charges_cents,
+            account_count: bill.accounts.length,
+            line_count: lineCount,
+            page_count: pageCount,
+            file_size_bytes: sizeBytes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', auditId);
+        if (error) {
+          throw new Error(
+            `audits update (mark-analyzing) failed: ${error.message}`,
+          );
+        }
+        return { ok: true };
+      });
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Step 4: persist-bill — delete-then-insert all child rows.
+      // Idempotent across retries because the delete fully resets prior state.
+      // ─────────────────────────────────────────────────────────────────────
+      await step.run('persist-bill', async () => {
+        await persistBill(auditId, bill);
+        return { ok: true };
+      });
+
+      // PHASE-2: run-rules + mark-completed
+      logger.info('processBill: phase 1 complete (status=analyzing)', {
+        auditId,
+      });
+      return {
+        auditId,
+        carrier: bill.carrier,
+        accountCount: bill.accounts.length,
+        lineCount,
+      };
+    } catch (err) {
+      // Failure path: mark the audit failed before re-throwing so Inngest
+      // records the failure and the user sees a real error in the UI.
+      const reason = isNotAWirelessBill(err)
+        ? 'Document does not appear to be a US business wireless bill'
+        : deriveFailureReason(err);
+
+      logger.error('processBill: failed', {
+        auditId,
+        userId,
+        reason,
+      });
+
+      await step.run('mark-failed', async () => {
+        const supabase = getAdminClient();
+        const { error } = await supabase
+          .from('audits')
+          .update({
+            status: 'failed',
+            failure_reason: reason,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', auditId);
+        if (error) {
+          // Don't shadow the original failure — just surface this too.
+          throw new Error(
+            `audits update (mark-failed) failed: ${error.message}`,
+          );
+        }
+        return { ok: true };
+      });
+
+      throw err;
+    }
+  },
+);
+
+// ───────────────────────────────────────────────────────────────────────────
+// Persistence
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Deletes all child rows for the given audit (in dependency order) and
+ * re-inserts them from the freshly extracted bill. Running this twice with
+ * the same input produces the same end state — the property Inngest needs
+ * for safe retries.
+ */
+async function persistBill(
+  auditId: string,
+  bill: ExtractedBill,
+): Promise<void> {
+  const supabase = getAdminClient();
+
+  // Delete in dependency order. bill_features / bill_credits / bill_dpp_installments
+  // all reference bill_lines or bill_accounts; bill_lines references bill_accounts.
+  // Cascading FKs would handle this on accounts-delete, but being explicit here
+  // means we don't rely on cascade configuration to be retry-safe.
+  for (const table of [
+    'bill_features',
+    'bill_credits',
+    'bill_dpp_installments',
+    'bill_lines',
+    'bill_accounts',
+  ] as const) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('audit_id', auditId);
+    if (error) {
+      throw new Error(`delete ${table} failed: ${error.message}`);
+    }
+  }
+
+  // Insert accounts. We need their generated IDs back to link children.
+  const accountInsertRows = bill.accounts.map((account) =>
+    accountToRow(auditId, account),
+  );
+  const insertedAccounts = await insertAndReturnIds(
+    'bill_accounts',
+    accountInsertRows,
+  );
+
+  // Build line rows for ALL accounts in one batch, remembering which line
+  // belongs to which (accountIndex, lineIndex) pair so we can wire up
+  // features/credits/dpp_installments after the insert.
+  type LineInsertRow = ReturnType<typeof lineToRow>;
+  const allLineRows: LineInsertRow[] = [];
+  const lineOrigin: Array<{ accountIndex: number; lineIndex: number }> = [];
+
+  bill.accounts.forEach((account, accountIndex) => {
+    const accountId = insertedAccounts[accountIndex];
+    if (!accountId) {
+      throw new Error(
+        `internal: missing inserted account id at index ${accountIndex}`,
+      );
+    }
+    account.lines.forEach((line, lineIndex) => {
+      allLineRows.push(lineToRow(auditId, accountId, line));
+      lineOrigin.push({ accountIndex, lineIndex });
+    });
+  });
+
+  const insertedLineIds =
+    allLineRows.length > 0
+      ? await insertAndReturnIds('bill_lines', allLineRows)
+      : [];
+
+  // Now: features, credits (line + account-level), dpp_installments.
+  type Row = Record<string, unknown>;
+  const featureRows: Row[] = [];
+  const creditRows: Row[] = [];
+  const dppRows: Row[] = [];
+
+  insertedLineIds.forEach((lineId, idx) => {
+    const origin = lineOrigin[idx];
+    if (!origin) return;
+    const account = bill.accounts[origin.accountIndex];
+    const line = account?.lines[origin.lineIndex];
+    if (!line) return;
+
+    for (const feature of line.features) {
+      featureRows.push({
+        line_id: lineId,
+        audit_id: auditId,
+        name: feature.name,
+        category: feature.category,
+        monthly_charge_cents: feature.monthly_cents,
+      });
+    }
+
+    for (const credit of line.credits) {
+      creditRows.push({
+        line_id: lineId,
+        account_id: null,
+        audit_id: auditId,
+        name: credit.name,
+        monthly_amount_cents: credit.monthly_cents,
+        expires_on: credit.expires_on,
+        is_promo: credit.is_promo,
+      });
+    }
+
+    for (const dpp of line.dpp_installments) {
+      dppRows.push({
+        line_id: lineId,
+        audit_id: auditId,
+        device_description: dpp.device,
+        monthly_payment_cents: dpp.monthly_cents,
+        remaining_payments: dpp.remaining_payments,
+        total_payments: dpp.total_payments,
+      });
+    }
+  });
+
+  // Account-level credits (no line_id).
+  bill.accounts.forEach((account, accountIndex) => {
+    const accountId = insertedAccounts[accountIndex];
+    if (!accountId) return;
+    for (const credit of account.account_level_credits) {
+      creditRows.push({
+        line_id: null,
+        account_id: accountId,
+        audit_id: auditId,
+        name: credit.name,
+        monthly_amount_cents: credit.monthly_cents,
+        expires_on: credit.expires_on,
+        is_promo: credit.is_promo,
+      });
+    }
+  });
+
+  if (featureRows.length > 0) {
+    const { error } = await supabase.from('bill_features').insert(featureRows);
+    if (error) {
+      throw new Error(`insert bill_features failed: ${error.message}`);
+    }
+  }
+  if (creditRows.length > 0) {
+    const { error } = await supabase.from('bill_credits').insert(creditRows);
+    if (error) {
+      throw new Error(`insert bill_credits failed: ${error.message}`);
+    }
+  }
+  if (dppRows.length > 0) {
+    const { error } = await supabase
+      .from('bill_dpp_installments')
+      .insert(dppRows);
+    if (error) {
+      throw new Error(`insert bill_dpp_installments failed: ${error.message}`);
+    }
+  }
+}
+
+function accountToRow(auditId: string, account: ExtractedAccount) {
+  return {
+    audit_id: auditId,
+    account_number_masked: account.account_number_last4,
+    account_label: account.label,
+    total_charges_cents: account.total_charges_cents,
+    taxes_fees_cents: account.taxes_fees_cents,
+    raw: account as unknown as Record<string, unknown>,
+  };
+}
+
+function lineToRow(
+  auditId: string,
+  accountId: string,
+  line: ExtractedLine,
+) {
+  return {
+    audit_id: auditId,
+    account_id: accountId,
+    mdn_masked: line.mdn_last4,
+    user_label: line.user_label,
+    device_description: line.device,
+    plan_name: line.plan_name,
+    plan_base_cents: line.plan_base_cents,
+    data_used_gb: line.data_used_gb,
+    voice_used_min: line.voice_used_min,
+    sms_used_count: line.sms_used_count,
+    is_suspended: line.is_suspended,
+    is_active_dpp: line.dpp_installments.length > 0,
+    raw: line as unknown as Record<string, unknown>,
+  };
+}
+
+/**
+ * Insert rows and return the generated `id`s in the same order they were sent.
+ * Supabase preserves request order in the response, so positional FK linking
+ * is safe without doing one round-trip per parent row.
+ */
+async function insertAndReturnIds(
+  table: 'bill_accounts' | 'bill_lines',
+  rows: Array<Record<string, unknown>>,
+): Promise<string[]> {
+  if (rows.length === 0) return [];
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from(table).insert(rows).select('id');
+  if (error) {
+    throw new Error(`insert ${table} failed: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error(`insert ${table} returned no data`);
+  }
+  const ids: string[] = [];
+  for (const row of data as Array<{ id: unknown }>) {
+    if (typeof row.id !== 'string') {
+      throw new Error(`insert ${table} returned non-string id`);
+    }
+    ids.push(row.id);
+  }
+  if (ids.length !== rows.length) {
+    throw new Error(
+      `insert ${table} returned ${ids.length} ids for ${rows.length} rows`,
+    );
+  }
+  return ids;
+}
