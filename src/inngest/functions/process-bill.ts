@@ -94,7 +94,12 @@ type RuleStepResult = {
 };
 
 export const processBillFn = inngest.createFunction(
-  { id: 'process-bill', concurrency: { limit: 5 }, retries: 2 },
+  {
+    id: 'process-bill',
+    concurrency: { limit: 5 },
+    retries: 2,
+    timeouts: { finish: '15m' },
+  },
   { event: 'bill.uploaded' },
   async ({ event, step, logger }) => {
     const { auditId, userId, storagePath } = event.data;
@@ -160,6 +165,12 @@ export const processBillFn = inngest.createFunction(
         (sum: number, a: ExtractedAccount) => sum + a.lines.length,
         0,
       );
+
+      // CLAUDE.md §11 #12: schema allows accounts with empty `lines`, so guard
+      // here. Plain Error → catch path → failure_reason='no lines extracted'.
+      if (lineCount === 0) {
+        throw new Error('no lines extracted');
+      }
 
       logger.info('processBill: extraction ok', {
         auditId,

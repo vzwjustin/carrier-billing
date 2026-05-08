@@ -121,6 +121,28 @@ describe('ExtractedBillSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  // Regression for CLAUDE.md §11 #12: schema deliberately allows
+  // accounts-with-no-lines so we can surface a domain-specific failure
+  // ('no lines extracted') from process-bill's runtime guard rather than a
+  // generic schema error. If this test starts failing because someone added
+  // `.min(1)` to ExtractedAccountSchema.lines, also delete the runtime guard
+  // in src/inngest/functions/process-bill.ts and update its failure_reason.
+  it('accepts accounts with zero lines (runtime guard is responsible)', () => {
+    const bill = minimalBill();
+    const firstAccount = bill.accounts[0];
+    if (!firstAccount) throw new Error('fixture missing account');
+    firstAccount.lines = [];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const totalLines = result.data.accounts.reduce(
+      (sum, a) => sum + a.lines.length,
+      0,
+    );
+    // process-bill.ts throws Error('no lines extracted') iff this is 0.
+    expect(totalLines).toBe(0);
+  });
+
   it('rejects mdn_last4 of wrong length', () => {
     const bill = minimalBill();
     const firstAccount = bill.accounts[0];
