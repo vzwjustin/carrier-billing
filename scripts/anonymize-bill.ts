@@ -2,36 +2,78 @@
  * scripts/anonymize-bill.ts
  *
  * Usage:
- *   pnpm tsx scripts/anonymize-bill.ts <input.pdf> <output-prefix>
+ *   pnpm tsx scripts/anonymize-bill.ts <input.pdf> <output.pdf> [--dry-run]
  *
- * Extracts the text from a wireless bill PDF, redacts phone numbers and
- * account numbers, and writes:
- *   - <output-prefix>.txt    — the anonymized text dump (review-only)
- *   - <output-prefix>.json   — structured payload + redaction mapping
+ * True PDF anonymization for committing test fixtures. Loads the input PDF,
+ * extracts its text via pdf-parse, builds a redaction map (phone numbers,
+ * account numbers, employee/contact names → realistic synthetic replacements),
+ * applies the map to the text, and emits a NEW PDF whose pages contain the
+ * cleaned text only. A sidecar JSON records the mapping for review.
  *
- * This is intended as a *review aid* before committing test fixtures.
- *
- * TODO(phase-1.5): true PDF anonymization with pdf-lib redactions so we can
- * actually feed sanitized PDFs into the extraction pipeline. For Phase 1 we
- * only need to verify what's in the bill before we trust it.
+ * NOTE: This produces a TEXT-replicated anonymized PDF — original layout is
+ * lost. For visual fidelity preservation use a PDF redaction tool that
+ * supports positional matching (e.g., qpdf + pdftotext bbox).
  */
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { PDFDocument, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
+
+type RedactionKind = 'phone' | 'account' | 'name';
 
 type RedactionEntry = {
-  kind: 'phone' | 'account';
+  kind: RedactionKind;
   original: string;
   replacement: string;
 };
 
-const PHONE_RE = /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g;
-// Verizon-style 12-digit account numbers; preserve the last 4.
+type RedactionSummary = {
+  phone: number;
+  account: number;
+  name: number;
+};
+
+// Phone numbers: 555-555-1212, 5555551212, (555) 555-1212, etc.
+const PHONE_RE =
+  /\b(?:\(\d{3}\)\s*|\d{3}[-.\s])?\d{3}[-.\s]?\d{4}\b|\b\d{10}\b/g;
+// Verizon-style 12-digit account numbers; preserve the last 4 via masking.
 const ACCOUNT_RE = /\b\d{12}\b/g;
 
+// Static fake-name pool; reused across runs so output is deterministic per
+// input order. Real names are detected on a best-effort heuristic only —
+// reviewers should still spot-check the output JSON.
+const FAKE_NAMES: readonly string[] = [
+  'Avery Stone',
+  'Blair Quinn',
+  'Casey Rowe',
+  'Drew Hayes',
+  'Ellis Park',
+  'Frankie Lane',
+  'Gray Tatum',
+  'Harper Vale',
+  'Indigo West',
+  'Jules Marsh',
+  'Kai Bishop',
+  'Lane Forester',
+  'Morgan Reese',
+  'Nico Bardot',
+  'Onyx Carter',
+  'Parker Holt',
+  'Quincy Adair',
+  'Reese Calder',
+  'Sage Linley',
+  'Tatum Pryor',
+];
+
+// Heuristic: a label like "User: Jane Smith" or "Name: Jane Smith" or
+// "Employee: Jane Smith". We deliberately stay narrow — broad name matching
+// hits too many false positives in carrier bill body text.
+const LABELED_NAME_RE =
+  /\b(User|Name|Employee|Contact|Bill\s*To|Account\s*Holder)\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g;
+
 function fakePhoneFromIndex(idx: number): string {
-  // Use the 555-01xx prefix block reserved for fictional numbers.
-  const last4 = (100 + (idx % 9900)).toString().padStart(4, '0');
+  // 555-prefixed fictional block; pad an offset for uniqueness.
+  const last4 = ((idx % 10000) + 0).toString().padStart(4, '0');
   return `555-555-${last4}`;
 }
 
@@ -40,16 +82,36 @@ function maskAccount(original: string): string {
   return `XXXXXXXX${last4}`;
 }
 
-function buildRedactor(): {
+function fakeNameFromIndex(idx: number): string {
+  const fallback = FAKE_NAMES[idx % FAKE_NAMES.length];
+  return fallback ?? `Employee ${String.fromCharCode(65 + (idx % 26))}`;
+}
+
+type Redactor = {
   apply: (text: string) => string;
   entries: RedactionEntry[];
-} {
+  summary: () => RedactionSummary;
+};
+
+function buildRedactor(): Redactor {
   const phoneMap = new Map<string, string>();
   const accountMap = new Map<string, string>();
+  const nameMap = new Map<string, string>();
   const entries: RedactionEntry[] = [];
 
   const apply = (text: string): string => {
-    let out = text.replace(PHONE_RE, (match) => {
+    // Names first (so we don't accidentally rewrite digits inside a name match).
+    let out = text.replace(LABELED_NAME_RE, (_full, label: string, name: string) => {
+      const existing = nameMap.get(name);
+      const replacement = existing ?? fakeNameFromIndex(nameMap.size);
+      if (!existing) {
+        nameMap.set(name, replacement);
+        entries.push({ kind: 'name', original: name, replacement });
+      }
+      return `${label}: ${replacement}`;
+    });
+
+    out = out.replace(PHONE_RE, (match) => {
       const existing = phoneMap.get(match);
       if (existing) return existing;
       const replacement = fakePhoneFromIndex(phoneMap.size);
@@ -70,29 +132,130 @@ function buildRedactor(): {
     return out;
   };
 
-  return { apply, entries };
+  const summary = (): RedactionSummary => ({
+    phone: phoneMap.size,
+    account: accountMap.size,
+    name: nameMap.size,
+  });
+
+  return { apply, entries, summary };
 }
 
 function usage(): never {
   process.stderr.write(
-    'Usage: pnpm tsx scripts/anonymize-bill.ts <input.pdf> <output-prefix>\n',
+    'Usage: pnpm tsx scripts/anonymize-bill.ts <input.pdf> <output.pdf> [--dry-run]\n',
   );
   process.exit(1);
 }
 
+async function extractText(pdfBuffer: Buffer): Promise<string> {
+  const mod = (await import('pdf-parse')) as unknown as {
+    default?: (buf: Buffer) => Promise<{ text: string }>;
+  };
+  const pdfParse = mod.default;
+  if (typeof pdfParse !== 'function') {
+    throw new Error('pdf-parse default export is not a function');
+  }
+  const result = await pdfParse(pdfBuffer);
+  return result.text;
+}
+
+// Roughly chunk the cleaned text into pages for the rebuilt PDF. pdf-parse
+// uses form-feed (\f) as a page separator, so prefer that when present.
+function splitIntoPages(text: string): string[] {
+  if (text.includes('\f')) {
+    return text.split('\f').map((p) => p.trim());
+  }
+  // Fallback: 60-line chunks so single-page text still renders sanely.
+  const lines = text.split('\n');
+  const chunkSize = 60;
+  const pages: string[] = [];
+  for (let i = 0; i < lines.length; i += chunkSize) {
+    pages.push(lines.slice(i, i + chunkSize).join('\n'));
+  }
+  return pages.length > 0 ? pages : [text];
+}
+
+type DrawCtx = {
+  page: PDFPage;
+  font: PDFFont;
+  size: number;
+  margin: number;
+  lineHeight: number;
+};
+
+function drawWrappedText(ctx: DrawCtx, content: string): void {
+  const { page, font, size, margin, lineHeight } = ctx;
+  const { width, height } = page.getSize();
+  const usableWidth = width - margin * 2;
+  let cursorY = height - margin;
+
+  const lines = content.split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\t/g, '    ');
+    if (line.length === 0) {
+      cursorY -= lineHeight;
+      continue;
+    }
+
+    // Word-wrap to fit page width.
+    const words = line.split(/\s+/);
+    let current = '';
+    for (const word of words) {
+      const candidate = current.length === 0 ? word : `${current} ${word}`;
+      const w = font.widthOfTextAtSize(candidate, size);
+      if (w > usableWidth && current.length > 0) {
+        page.drawText(current, { x: margin, y: cursorY, size, font });
+        cursorY -= lineHeight;
+        current = word;
+        if (cursorY < margin) return;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current.length > 0) {
+      page.drawText(current, { x: margin, y: cursorY, size, font });
+      cursorY -= lineHeight;
+    }
+    if (cursorY < margin) return;
+  }
+}
+
+async function buildAnonymizedPdf(pages: string[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Courier);
+  const size = 9;
+  const margin = 36;
+  const lineHeight = 11;
+
+  for (const pageText of pages) {
+    const page = doc.addPage();
+    drawWrappedText({ page, font, size, margin, lineHeight }, pageText);
+  }
+
+  return doc.save();
+}
+
 async function main(): Promise<void> {
-  const [inputArg, outputArg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run');
+  const positional = args.filter((a) => !a.startsWith('--'));
+  const inputArg = positional[0];
+  const outputArg = positional[1];
   if (!inputArg || !outputArg) usage();
 
   if (!inputArg.toLowerCase().endsWith('.pdf')) {
     process.stderr.write('Input must be a .pdf file.\n');
     process.exit(1);
   }
+  if (!outputArg.toLowerCase().endsWith('.pdf')) {
+    process.stderr.write('Output must be a .pdf file.\n');
+    process.exit(1);
+  }
 
   const inputPath = path.resolve(inputArg);
-  const outputPrefix = path.resolve(outputArg).replace(/\.(pdf|txt|json)$/i, '');
-  const txtPath = `${outputPrefix}.txt`;
-  const jsonPath = `${outputPrefix}.json`;
+  const outputPath = path.resolve(outputArg);
+  const jsonPath = outputPath.replace(/\.pdf$/i, '.json');
 
   let inputBuffer: Buffer;
   try {
@@ -103,37 +266,43 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  let pdfText = '';
+  let pdfText: string;
   try {
-    // Dynamic import so the script doesn't fail at module load if pdf-parse is
-    // unavailable in some environment.
-    const mod = (await import('pdf-parse')) as unknown as {
-      default?: (buf: Buffer) => Promise<{ text: string }>;
-    };
-    const pdfParse = mod.default;
-    if (typeof pdfParse !== 'function') {
-      throw new Error('pdf-parse default export is not a function');
-    }
-    const result = await pdfParse(inputBuffer);
-    pdfText = result.text;
+    pdfText = await extractText(inputBuffer);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown';
     process.stderr.write(`Failed to parse PDF: ${message}\n`);
     process.exit(1);
   }
 
-  const { apply, entries } = buildRedactor();
-  const anonymized = apply(pdfText);
+  const { apply, entries, summary } = buildRedactor();
+  const anonymizedText = apply(pdfText);
+  const totals = summary();
 
-  await fs.writeFile(txtPath, anonymized, 'utf8');
+  if (dryRun) {
+    process.stdout.write(
+      `[dry-run] would redact ${totals.phone} phone numbers, ${totals.account} account numbers, ${totals.name} names\n`,
+    );
+    for (const e of entries) {
+      process.stdout.write(`  ${e.kind}: ${e.original} -> ${e.replacement}\n`);
+    }
+    return;
+  }
+
+  const pages = splitIntoPages(anonymizedText);
+  const pdfBytes = await buildAnonymizedPdf(pages);
+
+  await fs.writeFile(outputPath, pdfBytes);
   await fs.writeFile(
     jsonPath,
     JSON.stringify(
       {
         source: path.basename(inputPath),
-        char_count: anonymized.length,
+        output: path.basename(outputPath),
+        page_count: pages.length,
+        char_count: anonymizedText.length,
+        summary: totals,
         redactions: entries,
-        text: anonymized,
       },
       null,
       2,
@@ -142,8 +311,9 @@ async function main(): Promise<void> {
   );
 
   process.stdout.write(
-    `Wrote ${txtPath} and ${jsonPath} (${entries.length} redactions).\n`,
+    `redacted ${totals.phone} phone numbers, ${totals.account} account numbers, ${totals.name} names\n`,
   );
+  process.stdout.write(`wrote ${outputPath} and ${jsonPath}\n`);
 }
 
 main().catch((err: unknown) => {

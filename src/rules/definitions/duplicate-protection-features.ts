@@ -1,8 +1,14 @@
 import type { Rule, Finding } from '../types';
-import { findFeatureByCategory, formatCents } from '../helpers';
+import { categorizeFeatureSet, formatCents } from '../helpers';
 
 const RULE_ID = 'duplicate_protection_features';
 
+/**
+ * One finding per LINE (not per feature). Evidence carries the full list of
+ * overlapping insurance feature names so the UI can render them. We
+ * deduplicate by category so two `insurance` entries roll up into a single
+ * finding rather than firing once per feature.
+ */
 export const duplicateProtectionFeaturesRule: Rule = {
   id: RULE_ID,
   title: 'Multiple insurance/protection features on the same line',
@@ -12,7 +18,8 @@ export const duplicateProtectionFeaturesRule: Rule = {
 
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
-        const insurance = findFeatureByCategory(line, 'insurance');
+        const grouped = categorizeFeatureSet(line.features);
+        const insurance = grouped.insurance;
         if (insurance.length <= 1) return;
 
         const sortedAsc = [...insurance].sort(
@@ -34,7 +41,7 @@ export const duplicateProtectionFeaturesRule: Rule = {
           recommended_action:
             'Pick the single best plan (typically the most comprehensive at the lowest cost) and drop the others.',
           estimated_monthly_savings_cents: savings,
-          confidence: 0.85,
+          confidence: 0.9,
           affected_line_indexes: [lineIndex],
           affected_account_indexes: [accountIndex],
           evidence: {
@@ -42,8 +49,10 @@ export const duplicateProtectionFeaturesRule: Rule = {
               name: f.name,
               monthly_cents: f.monthly_cents,
             })),
+            feature_names: insurance.map((f) => f.name),
             total_monthly_cents: total,
             cheapest_monthly_cents: cheapestCents,
+            count: insurance.length,
           },
         });
       });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   TextractClient,
   DetectDocumentTextCommand,
@@ -5,23 +6,42 @@ import {
   GetDocumentTextDetectionCommand,
   type Block,
 } from '@aws-sdk/client-textract';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { env } from '@/env';
 
 /**
  * Lazy AWS Textract client. Mirrors the stripe/anthropic pattern so missing
  * AWS credentials at build/test time don't crash module evaluation.
  */
-let cached: TextractClient | null = null;
-function getClient(): TextractClient {
-  if (cached) return cached;
-  cached = new TextractClient({
+let cachedTextract: TextractClient | null = null;
+export function getTextractClient(): TextractClient {
+  if (cachedTextract) return cachedTextract;
+  cachedTextract = new TextractClient({
     region: env.AWS_REGION,
     credentials: {
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
     },
   });
-  return cached;
+  return cachedTextract;
+}
+
+/** Lazy S3 client used to stage PDFs for the async Textract path. */
+let cachedS3: S3Client | null = null;
+export function getS3Client(): S3Client {
+  if (cachedS3) return cachedS3;
+  cachedS3 = new S3Client({
+    region: env.AWS_REGION,
+    credentials: {
+      accessKeyId: env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+  return cachedS3;
 }
 
 export class OcrError extends Error {
@@ -46,11 +66,9 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000;
  * `BlockType === 'LINE'` blocks separated by newlines.
  *
  * For small (<5MB) buffers we use the synchronous `DetectDocumentTextCommand`.
- * For larger / multi-page buffers we use the async pattern via S3.
- *
- * TODO(phase-1.5): wire S3 upload for async Textract; current async path
- * assumes the buffer can be uploaded by the caller — for now the sync path
- * is the primary code path for Phase 1.
+ * For larger / multi-page buffers we use the async pattern, which requires
+ * `AWS_TEXTRACT_S3_BUCKET` to be configured. The PDF is staged to S3, the
+ * Textract job is started, polled, and the staged object is deleted.
  */
 export async function extractTextWithOCR(buffer: Buffer): Promise<string> {
   if (buffer.byteLength <= SYNC_MAX_BYTES) {
@@ -60,7 +78,7 @@ export async function extractTextWithOCR(buffer: Buffer): Promise<string> {
 }
 
 async function runSync(buffer: Buffer): Promise<string> {
-  const client = getClient();
+  const client = getTextractClient();
   try {
     const out = await client.send(
       new DetectDocumentTextCommand({
@@ -74,63 +92,136 @@ async function runSync(buffer: Buffer): Promise<string> {
 }
 
 /**
- * Async multi-page Textract path. Requires the PDF to live in S3 — the
- * caller must arrange the upload and pass a `{ bucket, key }` reference.
- *
- * In Phase 1 we don't have an S3 staging bucket wired up yet, so this path
- * throws a clear error explaining what's needed. Phase 1.5 will plumb the
- * staging bucket through.
+ * Async multi-page Textract path:
+ *   1. Stage the PDF to S3 under a unique key
+ *   2. StartDocumentTextDetection pointing at the S3 object
+ *   3. Poll GetDocumentTextDetection every 5s for up to 5 minutes
+ *   4. Concatenate `LINE` blocks across paginated results
+ *   5. Always delete the S3 object in `finally`
  */
 async function runAsync(buffer: Buffer): Promise<string> {
-  throw new OcrError(
-    `Async Textract path requires S3 staging which is not yet wired up. ` +
-      `Bill (${buffer.length} bytes) exceeds the 5MB sync limit; defer OCR to Phase 1.5.`,
-  );
+  const bucket = env.AWS_TEXTRACT_S3_BUCKET;
+  if (!bucket) {
+    throw new OcrError(
+      'Async Textract requires AWS_TEXTRACT_S3_BUCKET to be configured.',
+    );
+  }
+
+  const key = `carrieraudit/textract-staging/${randomUUID()}.pdf`;
+  const s3 = getS3Client();
+  const textract = getTextractClient();
+
+  // Step 1: upload. If this fails there's nothing to clean up yet.
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: 'application/pdf',
+      }),
+    );
+  } catch (err) {
+    throw new OcrError('Failed to stage PDF to S3 for async Textract', err);
+  }
+
+  try {
+    // Step 2: start the async Textract job.
+    let jobId: string | undefined;
+    try {
+      const started = (await textract.send(
+        new StartDocumentTextDetectionCommand({
+          DocumentLocation: { S3Object: { Bucket: bucket, Name: key } },
+        }),
+      )) as unknown as { JobId?: string };
+      jobId = started.JobId;
+    } catch (err) {
+      throw new OcrError('Failed to start Textract job', err);
+    }
+    if (!jobId) {
+      throw new OcrError('Textract did not return a JobId');
+    }
+
+    // Steps 3-4: poll and aggregate.
+    return await pollJob(jobId);
+  } finally {
+    // Step 5: always clean up the staged object. Don't let cleanup errors
+    // mask the original failure — log via OcrError chain only on success.
+    try {
+      await s3.send(
+        new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+      );
+    } catch {
+      // Swallow cleanup failures: the object will be reaped by the bucket's
+      // lifecycle policy. Surfacing this would shadow the real error.
+    }
+  }
 }
 
 /**
- * Internal: poll an async Textract job until it completes or times out.
- * Exported shape kept private; used only when the async path is wired.
+ * Poll an async Textract job until it completes or the wall-clock deadline
+ * elapses. Returns the concatenated `LINE` text across all paginated pages.
  */
-async function _pollJob(jobId: string): Promise<string> {
-  const client = getClient();
-  const startedAt = Date.now();
+async function pollJob(jobId: string): Promise<string> {
+  const client = getTextractClient();
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
   const lines: Block[] = [];
 
-  // Pagination across NextToken once the job succeeds.
-  while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-    const out = await client.send(
-      new GetDocumentTextDetectionCommand({ JobId: jobId }),
-    );
-    const status = out.JobStatus;
+  while (Date.now() < deadline) {
+    let typed: {
+      JobStatus?: string;
+      StatusMessage?: string;
+      Blocks?: Block[];
+      NextToken?: string;
+    };
+    try {
+      const out = await client.send(
+        new GetDocumentTextDetectionCommand({ JobId: jobId }),
+      );
+      // The SDK's send() return type is a giant union; we narrow off the
+      // response shape we know GetDocumentTextDetection returns at runtime.
+      typed = out as unknown as {
+        JobStatus?: string;
+        StatusMessage?: string;
+        Blocks?: Block[];
+        NextToken?: string;
+      };
+    } catch (err) {
+      throw new OcrError('Textract polling failed', err);
+    }
+
+    const status = typed.JobStatus;
     if (status === 'FAILED') {
-      throw new OcrError(`Textract job failed: ${out.StatusMessage ?? ''}`);
+      throw new OcrError(
+        `Textract job failed: ${typed.StatusMessage ?? ''}`.trim(),
+      );
     }
     if (status === 'SUCCEEDED') {
-      lines.push(...(out.Blocks ?? []));
-      let token = out.NextToken;
+      lines.push(...(typed.Blocks ?? []));
+      let token = typed.NextToken;
       while (token) {
-        const next = await client.send(
-          new GetDocumentTextDetectionCommand({
-            JobId: jobId,
-            NextToken: token,
-          }),
-        );
-        lines.push(...(next.Blocks ?? []));
-        token = next.NextToken;
+        try {
+          const next = (await client.send(
+            new GetDocumentTextDetectionCommand({
+              JobId: jobId,
+              NextToken: token,
+            }),
+          )) as unknown as { Blocks?: Block[]; NextToken?: string };
+          lines.push(...(next.Blocks ?? []));
+          token = next.NextToken;
+        } catch (err) {
+          throw new OcrError('Textract pagination failed', err);
+        }
       }
       return collectLines(lines);
     }
-    // Status is IN_PROGRESS or PARTIAL_SUCCESS — wait and retry.
+
+    // IN_PROGRESS / PARTIAL_SUCCESS — wait and retry, but not past deadline.
+    if (Date.now() + POLL_INTERVAL_MS >= deadline) break;
     await sleep(POLL_INTERVAL_MS);
   }
-  throw new OcrError('Textract job timed out');
+  throw new OcrError('Textract job timed out after 5 minutes');
 }
-
-// Keep the helper referenced so tooling doesn't strip it; it's part of the
-// async path that Phase 1.5 will activate.
-void _pollJob;
-void StartDocumentTextDetectionCommand;
 
 function collectLines(blocks: Block[]): string {
   const out: string[] = [];
@@ -146,4 +237,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/** Test-only: reset cached clients so vi.mock can swap implementations. */
+export function __resetClientsForTests(): void {
+  cachedTextract = null;
+  cachedS3 = null;
 }

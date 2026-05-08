@@ -16,14 +16,17 @@ function buildFinding(args: {
   const amount = Math.abs(credit.monthly_cents);
   const where = scope === 'account' ? 'Account credit' : 'Line credit';
   const title = isExpiredNow
-    ? `${where} "${credit.name}" has expired`
+    ? `${where} "${credit.name}" has expired (${formatCents(amount)}/mo lost)`
     : `${where} "${credit.name}" expires within 30 days`;
   const description = isExpiredNow
-    ? `${where} "${credit.name}" of ${formatCents(amount)}/mo expired on ${credit.expires_on}. Going forward, this discount is no longer being applied.`
-    : `${where} "${credit.name}" of ${formatCents(amount)}/mo expires on ${credit.expires_on}. Once it falls off, your bill increases by ${formatCents(amount)}/mo.`;
+    ? `The ${formatCents(amount)}/mo ${scope}-level credit "${credit.name}" expired on ${credit.expires_on}. The discount is no longer being applied to this bill, so the line/account is paying full price until a renewal credit is negotiated.`
+    : `The ${formatCents(amount)}/mo ${scope}-level credit "${credit.name}" expires on ${credit.expires_on}. Once it falls off, the bill will increase by ${formatCents(amount)}/mo unless a renewal is in place.`;
   const recommended_action = isExpiredNow
-    ? 'Contact your carrier representative to negotiate a renewal or replacement promotional credit. Reference the credit name and expiration date when escalating.'
-    : 'Contact your carrier representative now to renew this credit before it lapses.';
+    ? 'Contact your carrier representative to negotiate a renewal or replacement promotional credit. Reference the credit name and expiration date when escalating, and ask for back-credit covering any periods billed after expiration.'
+    : 'Contact your carrier representative now to renew this credit before it lapses. Most carriers prefer to renew before expiration rather than restore after.';
+  // Already-expired credits are unambiguous (we have the date), so confidence
+  // is higher than for "expiring soon" findings which are forward-looking.
+  const confidence = isExpiredNow ? 0.98 : 0.95;
   return {
     rule_id: RULE_ID,
     severity,
@@ -31,7 +34,7 @@ function buildFinding(args: {
     description,
     recommended_action,
     estimated_monthly_savings_cents: amount,
-    confidence: 0.95,
+    confidence,
     affected_line_indexes: lineIndex === null ? [] : [lineIndex],
     affected_account_indexes: [accountIndex],
     evidence: {

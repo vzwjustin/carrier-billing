@@ -24,7 +24,9 @@ export const suspendedLineBilledRule: Rule = {
           recommended_action:
             'Decide whether to cancel the line outright (eliminating the charge) or move it to the carrier’s no-cost / vacation suspension tier.',
           estimated_monthly_savings_cents: planBase,
-          confidence: 0.95,
+          // Very high confidence: bill explicitly marks the line suspended
+          // AND charges a non-zero plan amount. There is no ambiguity here.
+          confidence: 0.97,
           affected_line_indexes: [lineIndex],
           affected_account_indexes: [accountIndex],
           evidence: {

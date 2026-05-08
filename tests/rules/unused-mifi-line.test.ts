@@ -66,4 +66,69 @@ describe('unused_mifi_or_jetpack_line rule', () => {
     const findings = await unusedMifiLineRule.evaluate(c);
     expect(findings).toHaveLength(0);
   });
+
+  it('fires LOW severity (light_use tier) when hotspot used <1 GB but >=0.1 GB', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              device: 'Verizon Jetpack',
+              data_used_gb: 0.5,
+              plan_base_cents: 4000,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await unusedMifiLineRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.severity).toBe('low');
+    expect(f.estimated_monthly_savings_cents).toBe(4000);
+    const evidence = f.evidence as { tier: string };
+    expect(evidence.tier).toBe('light_use');
+  });
+
+  it('fires MEDIUM severity (zero_use tier) when hotspot used <0.1 GB', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              device: 'Verizon Jetpack',
+              data_used_gb: 0.05,
+              plan_base_cents: 4000,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await unusedMifiLineRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.severity).toBe('medium');
+    const evidence = f.evidence as { tier: string };
+    expect(evidence.tier).toBe('zero_use');
+  });
+
+  it('does not fire when hotspot used exactly 1 GB (boundary)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              device: 'Inseego 5G Hotspot',
+              data_used_gb: 1.0,
+              plan_base_cents: 4000,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await unusedMifiLineRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
 });

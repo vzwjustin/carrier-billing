@@ -225,11 +225,28 @@ CarrierAudit is built to deploy on **Vercel**.
    - Update Supabase **Auth → URL Configuration** to include the deployed origin.
    - Configure the Resend sender domain DNS records.
 
+### Sentry sourcemap upload
+
+The build wraps `next.config.ts` with `withSentryConfig` so production deploys upload sourcemaps automatically. Without an auth token the wrapper silently skips the upload step — local dev and untrusted (forked) PR builds keep working unchanged.
+
+To enable sourcemap upload + release tracking:
+
+1. Create a Sentry project for CarrierAudit (Next.js platform).
+2. In Sentry → **Settings → Account → Auth Tokens**, generate an internal-integration / CLI auth token with the `project:releases` scope (and `org:read`). Save it somewhere safe — Sentry only shows it once.
+3. Add three secrets to **both** Vercel (Production + Preview) and the GitHub repo (Settings → Secrets and variables → Actions):
+   - `SENTRY_ORG` — your Sentry org slug
+   - `SENTRY_PROJECT` — your Sentry project slug
+   - `SENTRY_AUTH_TOKEN` — the token from step 2
+4. Trigger a new deploy. The first build with these secrets present will upload sourcemaps and create a Sentry release.
+
+When any of these secrets is missing the build still succeeds — the Sentry wrapper goes silent and skips the upload (so local dev, fresh clones, and untrusted PRs are unaffected).
+
 ## Testing
 
 - **Unit + integration:** `pnpm test` runs the full Vitest suite (≈149 tests at the time of writing) excluding `tests/e2e` and `tests/fixtures`. CI runs this on every PR.
 - **LLM extraction (gated):** `pnpm test:llm` runs the Claude extraction call against bill fixtures. Costs API credit; not in CI by default. Run locally before shipping schema or prompt changes.
 - **End-to-end:** `pnpm test:e2e` runs the Playwright happy-path tests. The config boots `pnpm dev` automatically; expect the first run to take a minute. Sandboxed Supabase + Stripe environments are required for a full signup → buy → upload → report flow; the committed specs cover the auth-free public surface and `/api/health`.
+- `pnpm test:e2e` runs the public-surface specs by default; set `RUN_FULL_E2E=1` plus the env vars in [`tests/e2e/README.md`](./tests/e2e/README.md) to run the full signup → buy → upload → report path against your sandbox.
 
 Per [`CLAUDE.md` §9](./CLAUDE.md), the rules engine is the product — every rule needs positive + negative unit tests with realistic fixture data. The extraction pipeline gets schema-validation + golden-snapshot tests against anonymized fixtures under `tests/fixtures/bills/`.
 

@@ -15,6 +15,11 @@ export const env = createEnv({
     AWS_ACCESS_KEY_ID: z.string().min(1),
     AWS_SECRET_ACCESS_KEY: z.string().min(1),
     AWS_REGION: z.string().min(1).default('us-east-1'),
+    // S3 staging bucket for the async Textract path. Without this var the
+    // async OCR path is unavailable — this is rare in practice and only
+    // triggers for >5MB scanned bills (sync Textract handles the rest).
+    // Bucket must live in the same region as AWS_REGION.
+    AWS_TEXTRACT_S3_BUCKET: z.string().min(1).optional(),
 
     // Stripe
     STRIPE_SECRET_KEY: z.string().min(1),
@@ -31,6 +36,10 @@ export const env = createEnv({
 
     // Sentry
     SENTRY_DSN: z.string().url().optional(),
+    // Sentry build-time (optional — enables sourcemap upload + release tracking)
+    SENTRY_ORG: z.string().min(1).optional(),
+    SENTRY_PROJECT: z.string().min(1).optional(),
+    SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
 
     // PostHog (server)
     POSTHOG_API_KEY: z.string().min(1).optional(),
@@ -51,6 +60,7 @@ export const env = createEnv({
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
     AWS_REGION: process.env.AWS_REGION,
+    AWS_TEXTRACT_S3_BUCKET: process.env.AWS_TEXTRACT_S3_BUCKET,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     STRIPE_PRICE_ID_ONE_TIME: process.env.STRIPE_PRICE_ID_ONE_TIME,
@@ -59,6 +69,9 @@ export const env = createEnv({
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     SENTRY_DSN: process.env.SENTRY_DSN,
+    SENTRY_ORG: process.env.SENTRY_ORG,
+    SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+    SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,

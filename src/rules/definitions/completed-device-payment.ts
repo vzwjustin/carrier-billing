@@ -13,13 +13,25 @@ export const completedDevicePaymentRule: Rule = {
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
         line.dpp_installments.forEach((dpp) => {
-          // TODO(domain): decide whether `remaining_payments === null` should
-          // trigger this rule. Currently we only fire on the unambiguous case
-          // (remaining === 0) to keep false positives near zero. Justin to
-          // weigh in on whether a non-zero monthly_cents with null remaining
-          // is worth surfacing as a "review me" finding.
+          // We require evidence the plan is complete. Two paths:
+          //   1. remaining_payments === 0 (direct).
+          //   2. total_payments and remaining_payments are both present and
+          //      total - (total - remaining) === 0 (defensive computed check
+          //      against extraction artifacts where one of the fields was
+          //      copied into the wrong slot).
+          // When BOTH remaining_payments and total_payments are null we
+          // have no signal — do NOT fire. Surfacing this as a "review me"
+          // finding produced too many false positives in early testing
+          // (carriers often print DPP rows for active plans without an
+          // explicit count). Better to miss than to mis-flag.
           const remaining = dpp.remaining_payments;
-          if (remaining !== 0) return;
+          const total = dpp.total_payments;
+          if (remaining === null && total === null) return;
+          const computedRemaining =
+            total !== null && remaining !== null
+              ? total - (total - remaining)
+              : remaining;
+          if (computedRemaining !== 0) return;
           if (dpp.monthly_cents <= 0) return;
 
           findings.push({

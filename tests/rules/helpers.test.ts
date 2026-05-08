@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  categorizeFeatureSet,
   daysUntil,
   expiresWithinDays,
+  getCarrierPlanPatterns,
   isExpired,
   isHotspotDevice,
   isPlanNameDeprecated,
@@ -110,5 +112,50 @@ describe('sumLineCharges', () => {
       ],
     });
     expect(sumLineCharges(line)).toBe(8500);
+  });
+});
+
+describe('getCarrierPlanPatterns', () => {
+  it('returns Verizon-specific patterns for verizon', () => {
+    const patterns = getCarrierPlanPatterns('verizon');
+    expect(patterns.some((re) => re.test('More Everything 10GB'))).toBe(true);
+    expect(patterns.some((re) => re.test('Magenta'))).toBe(false);
+  });
+  it('returns AT&T-specific patterns for att', () => {
+    const patterns = getCarrierPlanPatterns('att');
+    expect(patterns.some((re) => re.test('Mobile Share 5GB'))).toBe(true);
+    expect(patterns.some((re) => re.test('More Everything'))).toBe(false);
+  });
+  it('returns T-Mobile-specific patterns for tmobile', () => {
+    const patterns = getCarrierPlanPatterns('tmobile');
+    expect(patterns.some((re) => re.test('Simple Choice Unlimited'))).toBe(true);
+    expect(patterns.some((re) => re.test('Mobile Share'))).toBe(false);
+  });
+  it('returns the union of all sets for unknown', () => {
+    const patterns = getCarrierPlanPatterns('unknown');
+    expect(patterns.some((re) => re.test('More Everything'))).toBe(true);
+    expect(patterns.some((re) => re.test('Mobile Share'))).toBe(true);
+    expect(patterns.some((re) => re.test('Simple Choice'))).toBe(true);
+  });
+});
+
+describe('categorizeFeatureSet', () => {
+  it('groups features by category and returns all categories with empty arrays', () => {
+    const grouped = categorizeFeatureSet([
+      { name: 'Mobile Protect', category: 'insurance', monthly_cents: 1700 },
+      { name: 'AppleCare+', category: 'insurance', monthly_cents: 1099 },
+      { name: 'TravelPass', category: 'international', monthly_cents: 500 },
+    ]);
+    expect(grouped.insurance).toHaveLength(2);
+    expect(grouped.international).toHaveLength(1);
+    expect(grouped.cloud).toEqual([]);
+    expect(grouped.hotspot).toEqual([]);
+    expect(grouped.addon).toEqual([]);
+    expect(grouped.other).toEqual([]);
+  });
+  it('returns all empty arrays for an empty input', () => {
+    const grouped = categorizeFeatureSet([]);
+    expect(grouped.insurance).toEqual([]);
+    expect(grouped.addon).toEqual([]);
   });
 });

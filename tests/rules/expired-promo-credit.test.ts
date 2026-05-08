@@ -27,6 +27,24 @@ describe('expired_promo_credit rule', () => {
     expect(f.estimated_monthly_savings_cents).toBe(2500);
     expect(f.affected_account_indexes).toEqual([0]);
     expect(f.affected_line_indexes).toEqual([]);
+    // Already-expired credits get 0.98 confidence (vs 0.95 for expiring-soon).
+    expect(f.confidence).toBe(0.98);
+  });
+
+  it('uses lower confidence (0.95) for credits expiring within 30 days', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          account_level_credits: [
+            makeCredit({ name: 'Soon', monthly_cents: -1000, expires_on: '2026-05-25' }),
+          ],
+        }),
+      ],
+    });
+    const findings = await expiredPromoCreditRule.evaluate(c);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.confidence).toBe(0.95);
   });
 
   it('fires medium severity when line credit expires within 30 days', async () => {

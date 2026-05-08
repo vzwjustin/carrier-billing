@@ -26,11 +26,12 @@ export const accountPromoExpiringSoonRule: Rule = {
         const severity: Severity = days <= 14 ? 'high' : 'medium';
         const amount = Math.abs(credit.monthly_cents);
 
+        const dayWord = days === 1 ? 'day' : 'days';
         findings.push({
           rule_id: RULE_ID,
           severity,
-          title: `Account credit "${credit.name}" expires in ${days} day(s)`,
-          description: `Account-level promotional credit "${credit.name}" of ${formatCents(amount)}/mo expires on ${credit.expires_on} (${days} day(s) from today). Without renewal, the account bill increases by ${formatCents(amount)}/mo.`,
+          title: `Account credit "${credit.name}" expires in ${days} ${dayWord}`,
+          description: `Account-level promotional credit "${credit.name}" of ${formatCents(amount)}/mo expires on ${credit.expires_on} — exactly ${days} ${dayWord} from today. Without renewal, the account bill will increase by ${formatCents(amount)}/mo on that date.`,
           recommended_action:
             days <= 14
               ? 'Escalate this week to your carrier representative. Reference the credit name and demand a renewal or replacement before it falls off the bill.'

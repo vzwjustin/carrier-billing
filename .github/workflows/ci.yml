@@ -59,6 +59,11 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_placeholder
           NEXT_PUBLIC_APP_URL: http://localhost:3000
+          # Sentry sourcemap upload (no-ops when these secrets are absent — e.g.
+          # forked PRs). Required for release builds on main.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build 2>&1 | tee /tmp/build.log
 
       - name: Post failure log to PR

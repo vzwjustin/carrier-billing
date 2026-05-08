@@ -1,0 +1,118 @@
+import { describe, expect, it } from 'vitest';
+import { legacyUnlimitedPlanRule } from '@/rules/definitions/legacy-unlimited-plan';
+import type { RuleContext } from '@/rules/types';
+import type { Carrier } from '@/extraction/schema';
+import { makeAccount, makeBill, makeLine, TEST_TODAY } from './fixtures';
+
+function ctx(carrier: Carrier, planName: string): RuleContext {
+  const bill = makeBill({
+    carrier,
+    accounts: [
+      makeAccount({
+        lines: [makeLine({ plan_name: planName })],
+      }),
+    ],
+  });
+  return { bill, today: TEST_TODAY, carrier };
+}
+
+describe('legacy_unlimited_plan rule — Verizon patterns', () => {
+  it.each([
+    ['More Everything 10GB'],
+    ['Verizon Plan Unlimited'],
+    ['Nationwide 450'],
+    ['Single Line Plan'],
+  ])('flags Verizon legacy plan: %s', async (plan) => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('verizon', plan));
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.severity).toBe('low');
+    expect(f.confidence).toBe(0.65);
+  });
+
+  it.each([
+    ['Business Unlimited Pro 2.0'],
+    ['Business Unlimited Plus 2.0'],
+    ['Verizon Plan Unlimited Pro'],
+    ['Verizon Plan Unlimited Plus'],
+    ['Verizon Plan Unlimited Start'],
+  ])('does NOT flag current Verizon plan: %s', async (plan) => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('verizon', plan));
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe('legacy_unlimited_plan rule — AT&T patterns', () => {
+  it.each([
+    ['Mobile Share 5GB'],
+    ['AT&T Mobile Share'],
+    ['Family Talk 1400'],
+    ['Nation 900'],
+    ['Unlimited Plus'],
+  ])('flags AT&T legacy plan: %s', async (plan) => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('att', plan));
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    ['Business Unlimited Premium'],
+    ['Mobile Share Plus'],
+    ['Mobile Share Premium'],
+    ['Unlimited Plus for iPhone'],
+  ])('does NOT flag current AT&T plan: %s', async (plan) => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('att', plan));
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe('legacy_unlimited_plan rule — T-Mobile patterns', () => {
+  it.each([
+    ['Simple Choice Unlimited'],
+    ['Magenta'],
+    ['T-Mobile ONE'],
+  ])('flags T-Mobile legacy plan: %s', async (plan) => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    ['Magenta Plus'],
+    ['Magenta Max'],
+    ['Magenta Business'],
+    ['T-Mobile ONE Business'],
+    ['Business Unlimited Ultimate'],
+  ])('does NOT flag current T-Mobile plan: %s', async (plan) => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe('legacy_unlimited_plan rule — unknown carrier', () => {
+  it('runs the union of all patterns when carrier is unknown', async () => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('unknown', 'Magenta'));
+    expect(findings).toHaveLength(1);
+  });
+
+  it('does not fire on a current plan even when carrier is unknown', async () => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(
+      ctx('unknown', 'Business Unlimited Pro 2.0'),
+    );
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe('legacy_unlimited_plan rule — null plan_name', () => {
+  it('skips lines with no plan name', async () => {
+    const bill = makeBill({
+      carrier: 'verizon',
+      accounts: [makeAccount({ lines: [makeLine({ plan_name: null })] })],
+    });
+    const findings = await legacyUnlimitedPlanRule.evaluate({
+      bill,
+      today: TEST_TODAY,
+      carrier: 'verizon',
+    });
+    expect(findings).toHaveLength(0);
+  });
+});

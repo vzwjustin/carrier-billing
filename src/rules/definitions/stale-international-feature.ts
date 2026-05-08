@@ -10,10 +10,12 @@ export const staleInternationalFeatureRule: Rule = {
   evaluate: ({ bill }) => {
     const findings: Finding[] = [];
 
-    // TODO(domain): once we have a way to detect international usage on the
-    // bill (international minutes / data / TravelPass day-pass charges),
-    // raise severity when the feature has gone unused for N months and
-    // suppress this finding entirely when the user clearly traveled.
+    // TODO(domain): once usage history is available, suppress when
+    // international usage > 0 in the period.
+    // TODO(future): when we have multi-period history (cross-bill state),
+    // we can check whether the international feature was present BEFORE the
+    // current period and still went unused — that lets us upgrade severity
+    // to 'medium' for the persistent-no-usage case.
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
         const intlFeatures = findFeatureByCategory(line, 'international');
@@ -29,11 +31,11 @@ export const staleInternationalFeatureRule: Rule = {
           rule_id: RULE_ID,
           severity: 'low',
           title: 'Verify international add-on is still needed',
-          description: `Line carries international add-on(s) (${names}) costing ${formatCents(totalCents)}/mo. We don't currently see usage data on this bill — confirm the user actually traveled this billing period.`,
+          description: `This line carries international add-on(s) (${names}) costing ${formatCents(totalCents)}/mo. This is flagged for review only — we don't have usage history yet to confirm whether it's stale. International add-ons are commonly left enabled long after a one-time trip.`,
           recommended_action:
             'Ask the line owner whether they traveled internationally this period. If not, remove the feature and re-add only when a trip is planned.',
           estimated_monthly_savings_cents: 0,
-          confidence: 0.5,
+          confidence: 0.6,
           affected_line_indexes: [lineIndex],
           affected_account_indexes: [accountIndex],
           evidence: {

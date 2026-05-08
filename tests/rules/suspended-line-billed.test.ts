@@ -23,6 +23,7 @@ describe('suspended_line_billed rule', () => {
     if (!f) throw new Error('expected finding');
     expect(f.severity).toBe('high');
     expect(f.estimated_monthly_savings_cents).toBe(4500);
+    expect(f.confidence).toBe(0.97);
   });
 
   it('does not fire on suspended line with zero plan charge', async () => {
