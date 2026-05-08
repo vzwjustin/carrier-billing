@@ -21,6 +21,12 @@ export type Events = {
       storagePath: string;
     };
   };
+  'audit.completed': {
+    data: {
+      auditId: string;
+      userId: string;
+    };
+  };
 };
 
 export const inngest = new Inngest({

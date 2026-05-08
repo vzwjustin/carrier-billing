@@ -316,6 +316,32 @@ export const processBillFn = inngest.createFunction(
         auditId,
         findingCount: findings.length,
       });
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Phase 3: send-trigger — fire `audit.completed` so the email pipeline
+      // can deliver the report. Wrapped in try/catch + step.run so:
+      //   - the audit is already 'completed' before this runs (email is
+      //     best-effort and must not regress the audit's status), and
+      //   - Inngest gives us retry isolation + dedupe via step.run.
+      // ─────────────────────────────────────────────────────────────────────
+      try {
+        await step.run('send-trigger', async () => {
+          await inngest.send({
+            name: 'audit.completed',
+            data: { auditId, userId },
+          });
+          return { ok: true };
+        });
+      } catch (sendErr) {
+        // Email is best-effort — never fail a completed audit because of it.
+        logger.error('processBill: send-trigger failed (audit still completed)', {
+          auditId,
+          userId,
+          message:
+            sendErr instanceof Error ? sendErr.message : 'unknown send error',
+        });
+      }
+
       return {
         auditId,
         carrier: bill.carrier,

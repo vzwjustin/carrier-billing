@@ -1,9 +1,14 @@
 import { helloFn } from './hello';
 import { processBillFn } from './process-bill';
+import { sendReportEmailFn } from './send-report-email';
 
 /**
  * Registry of all Inngest functions served by the app.
  */
-export const functions = [helloFn, processBillFn] as const;
+export const functions = [
+  helloFn,
+  processBillFn,
+  sendReportEmailFn,
+] as const;
 
-export { helloFn, processBillFn };
+export { helloFn, processBillFn, sendReportEmailFn };

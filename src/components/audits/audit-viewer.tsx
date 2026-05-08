@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import * as React from 'react';
 
+import { ReportView } from '@/components/audits/report-view';
 import { Button } from '@/components/ui/button';
+import type { ReportData } from '@/reports/types';
 import { cn, formatCents } from '@/lib/utils';
 
 const POLL_MS = 2000;
@@ -72,11 +74,13 @@ function formatPeriod(start: string | null, end: string | null): string {
 export interface AuditViewerProps {
   auditId: string;
   initial: AuditStatusPayload;
+  report?: ReportData;
 }
 
 export function AuditViewer({
   auditId,
   initial,
+  report,
 }: AuditViewerProps): React.JSX.Element {
   const [data, setData] = React.useState<AuditStatusPayload>(initial);
   const [error, setError] = React.useState<string | null>(null);
@@ -138,6 +142,12 @@ export function AuditViewer({
         </div>
       </div>
     );
+  }
+
+  // When the audit is completed and we have a built report, render the
+  // full Phase 3 report viewer instead of the in-flight progress UI.
+  if (data.status === 'completed' && report) {
+    return <ReportView report={report} />;
   }
 
   const showSummary = ['analyzing', 'completed'].includes(data.status);
