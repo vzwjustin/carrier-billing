@@ -208,8 +208,8 @@ See [`CLAUDE.md` §3](./CLAUDE.md) for the full tree. High-level:
 - [x] Typed PostHog event helpers in `src/lib/analytics/events.ts` wired into upload, audit completion, report viewing, PDF download, share generation, and Stripe checkout flows.
 - [x] README rewritten to reflect Phases 0–4 (this file).
 - [x] Playwright E2E specs for the public auth-free surface and `/api/health`.
-- [ ] Privacy + Terms placeholder pages.
-- [ ] Sentry sourcemap upload in production CI.
+- [x] Privacy + Terms placeholder pages.
+- [x] Sentry sourcemap upload in production CI.
 - [ ] Lighthouse score ≥ 90 verification on the landing page.
 
 ## Deploy
