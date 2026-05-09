@@ -101,7 +101,7 @@ export function MobileNav({ items, email }: MobileNavProps): React.JSX.Element {
               ) : (
                 <span />
               )}
-              <form action="/auth/signout" method="post" data-netlify="false">
+              <form action="/auth/signout" method="post">
                 <button
                   type="submit"
                   className="inline-flex h-8 items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-900 hover:bg-neutral-100"

@@ -43,7 +43,7 @@ export function LoginForm() {
   };
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate data-netlify="false">
+    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input

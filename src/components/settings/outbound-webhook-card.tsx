@@ -71,7 +71,7 @@ export function OutboundWebhookCard({
         </p>
       </header>
 
-      <form action={onSubmit} className="space-y-4" data-netlify="false">
+      <form action={onSubmit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="outbound_webhook_url">Webhook URL</Label>
           <Input
