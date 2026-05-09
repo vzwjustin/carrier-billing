@@ -66,12 +66,36 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build 2>&1 | tee /tmp/build.log
 
+      - name: Print logs on failure
+        if: failure()
+        run: |
+          for f in install lint typecheck test build; do
+            if [ -f "/tmp/$f.log" ]; then
+              echo "::group::$f.log (last 200 lines)"
+              tail -200 "/tmp/$f.log" || true
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Post failure log to PR
         if: failure() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
         run: |
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not installed; skipping PR comment."
+            exit 0
+          fi
           {
             echo '### CI failure log (truncated)'
             echo

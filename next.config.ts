@@ -39,14 +39,33 @@ const nextConfig: NextConfig = {
   },
 };
 
+// Sourcemap upload + release tracking is opt-in via SENTRY_UPLOAD=1 plus a
+// valid token/org/project. Default OFF because:
+//   - PR builds + forks can have stale/missing Sentry secrets that 401 the
+//     upload and fail the entire build (`sentry-cli releases new` exits 1)
+//   - Source maps for an ephemeral preview deploy aren't useful anyway
+// Production deploys flip SENTRY_UPLOAD=1 in their build env.
+const sentryUploadEnabled =
+  process.env.SENTRY_UPLOAD === '1' &&
+  Boolean(
+    process.env.SENTRY_AUTH_TOKEN &&
+      process.env.SENTRY_ORG &&
+      process.env.SENTRY_PROJECT,
+  );
+
 export default withSentryConfig(nextConfig, {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  // `silent: true` when the auth token is absent makes the wrapper skip
-  // sourcemap upload (it has nothing to authenticate with) and suppress
-  // its own logging. Keeps local dev + unauth'd CI from failing.
-  silent: !process.env.SENTRY_AUTH_TOKEN,
+  org: sentryUploadEnabled ? process.env.SENTRY_ORG : undefined,
+  project: sentryUploadEnabled ? process.env.SENTRY_PROJECT : undefined,
+  // Withholding authToken when not opted in is the most reliable way to make
+  // the wrapper skip every CLI call — sourcemap upload, release create, and
+  // release finalize all gate on it.
+  authToken: sentryUploadEnabled ? process.env.SENTRY_AUTH_TOKEN : undefined,
+  silent: !sentryUploadEnabled,
+  sourcemaps: { disable: !sentryUploadEnabled },
+  release: {
+    create: sentryUploadEnabled,
+    finalize: sentryUploadEnabled,
+  },
   widenClientFileUpload: true,
   reactComponentAnnotation: { enabled: true },
   tunnelRoute: '/monitoring',
