@@ -18,18 +18,23 @@ export async function signUpAction(input: unknown): Promise<SignUpResult> {
     return { ok: false, error: 'Invalid email or password.' };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
-    },
-  });
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signUp({
+      email: parsed.data.email,
+      password: parsed.data.password,
+      options: {
+        emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      },
+    });
 
-  if (error) {
-    return { ok: false, error: error.message };
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Server error: ${msg}` };
   }
-
-  return { ok: true };
 }

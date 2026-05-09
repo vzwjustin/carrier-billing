@@ -18,15 +18,21 @@ export async function signInAction(input: unknown): Promise<SignInResult | undef
     return { ok: false, error: 'Invalid email or password.' };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email,
-    password: parsed.data.password,
-  });
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: parsed.data.email,
+      password: parsed.data.password,
+    });
 
-  if (error) {
-    return { ok: false, error: error.message };
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    redirect('/dashboard');
+  } catch (err) {
+    if ((err as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Server error: ${msg}` };
   }
-
-  redirect('/dashboard');
 }
