@@ -11,9 +11,9 @@ export const env = createEnv({
     // Anthropic
     ANTHROPIC_API_KEY: z.string().min(1),
 
-    // AWS Textract
-    AWS_ACCESS_KEY_ID: z.string().min(1),
-    AWS_SECRET_ACCESS_KEY: z.string().min(1),
+    // AWS Textract (optional — only needed for OCR on scanned PDFs)
+    AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     AWS_REGION: z.string().min(1).default('us-east-1'),
     // S3 staging bucket for the async Textract path. Without this var the
     // async OCR path is unavailable — this is rare in practice and only

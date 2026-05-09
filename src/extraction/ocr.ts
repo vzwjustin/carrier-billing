@@ -17,9 +17,16 @@ import { env } from '@/env';
  * Lazy AWS Textract client. Mirrors the stripe/anthropic pattern so missing
  * AWS credentials at build/test time don't crash module evaluation.
  */
+export function hasAwsCredentials(): boolean {
+  return !!(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY);
+}
+
 let cachedTextract: TextractClient | null = null;
 export function getTextractClient(): TextractClient {
   if (cachedTextract) return cachedTextract;
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    throw new OcrError('AWS credentials not configured — OCR unavailable');
+  }
   cachedTextract = new TextractClient({
     region: env.AWS_REGION,
     credentials: {
@@ -34,6 +41,9 @@ export function getTextractClient(): TextractClient {
 let cachedS3: S3Client | null = null;
 export function getS3Client(): S3Client {
   if (cachedS3) return cachedS3;
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    throw new OcrError('AWS credentials not configured — S3 unavailable');
+  }
   cachedS3 = new S3Client({
     region: env.AWS_REGION,
     credentials: {

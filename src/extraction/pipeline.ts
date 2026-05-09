@@ -1,7 +1,7 @@
 import { detectCarrier } from '@/extraction/detect';
 import { extractBill } from '@/extraction/llm';
 import { extractText } from '@/extraction/pdf';
-import { extractTextWithOCR } from '@/extraction/ocr';
+import { extractTextWithOCR, hasAwsCredentials } from '@/extraction/ocr';
 import { normalize as normalizeVerizon } from '@/extraction/carriers/verizon';
 import { normalize as normalizeAtt } from '@/extraction/carriers/att';
 import { normalize as normalizeTmobile } from '@/extraction/carriers/tmobile';
@@ -64,9 +64,9 @@ export async function runExtractionPipeline({
     throw new PipelineError('Failed to read PDF text', 'extract_text', err);
   }
 
-  // 2. OCR fallback for image-only PDFs.
+  // 2. OCR fallback for image-only PDFs (requires AWS credentials).
   let neededOcr = false;
-  if (rawText.trim().length < OCR_TEXT_THRESHOLD) {
+  if (rawText.trim().length < OCR_TEXT_THRESHOLD && hasAwsCredentials()) {
     neededOcr = true;
     try {
       const ocrText = await extractTextWithOCR(buffer);
