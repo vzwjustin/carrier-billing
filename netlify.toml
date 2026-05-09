@@ -3,15 +3,30 @@
   publish = ".next"
 
 [build.environment]
-  # Build-time fallbacks. Real values must be set in the Netlify dashboard
-  # for production runtime. SKIP_ENV_VALIDATION lets the build succeed when
-  # the dashboard env is partially populated (e.g. preview deploys before
-  # secrets are configured).
+  # Build- and preview-time fallbacks. Real values come from the Netlify
+  # dashboard (which overrides these) for production. Placeholders below
+  # let the build + runtime env validator pass on deploy previews when the
+  # dashboard isn't fully populated. They must be non-empty strings; the
+  # actual values never exercise the network at build/preview time.
   SKIP_ENV_VALIDATION = "1"
+
+  # Public (also bundled into the client)
   NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54321"
   NEXT_PUBLIC_SUPABASE_ANON_KEY = "placeholder"
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_placeholder"
   NEXT_PUBLIC_APP_URL = "http://localhost:3000"
+
+  # Server-only — required by `src/env.ts`, must be non-empty so t3-env's
+  # runtime validator passes inside Netlify Functions.
+  SUPABASE_SERVICE_ROLE_KEY = "placeholder"
+  ANTHROPIC_API_KEY = "placeholder"
+  AWS_ACCESS_KEY_ID = "placeholder"
+  AWS_SECRET_ACCESS_KEY = "placeholder"
+  STRIPE_SECRET_KEY = "sk_placeholder"
+  STRIPE_WEBHOOK_SECRET = "whsec_placeholder"
+  STRIPE_PRICE_ID_ONE_TIME = "price_placeholder"
+  STRIPE_PRICE_ID_SUBSCRIPTION = "price_placeholder"
+  RESEND_API_KEY = "placeholder"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
