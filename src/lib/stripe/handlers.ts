@@ -17,8 +17,9 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  * status; the only non-idempotent mutation is the credit increment, which is
  * exactly why the dedupe is required).
  *
- * Throwing from here means the parent webhook will capture to Sentry and still
- * return 200 — the event has been persisted, so we can replay later.
+ * Throwing from here means the parent webhook will record the handler error and
+ * return 500 so Stripe retries. The receipt row is only deduped after the route
+ * marks it handled.
  */
 export async function handleStripeEvent(
   event: Stripe.Event,
@@ -26,31 +27,18 @@ export async function handleStripeEvent(
 ): Promise<void> {
   switch (event.type) {
     case 'checkout.session.completed':
-      await onCheckoutSessionCompleted(
-        event.data.object as Stripe.Checkout.Session,
-        supabase,
-      );
+      await onCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session, supabase);
       return;
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
       // C4 — pass event type so the handler can attribute the upsert.
-      await onSubscriptionUpserted(
-        event.data.object as Stripe.Subscription,
-        supabase,
-        event.type,
-      );
+      await onSubscriptionUpserted(event.data.object as Stripe.Subscription, supabase, event.type);
       return;
     case 'customer.subscription.deleted':
-      await onSubscriptionDeleted(
-        event.data.object as Stripe.Subscription,
-        supabase,
-      );
+      await onSubscriptionDeleted(event.data.object as Stripe.Subscription, supabase);
       return;
     case 'invoice.payment_failed':
-      await onInvoicePaymentFailed(
-        event.data.object as Stripe.Invoice,
-        supabase,
-      );
+      await onInvoicePaymentFailed(event.data.object as Stripe.Invoice, supabase);
       return;
     default:
       // Not a handled event type — no-op. The webhook still persisted the
@@ -67,10 +55,10 @@ async function onCheckoutSessionCompleted(
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
-    Sentry.captureMessage(
-      'checkout.session.completed without resolvable userId',
-      { level: 'warning', extra: { session_id: session.id } },
-    );
+    Sentry.captureMessage('checkout.session.completed without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
     return;
   }
 
@@ -78,14 +66,12 @@ async function onCheckoutSessionCompleted(
 
   if (session.mode === 'payment') {
     // One-time audit purchase: bump credit counter via RPC for atomicity.
-    const { error: rpcError } = await supabase.rpc(
-      'increment_audit_credits',
-      { profile_id: userId, delta: 1 },
-    );
+    const { error: rpcError } = await supabase.rpc('increment_audit_credits', {
+      profile_id: userId,
+      delta: 1,
+    });
     if (rpcError) {
-      throw new Error(
-        `increment_audit_credits failed: ${rpcError.message}`,
-      );
+      throw new Error(`increment_audit_credits failed: ${rpcError.message}`);
     }
 
     if (customerId) {
@@ -115,9 +101,7 @@ async function onCheckoutSessionCompleted(
 async function onSubscriptionUpserted(
   subscription: Stripe.Subscription,
   supabase: SupabaseClient,
-  eventType:
-    | 'customer.subscription.created'
-    | 'customer.subscription.updated',
+  eventType: 'customer.subscription.created' | 'customer.subscription.updated',
 ): Promise<void> {
   // C4 — observability breadcrumb so Sentry traces show which Stripe event
   // type triggered this upsert (created vs updated). No behavior change.
@@ -134,13 +118,10 @@ async function onSubscriptionUpserted(
 
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'subscription event without customer id',
-      {
-        level: 'warning',
-        extra: { subscription_id: subscription.id, event_type: eventType },
-      },
-    );
+    Sentry.captureMessage('subscription event without customer id', {
+      level: 'warning',
+      extra: { subscription_id: subscription.id, event_type: eventType },
+    });
     return;
   }
 
@@ -172,10 +153,10 @@ async function onSubscriptionDeleted(
 ): Promise<void> {
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'subscription.deleted without customer id',
-      { level: 'warning', extra: { subscription_id: subscription.id } },
-    );
+    Sentry.captureMessage('subscription.deleted without customer id', {
+      level: 'warning',
+      extra: { subscription_id: subscription.id },
+    });
     return;
   }
 
@@ -193,11 +174,7 @@ async function onSubscriptionDeleted(
     throw new Error(`profile subscription cancel failed: ${error.message}`);
   }
 
-  assertExactlyOneProfileMatched(
-    data,
-    customerId,
-    'customer.subscription.deleted',
-  );
+  assertExactlyOneProfileMatched(data, customerId, 'customer.subscription.deleted');
 }
 
 async function onInvoicePaymentFailed(
@@ -206,10 +183,10 @@ async function onInvoicePaymentFailed(
 ): Promise<void> {
   const customerId = readCustomerId(invoice.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'invoice.payment_failed without customer id',
-      { level: 'warning', extra: { invoice_id: invoice.id } },
-    );
+    Sentry.captureMessage('invoice.payment_failed without customer id', {
+      level: 'warning',
+      extra: { invoice_id: invoice.id },
+    });
     return;
   }
 
@@ -235,11 +212,7 @@ async function onInvoicePaymentFailed(
     throw new Error(`profile past_due update failed: ${error.message}`);
   }
 
-  const matched = assertExactlyOneProfileMatched(
-    data,
-    customerId,
-    'invoice.payment_failed',
-  );
+  const matched = assertExactlyOneProfileMatched(data, customerId, 'invoice.payment_failed');
 
   const profile = matched as { id: string; email?: string | null };
   const customerEmail = profile.email ?? null;
@@ -264,8 +237,7 @@ async function onInvoicePaymentFailed(
         customerEmail,
         stripeCustomerId: customerId,
         invoiceId: invoice.id ?? null,
-        amountDueCents:
-          typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
+        amountDueCents: typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
       },
     });
   } catch (sendErr) {
@@ -281,10 +253,7 @@ async function trackCheckoutCompleted(
   userId: string,
 ): Promise<void> {
   try {
-    await trackServer(
-      { name: 'checkout_completed', properties: { mode, userId } },
-      userId,
-    );
+    await trackServer({ name: 'checkout_completed', properties: { mode, userId } }, userId);
   } catch {
     // Analytics must never break a webhook handler.
   }
@@ -314,18 +283,13 @@ function assertExactlyOneProfileMatched<T extends { id: string }>(
       level: 'warning',
       extra: { customerId, eventType },
     });
-    throw new Error(
-      `profile lookup by stripe_customer_id matched 0 rows (${eventType})`,
-    );
+    throw new Error(`profile lookup by stripe_customer_id matched 0 rows (${eventType})`);
   }
   if (matched.length > 1) {
-    Sentry.captureMessage(
-      'stripe webhook matched multiple profiles by customer id',
-      {
-        level: 'error',
-        extra: { customerId, eventType, matchCount: matched.length },
-      },
-    );
+    Sentry.captureMessage('stripe webhook matched multiple profiles by customer id', {
+      level: 'error',
+      extra: { customerId, eventType, matchCount: matched.length },
+    });
     throw new Error(
       `profile lookup by stripe_customer_id matched ${matched.length} rows (${eventType}) — data corruption`,
     );
@@ -353,13 +317,8 @@ async function updateProfile(
   }
 }
 
-function readUserIdFromSession(
-  session: Stripe.Checkout.Session,
-): string | null {
-  if (
-    typeof session.client_reference_id === 'string' &&
-    session.client_reference_id.length > 0
-  ) {
+function readUserIdFromSession(session: Stripe.Checkout.Session): string | null {
+  if (typeof session.client_reference_id === 'string' && session.client_reference_id.length > 0) {
     return session.client_reference_id;
   }
   const md = session.metadata;
@@ -383,9 +342,7 @@ function readCustomerId(
   return null;
 }
 
-function readSubscriptionId(
-  sub: string | Stripe.Subscription | null | undefined,
-): string | null {
+function readSubscriptionId(sub: string | Stripe.Subscription | null | undefined): string | null {
   if (typeof sub === 'string' && sub.length > 0) return sub;
   if (sub && typeof sub === 'object' && 'id' in sub) {
     const id = (sub as { id: unknown }).id;

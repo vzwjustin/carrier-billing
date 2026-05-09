@@ -17,7 +17,13 @@ vi.mock('@/lib/stripe/client', () => ({
 // idempotency check. Pre-existence check returns the row if seen before;
 // insert appends to the in-memory store and returns a 23505 if a duplicate
 // id slips through (the race path).
-type BillingEventRow = { id: string; stripe_event_id: string };
+type BillingEventRow = {
+  id: string;
+  stripe_event_id: string;
+  handled_at: string | null;
+  processing_started_at: string | null;
+  handler_error?: string | null;
+};
 const billingEvents: BillingEventRow[] = [];
 
 const fromMock = vi.fn((_table: string) => ({
@@ -25,7 +31,10 @@ const fromMock = vi.fn((_table: string) => ({
     eq: (_col: string, val: string) => ({
       maybeSingle: async () => {
         const row = billingEvents.find((r) => r.stripe_event_id === val);
-        return { data: row ? { id: row.id } : null, error: null };
+        return {
+          data: row ? { id: row.id, handled_at: row.handled_at } : null,
+          error: null,
+        };
       },
     }),
   }),
@@ -40,18 +49,39 @@ const fromMock = vi.fn((_table: string) => ({
     billingEvents.push({
       id: `row_${billingEvents.length + 1}`,
       stripe_event_id: r.stripe_event_id,
+      handled_at: null,
+      processing_started_at: null,
+      handler_error: null,
     });
     return { data: null, error: null };
   },
+  update: (row: unknown) => ({
+    eq: (_col: string, val: string) => {
+      const existing = billingEvents.find((b) => b.stripe_event_id === val);
+      if (existing) {
+        Object.assign(existing, row as Partial<BillingEventRow>);
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  }),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
-  getAdminClient: () => ({ from: fromMock }),
+  getAdminClient: () => ({
+    from: fromMock,
+    rpc: (_name: string, args: { p_stripe_event_id: string }) => {
+      const existing = billingEvents.find((b) => b.stripe_event_id === args.p_stripe_event_id);
+      if (!existing || existing.handled_at || existing.processing_started_at) {
+        return Promise.resolve({ data: null, error: null });
+      }
+      existing.processing_started_at = new Date().toISOString();
+      return Promise.resolve({ data: true, error: null });
+    },
+  }),
 }));
 
 // The handler chain we want to assert is gated by idempotency.
-const handleStripeEventMock =
-  vi.fn<(event: Stripe.Event) => Promise<void>>();
+const handleStripeEventMock = vi.fn<(event: Stripe.Event) => Promise<void>>();
 
 vi.mock('@/lib/stripe/handlers', () => ({
   handleStripeEvent: (event: Stripe.Event) => handleStripeEventMock(event),
@@ -133,9 +163,24 @@ describe('POST /api/stripe/webhook — idempotency', () => {
     expect(resB.status).toBe(200);
 
     expect(handleStripeEventMock).toHaveBeenCalledTimes(2);
-    const callIds = handleStripeEventMock.mock.calls.map(
-      (call) => (call[0] as Stripe.Event).id,
-    );
+    const callIds = handleStripeEventMock.mock.calls.map((call) => (call[0] as Stripe.Event).id);
     expect(callIds).toEqual(['evt_a', 'evt_b']);
+  });
+
+  it('retries an event receipt that exists but has not been handled', async () => {
+    billingEvents.push({
+      id: 'row_unhandled',
+      stripe_event_id: 'evt_unhandled',
+      handled_at: null,
+      processing_started_at: null,
+      handler_error: 'previous failure',
+    });
+    const event = makeCheckoutEvent('evt_unhandled');
+    constructEventMock.mockReturnValue(event);
+
+    const res = await POST(makeRequest('{}', 'sig_ok'));
+    expect(res.status).toBe(200);
+    expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
+    expect(billingEvents[0]?.handled_at).toEqual(expect.any(String));
   });
 });

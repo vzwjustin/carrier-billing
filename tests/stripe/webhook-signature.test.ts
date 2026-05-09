@@ -43,6 +43,7 @@ vi.mock('@/lib/stripe/client', () => ({
 // Supabase admin: minimal shape for the webhook's idempotency check + insert.
 const insertMock = vi.fn(async (_row: unknown) => ({ data: null, error: null }));
 const maybeSingleMock = vi.fn(async () => ({ data: null, error: null }));
+const updateMock = vi.fn(async () => ({ data: null, error: null }));
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
@@ -51,6 +52,9 @@ vi.mock('@/lib/supabase/admin', () => ({
         eq: () => ({ maybeSingle: () => maybeSingleMock() }),
       }),
       insert: (row: unknown) => insertMock(row),
+      update: (_row: unknown) => ({
+        eq: () => updateMock(),
+      }),
     }),
   }),
 }));
@@ -87,6 +91,8 @@ beforeEach(() => {
   insertMock.mockImplementation(async () => ({ data: null, error: null }));
   maybeSingleMock.mockClear();
   maybeSingleMock.mockImplementation(async () => ({ data: null, error: null }));
+  updateMock.mockClear();
+  updateMock.mockImplementation(async () => ({ data: null, error: null }));
 });
 
 describe('POST /api/stripe/webhook — real Stripe signature verification (C2)', () => {

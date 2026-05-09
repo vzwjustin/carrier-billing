@@ -1,9 +1,8 @@
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
-// Content-Security-Policy is set per-request in `src/middleware.ts` so each
-// response carries a fresh nonce. The other security headers are static and
-// set here.
+// Content-Security-Policy is set in `src/middleware.ts`. The other security
+// headers are static and set here.
 const SECURITY_HEADERS = [
   {
     key: 'Strict-Transport-Security',
@@ -47,11 +46,7 @@ const nextConfig: NextConfig = {
 // Production deploys flip SENTRY_UPLOAD=1 in their build env.
 const sentryUploadEnabled =
   process.env.SENTRY_UPLOAD === '1' &&
-  Boolean(
-    process.env.SENTRY_AUTH_TOKEN &&
-      process.env.SENTRY_ORG &&
-      process.env.SENTRY_PROJECT,
-  );
+  Boolean(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT);
 
 export default withSentryConfig(nextConfig, {
   org: sentryUploadEnabled ? process.env.SENTRY_ORG : undefined,

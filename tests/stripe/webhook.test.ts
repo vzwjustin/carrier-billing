@@ -15,11 +15,19 @@ vi.mock('@/lib/stripe/client', () => ({
 
 // Chainable supabase admin mock. Each test sets the resolved values for
 // the existence check (`maybeSingle`) and the insert.
-type MaybeSingleResult = { data: { id: string } | null; error: null | { code?: string; message: string } };
+type MaybeSingleResult = {
+  data: { id: string; handled_at: string | null } | null;
+  error: null | { code?: string; message: string };
+};
 type InsertResult = { data: unknown; error: null | { code?: string; message: string } };
+type UpdateResult = { data: unknown; error: null | { code?: string; message: string } };
 
 const maybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
 const insertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
+const updateEqMock = vi.fn<() => Promise<UpdateResult>>();
+const updateMock = vi.fn((_row: unknown) => ({
+  eq: () => updateEqMock(),
+}));
 
 const fromMock = vi.fn((_table: string) => ({
   select: () => ({
@@ -28,6 +36,7 @@ const fromMock = vi.fn((_table: string) => ({
     }),
   }),
   insert: (row: unknown) => insertMock(row),
+  update: (row: unknown) => updateMock(row),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -39,6 +48,12 @@ vi.mock('@/env', () => ({
   env: {
     STRIPE_WEBHOOK_SECRET: 'whsec_test',
   },
+}));
+
+const handleStripeEventMock = vi.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
+
+vi.mock('@/lib/stripe/handlers', () => ({
+  handleStripeEvent: (...args: unknown[]) => handleStripeEventMock(...args),
 }));
 
 // Import after mocks are registered.
@@ -58,7 +73,11 @@ beforeEach(() => {
   constructEventMock.mockReset();
   maybeSingleMock.mockReset();
   insertMock.mockReset();
+  updateEqMock.mockReset();
+  updateMock.mockClear();
+  handleStripeEventMock.mockClear();
   fromMock.mockClear();
+  updateEqMock.mockResolvedValue({ data: null, error: null });
 });
 
 describe('POST /api/stripe/webhook', () => {
@@ -99,6 +118,7 @@ describe('POST /api/stripe/webhook', () => {
 
     // Confirm we actually wrote a billing_events row with the right shape.
     expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(updateEqMock).toHaveBeenCalledTimes(1);
     const inserted = insertMock.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
     expect(inserted['stripe_event_id']).toBe('evt_test_1');
     expect(inserted['type']).toBe('checkout.session.completed');
@@ -112,7 +132,10 @@ describe('POST /api/stripe/webhook', () => {
       data: { object: { client_reference_id: 'user_123' } },
     });
 
-    maybeSingleMock.mockResolvedValue({ data: { id: 'row_existing' }, error: null });
+    maybeSingleMock.mockResolvedValue({
+      data: { id: 'row_existing', handled_at: '2026-05-01T00:00:00Z' },
+      error: null,
+    });
 
     const res = await POST(makeRequest('{}', 'sig_ok'));
     expect(res.status).toBe(200);
@@ -128,12 +151,34 @@ describe('POST /api/stripe/webhook', () => {
       data: { object: { customer: 'cus_x' } },
     });
 
-    maybeSingleMock.mockResolvedValue({ data: null, error: null });
+    maybeSingleMock.mockResolvedValueOnce({ data: null, error: null }).mockResolvedValueOnce({
+      data: { id: 'row_existing', handled_at: '2026-05-01T00:00:00Z' },
+      error: null,
+    });
     insertMock.mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate' } });
 
     const res = await POST(makeRequest('{}', 'sig_ok'));
     expect(res.status).toBe(200);
     const json = (await res.json()) as { received: boolean; deduped?: boolean };
     expect(json).toEqual({ received: true, deduped: true });
+  });
+
+  it('returns 500 and leaves event retryable when the handler fails', async () => {
+    constructEventMock.mockReturnValue({
+      id: 'evt_handler_fail',
+      type: 'checkout.session.completed',
+      data: { object: { client_reference_id: 'user_123' } },
+    });
+
+    maybeSingleMock.mockResolvedValue({ data: null, error: null });
+    insertMock.mockResolvedValue({ data: null, error: null });
+    handleStripeEventMock.mockRejectedValueOnce(new Error('handler boom'));
+
+    const res = await POST(makeRequest('{}', 'sig_ok'));
+    expect(res.status).toBe(500);
+    expect(updateEqMock).toHaveBeenCalledTimes(1);
+    const updateArg = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(updateArg['handled_at']).toBeNull();
+    expect(updateArg['handler_error']).toBe('handler boom');
   });
 });

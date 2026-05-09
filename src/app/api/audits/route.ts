@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -11,15 +12,8 @@ export const dynamic = 'force-dynamic';
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 const CreateAuditSchema = z.object({
-  filename: z
-    .string()
-    .min(1, 'filename is required')
-    .max(255, 'filename is too long'),
-  fileSize: z
-    .number()
-    .int()
-    .positive()
-    .max(MAX_BYTES, 'file is larger than 25 MB'),
+  filename: z.string().min(1, 'filename is required').max(255, 'filename is too long'),
+  fileSize: z.number().int().positive().max(MAX_BYTES, 'file is larger than 25 MB'),
 });
 
 const SAFE_FILENAME_RE = /[^A-Za-z0-9._-]+/g;
@@ -52,19 +46,13 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = CreateAuditSchema.safeParse(bodyJson);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: first?.message ?? 'Invalid request.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: first?.message ?? 'Invalid request.' }, { status: 400 });
   }
 
   const { filename, fileSize } = parsed.data;
 
   if (!isAcceptedFilename(filename)) {
-    return NextResponse.json(
-      { error: 'Only PDF or EDI 811 files are accepted.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Only PDF or EDI 811 files are accepted.' }, { status: 400 });
   }
 
   try {
@@ -85,8 +73,7 @@ export async function POST(request: Request): Promise<Response> {
         return NextResponse.json(
           {
             error: 'subscription_past_due',
-            message:
-              'Your subscription is past due. Please update payment to continue.',
+            message: 'Your subscription is past due. Please update payment to continue.',
           },
           { status: 402 },
         );
@@ -104,8 +91,9 @@ export async function POST(request: Request): Promise<Response> {
     const auditId = crypto.randomUUID();
     const cleanName = safeFilename(filename);
     const storagePath = `${user.id}/${auditId}/${cleanName}`;
+    const admin = getAdminClient();
 
-    const { error: insertError } = await supabase.from('audits').insert({
+    const { error: insertError } = await admin.from('audits').insert({
       id: auditId,
       user_id: user.id,
       status: 'pending',
@@ -115,22 +103,30 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (insertError) {
-      return NextResponse.json(
-        { error: 'Failed to create audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
     }
 
-    // NOTE: spec wanted decrement on first state change; we decrement on
-    // creation for stricter race-free accounting. The gate already approved
-    // this user, but the RPC is the atomic source of truth — if a concurrent
-    // creation drained the credits between the gate read and now, the RPC
-    // throws `no_credits` and we roll back the audit row below.
+    const { data: signed, error: signError } = await admin.storage
+      .from('bills')
+      .createSignedUploadUrl(storagePath);
+
+    if (signError || !signed) {
+      // Clean up the orphaned audit row before any credit is consumed.
+      await admin.from('audits').delete().eq('id', auditId);
+      return NextResponse.json({ error: 'Failed to create upload URL.' }, { status: 500 });
+    }
+
+    // NOTE: spec wanted decrement on first state change; we decrement during
+    // creation for stricter race-free accounting, but only after the signed URL
+    // exists so storage-signing failures cannot consume a credit. The RPC is
+    // the atomic source of truth — if a concurrent creation drained the credits
+    // between the gate read and now, the RPC throws `no_credits` and we roll
+    // back the audit row below.
     if (gate.reason === 'credit') {
       try {
         await decrementAuditCreditAtomically(user.id);
       } catch {
-        await supabase.from('audits').delete().eq('id', auditId);
+        await admin.from('audits').delete().eq('id', auditId);
         return NextResponse.json(
           {
             error: 'no_plan',
@@ -142,19 +138,6 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const { data: signed, error: signError } = await supabase.storage
-      .from('bills')
-      .createSignedUploadUrl(storagePath);
-
-    if (signError || !signed) {
-      // Clean up the orphaned audit row so the user can retry cleanly.
-      await supabase.from('audits').delete().eq('id', auditId);
-      return NextResponse.json(
-        { error: 'Failed to create upload URL.' },
-        { status: 500 },
-      );
-    }
-
     return NextResponse.json({
       auditId,
       uploadUrl: signed.signedUrl,
@@ -162,9 +145,6 @@ export async function POST(request: Request): Promise<Response> {
       token: signed.token,
     });
   } catch {
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }
