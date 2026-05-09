@@ -27,16 +27,50 @@ A multi-stream review found bugs and gaps; fixes landed across 7 streams. Highli
 
 Tasks are independent unless noted. Each has acceptance criteria. Mark a TaskCreate at the start; verify with the noted commands.
 
-### 1. Apply migration 0005 to Supabase (BLOCKER for the new code paths)
+### 1. Apply migration 0005 to Supabase — DEPLOY-ORDER BLOCKER
+
+> ⚠️ **Critical deploy-order rule:** apply migration 0005 to Supabase **BEFORE** deploying any commit that contains the rewired `cleanup-orphan-audits` function. That function now calls `supabase.rpc('refund_orphan_audit', ...)`. If the cron fires before the RPC exists, every cleanup invocation will throw `function does not exist`, the orphan audits will sit `pending` forever (and the cron will keep retrying and failing) until the migration lands.
+>
+> **Safe sequence:** apply 0005 → verify (acceptance check below) → only then deploy `main`.
 
 The new RPC and CHECK constraints aren't live until applied.
 
 - File: `supabase/migrations/0005_check_constraints_and_refund_rpc.sql`
+- **Pre-apply: run these SELECTs against the live DB to confirm no row will trip the new CHECKs.** Each must return `0`. If any returns `>0`, FIX THE DATA before applying, otherwise the `ALTER TABLE` will fail mid-migration and leave the schema half-done:
+
+  ```sql
+  -- audits.status: only the 5 documented statuses
+  select count(*) from public.audits
+   where status not in ('pending','extracting','analyzing','completed','failed');
+
+  -- audits.carrier: nullable + 4 documented values
+  select count(*) from public.audits
+   where carrier is not null
+     and carrier not in ('verizon','att','tmobile','unknown');
+
+  -- findings.severity: 4 documented values
+  select count(*) from public.findings
+   where severity not in ('high','medium','low','info');
+
+  -- findings.confidence: must be in [0, 1]
+  select count(*) from public.findings
+   where confidence < 0 or confidence > 1;
+
+  -- profiles.subscription_status: nullable + 8 Stripe statuses
+  -- (covers: 'active','trialing','past_due','canceled','incomplete',
+  --  'incomplete_expired','unpaid','paused')
+  select count(*) from public.profiles
+   where subscription_status is not null
+     and subscription_status not in (
+       'active','trialing','past_due','canceled',
+       'incomplete','incomplete_expired','unpaid','paused'
+     );
+  ```
 - Steps:
-  1. Verify no current row violates the new CHECKs by running each `select count(*) from <table> where <col> not in (...)` against your live DB.
-  2. Apply via `supabase db push` or paste into the Supabase SQL editor.
-  3. Run a smoke test: trigger `cleanup-orphan-audits` via Inngest dev UI; confirm orphaned audit gets `status='failed'` and credit refunded atomically.
-- **Acceptance:** `select * from pg_get_functiondef('public.refund_orphan_audit'::regproc);` returns the function; new constraints visible in `\d+ public.audits`.
+  1. Run all 5 SELECTs above. Each must return 0. Fix data first if not.
+  2. Apply via `supabase db push` or paste the migration into the Supabase SQL editor.
+  3. Smoke test: trigger `cleanup-orphan-audits` via Inngest dev UI; confirm an orphaned `pending` audit gets `status='failed'` and the credit is refunded atomically (single transactional unit; verify by re-running and seeing it no-op the second time).
+- **Acceptance:** `select pg_get_functiondef('public.refund_orphan_audit'::regproc);` returns the function definition; the 5 new constraints are visible in `\d+ public.audits` / `\d+ public.findings` / `\d+ public.profiles`.
 
 ### 2. Wire payment_failed email (Stream B left a marker)
 
@@ -64,13 +98,23 @@ There's a "Sample report — coming soon" placeholder card (search for `TODO(lau
 - Update `LAST_UPDATED` constants.
 - **Acceptance:** banner gone from both pages; pages render at `/privacy` and `/terms`.
 
-### 5. Tighten CSP (optional but worth it)
+### 5. Smoke-test the new CSP (recommended before next deploy)
 
-`next.config.ts` ships with `script-src 'self' 'unsafe-inline' 'unsafe-eval' ...`. The unsafe-* directives are needed for Next 15's runtime. To tighten:
+The CSP shipped in `next.config.ts` is restrictive — it carves out the vendor hosts that the app needs (Stripe, Supabase, PostHog, Sentry) but the **only way to verify it doesn't break anything is at runtime**. There is no automated test for CSP violations.
 
-- Switch to nonce-based CSP using Next.js middleware to inject per-request nonces.
+- Run `pnpm dev` (or `next start` after `next build`) and open the browser devtools console.
+- Visit, in order: `/`, `/login`, `/signup`, `/reset-password`, `/dashboard`, `/audits`, `/audits/new`, an actual `/audits/<id>` (in any state), `/pricing`, `/settings/billing` (which redirects to Stripe portal — verify no console errors during redirect), and a `/share/<token>` link.
+- Trigger a sonner toast (e.g. share a report → click "Copy link") and confirm it renders without CSP violations.
+- Click through to Stripe Checkout from `/pricing`; verify the redirect lands cleanly. If Stripe Checkout iframes anything from `m.stripe.network`, you'll see a `frame-src` violation — relax that directive in `next.config.ts` if so.
+- Trigger a Sentry test error (browser console: `throw new Error('csp-test')`) and verify the error reaches Sentry's tunneled `/monitoring` endpoint.
+- **Acceptance:** zero CSP violations across the routes above.
+
+### 5a. Tighten CSP further (optional)
+
+`script-src 'self' 'unsafe-inline' 'unsafe-eval'` is needed for Next 15's inline boot scripts. To eliminate `'unsafe-inline'`/`'unsafe-eval'`, switch to nonce-based CSP via Next.js middleware:
+
 - See https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
-- **Acceptance:** browser console shows no CSP violations on `/`, `/login`, `/dashboard`, `/audits`, `/share/<token>`.
+- **Acceptance:** browser console shows zero violations on the same surfaces; CSP `script-src` no longer needs the unsafe-* directives.
 
 ### 6. Tune Stripe checkout: allow promo codes + tax collection
 
