@@ -51,9 +51,15 @@ export async function POST(request: Request): Promise<Response> {
 
   const { filename, fileSize } = parsed.data;
 
-  if (!filename.toLowerCase().endsWith('.pdf')) {
+  const lower = filename.toLowerCase();
+  const isAccepted =
+    lower.endsWith('.pdf') ||
+    lower.endsWith('.edi') ||
+    lower.endsWith('.x12') ||
+    lower.endsWith('.txt');
+  if (!isAccepted) {
     return NextResponse.json(
-      { error: 'Only PDF files are accepted.' },
+      { error: 'Only PDF or EDI 811 (.edi/.x12/.txt) files are accepted.' },
       { status: 400 },
     );
   }

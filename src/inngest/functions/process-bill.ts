@@ -175,6 +175,7 @@ type ExtractionStepResult = {
   pageCount: number;
   sizeBytes: number;
   neededOcr: boolean;
+  sourceFormat: 'pdf' | 'edi_811';
 };
 
 /**
@@ -362,11 +363,13 @@ export const processBillFn = inngest.createFunction(
           pageCount: pipeline.pageCount,
           sizeBytes,
           neededOcr: pipeline.neededOcr,
+          sourceFormat: pipeline.sourceFormat,
         };
         return result;
       })) as ExtractionStepResult;
 
-      const { bill, pageCount, sizeBytes, neededOcr } = extractResult;
+      const { bill, pageCount, sizeBytes, neededOcr, sourceFormat } =
+        extractResult;
       const lineCount = bill.accounts.reduce<number>(
         (sum: number, a: ExtractedAccount) => sum + a.lines.length,
         0,
@@ -404,6 +407,7 @@ export const processBillFn = inngest.createFunction(
             line_count: lineCount,
             page_count: pageCount,
             file_size_bytes: sizeBytes,
+            source_format: sourceFormat,
             updated_at: new Date().toISOString(),
           })
           .eq('id', auditId);

@@ -65,12 +65,20 @@ function safeFilename(input: string): string {
   return cleaned.slice(0, 200) || 'bill.pdf';
 }
 
-function isPdfAttachment(att: {
+function isAcceptedAttachment(att: {
   content_type: string;
   filename: string;
 }): boolean {
-  if (att.content_type.toLowerCase() === 'application/pdf') return true;
-  return att.filename.toLowerCase().endsWith('.pdf');
+  const ct = att.content_type.toLowerCase();
+  if (ct === 'application/pdf') return true;
+  if (ct === 'application/edi-x12' || ct === 'application/edifact') return true;
+  const lower = att.filename.toLowerCase();
+  return (
+    lower.endsWith('.pdf') ||
+    lower.endsWith('.edi') ||
+    lower.endsWith('.x12') ||
+    lower.endsWith('.txt')
+  );
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -146,15 +154,15 @@ export async function POST(request: Request): Promise<Response> {
 
     // Find first PDF attachment. Carriers occasionally email a body-only
     // notification with the bill linked but not attached; skip those.
-    const pdf = parsed.data.attachments.find(isPdfAttachment);
-    if (!pdf) {
-      Sentry.captureMessage('inbound: no PDF attachment', {
+    const attachment = parsed.data.attachments.find(isAcceptedAttachment);
+    if (!attachment) {
+      Sentry.captureMessage('inbound: no PDF or EDI attachment', {
         level: 'info',
       });
-      return NextResponse.json({ ok: true, skipped: 'no_pdf' });
+      return NextResponse.json({ ok: true, skipped: 'no_bill_attachment' });
     }
 
-    const bytes = Buffer.from(pdf.content_base64, 'base64');
+    const bytes = Buffer.from(attachment.content_base64, 'base64');
     if (bytes.length === 0) {
       return NextResponse.json({ ok: true, skipped: 'empty_attachment' });
     }
@@ -174,13 +182,22 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const auditId = crypto.randomUUID();
-    const cleanName = safeFilename(pdf.filename);
+    const cleanName = safeFilename(attachment.filename);
     const storagePath = `${userId}/${auditId}/${cleanName}`;
+
+    const lowerName = attachment.filename.toLowerCase();
+    const isEdi =
+      attachment.content_type.toLowerCase().includes('edi') ||
+      lowerName.endsWith('.edi') ||
+      lowerName.endsWith('.x12');
+    const storageContentType = isEdi
+      ? 'application/edi-x12'
+      : 'application/pdf';
 
     const { error: uploadErr } = await admin.storage
       .from('bills')
       .upload(storagePath, bytes, {
-        contentType: 'application/pdf',
+        contentType: storageContentType,
         upsert: false,
       });
     if (uploadErr) {
@@ -192,8 +209,11 @@ export async function POST(request: Request): Promise<Response> {
       user_id: userId,
       status: 'pending',
       storage_path: storagePath,
-      original_filename: pdf.filename,
+      original_filename: attachment.filename,
       file_size_bytes: bytes.length,
+      // We don't know the source_format until extraction runs (a misnamed
+      // .pdf could actually be an EDI inside, and vice versa). Pipeline
+      // sets the column authoritatively in the mark-analyzing step.
     });
     if (insertErr) {
       // Roll back the storage upload so we don't leak orphaned objects.

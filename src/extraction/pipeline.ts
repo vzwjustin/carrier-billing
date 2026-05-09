@@ -1,4 +1,6 @@
 import { detectCarrier } from '@/extraction/detect';
+import { parseEdi811 } from '@/extraction/edi/edi-811';
+import { looksLikeX12 } from '@/extraction/edi/parser';
 import { extractBill } from '@/extraction/llm';
 import { extractText } from '@/extraction/pdf';
 import { extractTextWithOCR } from '@/extraction/ocr';
@@ -10,12 +12,15 @@ import type { Carrier, ExtractedBill } from '@/extraction/schema';
 /** Below this length we assume the PDF is image-only and route to OCR. */
 const OCR_TEXT_THRESHOLD = 500;
 
+export type SourceFormat = 'pdf' | 'edi_811';
+
 export type PipelineStep =
   | 'extract_text'
   | 'ocr_fallback'
   | 'detect_carrier'
   | 'llm_extract'
-  | 'normalize';
+  | 'normalize'
+  | 'edi_parse';
 
 export class PipelineError extends Error {
   public readonly step: PipelineStep;
@@ -34,6 +39,7 @@ export type PipelineResult = {
   rawText: string;
   neededOcr: boolean;
   detectedCarrier: Carrier;
+  sourceFormat: SourceFormat;
 };
 
 /**
@@ -53,6 +59,33 @@ export async function runExtractionPipeline({
 }: {
   buffer: Buffer;
 }): Promise<PipelineResult> {
+  // 0. Format detection. EDI 811 starts with `ISA` at byte 0 (or after a few
+  // whitespace bytes). Anything else routes through the PDF path.
+  if (looksLikeX12(buffer)) {
+    try {
+      const parsed = parseEdi811(buffer);
+      let bill = parsed.bill;
+      // Carrier-specific normalization still applies — useful for canonicalizing
+      // plan names that come through PID free-form descriptions.
+      try {
+        bill = applyCarrierNormalization(bill);
+      } catch (err) {
+        throw new PipelineError('Normalization failed', 'normalize', err);
+      }
+      return {
+        bill,
+        pageCount: 0,
+        rawText: parsed.rawText,
+        neededOcr: false,
+        detectedCarrier: parsed.detectedCarrier,
+        sourceFormat: 'edi_811',
+      };
+    } catch (err) {
+      if (err instanceof PipelineError) throw err;
+      throw new PipelineError('EDI 811 parse failed', 'edi_parse', err);
+    }
+  }
+
   // 1. Extract text + page count.
   let rawText: string;
   let pageCount: number;
@@ -115,6 +148,7 @@ export async function runExtractionPipeline({
     rawText,
     neededOcr,
     detectedCarrier,
+    sourceFormat: 'pdf',
   };
 }
 
