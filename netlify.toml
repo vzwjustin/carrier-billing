@@ -10,11 +10,11 @@
   # actual values never exercise the network at build/preview time.
   SKIP_ENV_VALIDATION = "1"
 
-  # Public (also bundled into the client)
-  NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54321"
-  NEXT_PUBLIC_SUPABASE_ANON_KEY = "placeholder"
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_placeholder"
-  NEXT_PUBLIC_APP_URL = "http://localhost:3000"
+  # Public (also bundled into the client) — not secrets, safe to commit
+  NEXT_PUBLIC_SUPABASE_URL = "https://sdtfkyrpsigqtsjgovxe.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkdGZreXJwc2lncXRzamdvdnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMjg2ODIsImV4cCI6MjA5MzkwNDY4Mn0.tuB6H0HhVRJIAQqyDFZS_ed7wURYTiok5GKfUMd_qCc"
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_dXfulOKlbz2OsU6Jua46YSu5"
+  NEXT_PUBLIC_APP_URL = "https://carrierbilling.netlify.app"
 
   # Server-only — required by `src/env.ts`, must be non-empty so t3-env's
   # runtime validator passes inside Netlify Functions.
