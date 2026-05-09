@@ -4,6 +4,7 @@ import {
   runExtractionPipeline,
   PipelineError,
 } from '@/extraction/pipeline';
+import { runEdi811Pipeline, Edi811PipelineError } from '@/extraction/edi811/pipeline';
 import { ExtractionError, redactDetails } from '@/extraction/llm';
 import type {
   ExtractedBill,
@@ -75,6 +76,12 @@ function truncate(value: string, max: number): string {
 function deriveFailureReason(err: unknown): string {
   if (err instanceof ExtractionTimeoutError) {
     return truncate(`extraction-timeout: ${err.afterMs}ms`, FAILURE_REASON_MAX);
+  }
+  if (err instanceof Edi811PipelineError) {
+    // EDI errors don't carry raw bill content the way LLM errors do, but
+    // truncate defensively so a giant zod issue can't blow the column.
+    const stepLabel = typeof err.step === 'string' ? err.step : 'unknown';
+    return truncate(`edi811:${stepLabel}: ${err.message}`, FAILURE_REASON_MAX);
   }
   if (err instanceof PipelineError) {
     // The pipeline wraps an inner ExtractionError as `.cause`; redact its
@@ -175,7 +182,23 @@ type ExtractionStepResult = {
   pageCount: number;
   sizeBytes: number;
   neededOcr: boolean;
+  /** Which ingest pipeline produced the bill — useful for log triage. */
+  source: 'pdf' | 'edi811';
 };
+
+/**
+ * Sniff the first bytes of an uploaded file to decide which pipeline to run.
+ *
+ * EDI 811 files start with the ASCII literal `ISA` (the X12 interchange
+ * envelope). PDF files start with `%PDF-`. We branch on the buffer rather
+ * than the filename so a confusingly-named EDI file (`.txt`/`.dat`) still
+ * routes correctly, and a PDF mistakenly labelled `.edi` doesn't get fed
+ * to the X12 parser.
+ */
+function isEdi811Buffer(buffer: Buffer): boolean {
+  if (buffer.length < 3) return false;
+  return buffer.slice(0, 3).toString('ascii') === 'ISA';
+}
 
 /**
  * Output of the persist-bill step. Returned (and therefore Inngest-cached)
@@ -352,6 +375,23 @@ export const processBillFn = inngest.createFunction(
         // outer error handler could mark the audit failed. On expiry we
         // throw an ExtractionTimeoutError, which deriveFailureReason maps to
         // `extraction-timeout: <ms>ms` in `audits.failure_reason`.
+        if (isEdi811Buffer(buffer)) {
+          const pipeline = await withTimeout(
+            runEdi811Pipeline({ buffer }),
+            EXTRACTION_TIMEOUT_MS,
+            'runEdi811Pipeline',
+          );
+          const result: ExtractionStepResult = {
+            bill: pipeline.bill,
+            // EDI files have no page concept; record 1 so the schema-bounded
+            // page_count column gets a sensible value.
+            pageCount: 1,
+            sizeBytes,
+            neededOcr: false,
+            source: 'edi811',
+          };
+          return result;
+        }
         const pipeline = await withTimeout(
           runExtractionPipeline({ buffer }),
           EXTRACTION_TIMEOUT_MS,
@@ -362,11 +402,12 @@ export const processBillFn = inngest.createFunction(
           pageCount: pipeline.pageCount,
           sizeBytes,
           neededOcr: pipeline.neededOcr,
+          source: 'pdf',
         };
         return result;
       })) as ExtractionStepResult;
 
-      const { bill, pageCount, sizeBytes, neededOcr } = extractResult;
+      const { bill, pageCount, sizeBytes, neededOcr, source } = extractResult;
       const lineCount = bill.accounts.reduce<number>(
         (sum: number, a: ExtractedAccount) => sum + a.lines.length,
         0,
@@ -385,6 +426,7 @@ export const processBillFn = inngest.createFunction(
         accountCount: bill.accounts.length,
         lineCount,
         neededOcr,
+        source,
       });
 
       // ─────────────────────────────────────────────────────────────────────

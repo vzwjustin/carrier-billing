@@ -6,7 +6,9 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
-const ACCEPT_MIME = 'application/pdf';
+const PDF_MIME = 'application/pdf';
+const ACCEPT_ATTR = `${PDF_MIME},.pdf,.edi,.x12,.811,.txt`;
+const ACCEPTED_EXTENSIONS = ['.pdf', '.edi', '.x12', '.811', '.txt'] as const;
 
 export interface DropzoneProps {
   onFile: (file: File | null) => void;
@@ -19,9 +21,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function hasAcceptedExtension(name: string): boolean {
+  const lower = name.toLowerCase();
+  return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 function validate(file: File): string | null {
-  if (file.type !== ACCEPT_MIME && !file.name.toLowerCase().endsWith('.pdf')) {
-    return 'Only PDF files are accepted.';
+  const isPdfMime = file.type === PDF_MIME;
+  if (!isPdfMime && !hasAcceptedExtension(file.name)) {
+    return 'Only PDF or EDI 811 files are accepted.';
   }
   if (file.size > MAX_BYTES) {
     return `File is too large. Maximum size is ${formatBytes(MAX_BYTES)}.`;
@@ -122,15 +130,15 @@ export function Dropzone({ onFile, disabled = false }: DropzoneProps): React.JSX
         )}
       >
         <p className="text-sm font-medium text-neutral-900">
-          Drag and drop your PDF here
+          Drag and drop your bill here
         </p>
         <p className="mt-1 text-xs text-neutral-500">
-          or click to choose a file. PDF only, up to 25 MB.
+          or click to choose a file. PDF or EDI 811 (.edi, .x12, .811, .txt), up to 25 MB.
         </p>
         <input
           ref={inputRef}
           type="file"
-          accept={ACCEPT_MIME}
+          accept={ACCEPT_ATTR}
           className="hidden"
           onChange={handleSelect}
           disabled={disabled}
