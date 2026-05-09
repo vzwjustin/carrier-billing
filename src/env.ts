@@ -34,6 +34,14 @@ export const env = createEnv({
     // Resend
     RESEND_API_KEY: z.string().min(1),
 
+    // Inbound email ingest. INBOUND_EMAIL_DOMAIN is the domain users forward
+    // bills to (e.g. `inbound.carrieraudit.com`). INBOUND_EMAIL_SECRET is the
+    // shared HMAC secret your inbound-email provider (Resend/Postmark/SendGrid)
+    // signs the webhook with. Both optional — leave unset in dev to no-op the
+    // feature.
+    INBOUND_EMAIL_DOMAIN: z.string().min(1).optional(),
+    INBOUND_EMAIL_SECRET: z.string().min(16).optional(),
+
     // Sentry
     SENTRY_DSN: z.string().url().optional(),
     // Sentry build-time (optional — enables sourcemap upload + release tracking)
@@ -68,6 +76,8 @@ export const env = createEnv({
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    INBOUND_EMAIL_DOMAIN: process.env.INBOUND_EMAIL_DOMAIN,
+    INBOUND_EMAIL_SECRET: process.env.INBOUND_EMAIL_SECRET,
     SENTRY_DSN: process.env.SENTRY_DSN,
     SENTRY_ORG: process.env.SENTRY_ORG,
     SENTRY_PROJECT: process.env.SENTRY_PROJECT,

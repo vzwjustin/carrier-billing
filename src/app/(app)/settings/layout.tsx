@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 const NAV = [
   { href: '/settings', label: 'Account' },
   { href: '/settings/billing', label: 'Billing' },
+  { href: '/settings/integrations', label: 'Integrations' },
 ] as const;
 
 export default function SettingsLayout({

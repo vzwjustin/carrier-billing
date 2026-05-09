@@ -1,0 +1,207 @@
+import { createHmac } from 'node:crypto';
+
+import { inngest } from '../client';
+import { getAdminClient } from '@/lib/supabase/admin';
+
+/**
+ * dispatch-outbound-webhook — POST a completed audit's report to the user's
+ * configured outbound webhook URL, signed with HMAC-SHA256 of the body.
+ *
+ * Trigger: `audit.completed`. Concurrency limit + retries are conservative
+ * because we hit a third-party URL — slow or flaky receivers shouldn't pile
+ * up parallel deliveries.
+ *
+ * Skipped silently if the user has no `outbound_webhook_url` configured.
+ *
+ * Signature contract (documented in
+ * `src/components/settings/outbound-webhook-card.tsx`):
+ *   X-CarrierAudit-Signature: hex(hmac_sha256(body, secret))
+ *   X-CarrierAudit-Event: audit.completed
+ *   X-CarrierAudit-Audit-Id: <auditId>
+ */
+
+interface ProfileRow {
+  id: string;
+  outbound_webhook_url: string | null;
+  outbound_webhook_secret: string | null;
+}
+
+interface AuditRow {
+  id: string;
+  user_id: string;
+  status: string;
+  carrier: string | null;
+  billing_period_start: string | null;
+  billing_period_end: string | null;
+  estimated_monthly_savings_cents: number | null;
+  estimated_annual_savings_cents: number | null;
+  finding_count: number | null;
+  high_severity_count: number | null;
+  completed_at: string | null;
+}
+
+interface FindingRow {
+  id: string;
+  rule_id: string;
+  severity: string;
+  title: string;
+  description: string;
+  recommended_action: string;
+  estimated_monthly_savings_cents: number | null;
+  confidence: number | null;
+}
+
+export const dispatchOutboundWebhookFn = inngest.createFunction(
+  {
+    id: 'dispatch-outbound-webhook',
+    concurrency: { limit: 5 },
+    retries: 3,
+  },
+  { event: 'audit.completed' },
+  async ({ event, step, logger }) => {
+    const { auditId, userId } = event.data;
+
+    const ctx = (await step.run('load-context', async () => {
+      const admin = getAdminClient();
+
+      const { data: profile, error: profileErr } = await admin
+        .from('profiles')
+        .select('id, outbound_webhook_url, outbound_webhook_secret')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profileErr) {
+        throw new Error(`profile read failed: ${profileErr.message}`);
+      }
+      const p = (profile ?? null) as ProfileRow | null;
+      if (!p?.outbound_webhook_url || !p.outbound_webhook_secret) {
+        return { skipped: true as const, reason: 'no_webhook' };
+      }
+
+      const { data: audit, error: auditErr } = await admin
+        .from('audits')
+        .select(
+          'id, user_id, status, carrier, billing_period_start, billing_period_end, estimated_monthly_savings_cents, estimated_annual_savings_cents, finding_count, high_severity_count, completed_at',
+        )
+        .eq('id', auditId)
+        .maybeSingle();
+      if (auditErr) {
+        throw new Error(`audit read failed: ${auditErr.message}`);
+      }
+      const a = (audit ?? null) as AuditRow | null;
+      if (!a || a.status !== 'completed') {
+        return { skipped: true as const, reason: 'not_completed' };
+      }
+
+      const { data: findings, error: findingsErr } = await admin
+        .from('findings')
+        .select(
+          'id, rule_id, severity, title, description, recommended_action, estimated_monthly_savings_cents, confidence',
+        )
+        .eq('audit_id', auditId);
+      if (findingsErr) {
+        throw new Error(`findings read failed: ${findingsErr.message}`);
+      }
+
+      return {
+        skipped: false as const,
+        url: p.outbound_webhook_url,
+        secret: p.outbound_webhook_secret,
+        audit: a,
+        findings: (findings ?? []) as FindingRow[],
+      };
+    })) as
+      | { skipped: true; reason: string }
+      | {
+          skipped: false;
+          url: string;
+          secret: string;
+          audit: AuditRow;
+          findings: FindingRow[];
+        };
+
+    if (ctx.skipped) {
+      logger.info('dispatchOutboundWebhook: skipped', {
+        auditId,
+        userId,
+        reason: ctx.reason,
+      });
+      return { skipped: true, reason: ctx.reason };
+    }
+
+    const result = (await step.run('post-webhook', async () => {
+      const payload = {
+        event: 'audit.completed' as const,
+        delivered_at: new Date().toISOString(),
+        audit: {
+          id: ctx.audit.id,
+          user_id: ctx.audit.user_id,
+          status: ctx.audit.status,
+          carrier: ctx.audit.carrier,
+          billing_period_start: ctx.audit.billing_period_start,
+          billing_period_end: ctx.audit.billing_period_end,
+          estimated_monthly_savings_cents:
+            ctx.audit.estimated_monthly_savings_cents ?? 0,
+          estimated_annual_savings_cents:
+            ctx.audit.estimated_annual_savings_cents ?? 0,
+          finding_count: ctx.audit.finding_count ?? 0,
+          high_severity_count: ctx.audit.high_severity_count ?? 0,
+          completed_at: ctx.audit.completed_at,
+        },
+        findings: ctx.findings.map((f) => ({
+          id: f.id,
+          rule_id: f.rule_id,
+          severity: f.severity,
+          title: f.title,
+          description: f.description,
+          recommended_action: f.recommended_action,
+          estimated_monthly_savings_cents:
+            f.estimated_monthly_savings_cents ?? 0,
+          confidence: f.confidence,
+        })),
+      };
+
+      const body = JSON.stringify(payload);
+      const signature = createHmac('sha256', ctx.secret)
+        .update(body)
+        .digest('hex');
+
+      // Bound the round-trip so a slow consumer doesn't park a worker.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+
+      try {
+        const response = await fetch(ctx.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CarrierAudit-Signature': signature,
+            'X-CarrierAudit-Event': 'audit.completed',
+            'X-CarrierAudit-Audit-Id': ctx.audit.id,
+            'User-Agent': 'CarrierAudit-Webhook/1.0',
+          },
+          body,
+          signal: controller.signal,
+          // No redirects — receivers should expose a stable URL, and silently
+          // following a 30x to a different host opens a small SSRF surface.
+          redirect: 'error',
+        });
+
+        if (!response.ok) {
+          // Throw so Inngest retries; only surface the status code, not the
+          // body, to keep PII out of logs.
+          throw new Error(`webhook ${response.status}`);
+        }
+        return { status: response.status };
+      } finally {
+        clearTimeout(timeout);
+      }
+    })) as { status: number };
+
+    logger.info('dispatchOutboundWebhook: delivered', {
+      auditId,
+      userId,
+      status: result.status,
+    });
+    return { delivered: true, status: result.status };
+  },
+);
