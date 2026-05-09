@@ -33,5 +33,11 @@ test.describe('landing surface', () => {
     // Login form has email + password inputs.
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
+
+    // Forgot-password link routes to /reset-password.
+    const forgotLink = page.getByRole('link', { name: /forgot password/i });
+    await expect(forgotLink).toBeVisible();
+    await forgotLink.click();
+    await expect(page).toHaveURL(/\/reset-password$/);
   });
 });
