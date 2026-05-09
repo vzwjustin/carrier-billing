@@ -28,21 +28,28 @@ const VALID_811 = [
   'HL*1**BL~',
   'HL*2*1*AC~',
   'REF*AN*987654321~',
-  // First line
+  // Account-level taxes — federal (TXI*FT*5.00) + state (TXI*ST*3.50)
+  // X12 N2: integer is implicit cents → "500" = $5.00 = 500 cents.
+  'TXI*FT*500~',
+  'TXI*ST*350~',
+  // First line: base plan $55 + protection $15 = $70 total
   'HL*3*2*SP~',
   'REF*MN*5551234567~',
   'IT1*1*1*EA*55.00***UN*plan~',
   'PID*F**08**Business Unlimited Pro 2.0~',
-  // Second line
+  'IT1*2*1*EA*15.00***UN*protection~',
+  'PID*F**08**Total Mobile Protection~',
+  // Second line: qty=2 of $45 = $90 plus a zero-value comp item
   'HL*4*2*SP~',
   'REF*MN*5559998888~',
-  'IT1*2*1*EA*45.00***UN*plan~',
+  'IT1*1*2*EA*45.00***UN*plan~',
   'PID*F**08**Business Unlimited Plus 2.0~',
   'PID*F**08**iPhone 16 Pro~',
-  // Total = 100.00
-  'TDS*10000~',
+  'IT1*2*1*EA*0.00***UN*comp~',
+  // Total = 70 + 90 + 8.50 tax = $168.50 = 16850 cents
+  'TDS*16850~',
   'CTT*2~',
-  'SE*16*0001~',
+  'SE*22*0001~',
   GE,
   IEA,
 ].join('');
@@ -60,8 +67,13 @@ describe('parseEdi811 — happy path', () => {
     expect(result.bill.billing_period_end).toBe('2026-04-30');
   });
 
-  it('reads the invoice total from TDS01 as cents', () => {
-    expect(result.bill.total_charges_cents).toBe(10000);
+  it('reads the invoice total from TDS01 as implicit-cents', () => {
+    expect(result.bill.total_charges_cents).toBe(16850);
+  });
+
+  it('sums TXI segments into account taxes_fees_cents', () => {
+    // 500 + 350 = 850 cents
+    expect(result.bill.accounts[0]?.taxes_fees_cents).toBe(850);
   });
 
   it('returns one account with two lines', () => {
@@ -90,9 +102,19 @@ describe('parseEdi811 — happy path', () => {
     expect(result.bill.accounts[0]?.lines[1]?.device).toBe('iPhone 16 Pro');
   });
 
-  it('puts plan_base_cents on each line from IT1', () => {
-    expect(result.bill.accounts[0]?.lines[0]?.plan_base_cents).toBe(5500);
-    expect(result.bill.accounts[0]?.lines[1]?.plan_base_cents).toBe(4500);
+  it('sums multiple IT1 segments per service point (base + features)', () => {
+    // line[0]: $55 plan + $15 protection = $70 = 7000 cents
+    expect(result.bill.accounts[0]?.lines[0]?.plan_base_cents).toBe(7000);
+  });
+
+  it('multiplies IT1 unit price by quantity (IT1.02)', () => {
+    // line[1]: 2 * $45 + $0 comp = 9000 cents
+    expect(result.bill.accounts[0]?.lines[1]?.plan_base_cents).toBe(9000);
+  });
+
+  it('account total reflects sum of line plan_base_cents (incl. zero-value)', () => {
+    // 7000 + 9000 = 16000. Tax sits separately in taxes_fees_cents.
+    expect(result.bill.accounts[0]?.total_charges_cents).toBe(16000);
   });
 
   it('marks notes with edi 811 source', () => {
@@ -115,7 +137,7 @@ describe('parseEdi811 — error paths', () => {
   });
 
   it('throws EdiParseError when TDS01 is missing', () => {
-    const noTotal = VALID_811.replace('TDS*10000~', '');
+    const noTotal = VALID_811.replace('TDS*16850~', '');
     expect(() => parseEdi811(noTotal)).toThrowError(EdiParseError);
   });
 

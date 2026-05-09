@@ -15,16 +15,19 @@
  *   - DTM (150 / 151 / 194)  billing period start / end / "billing date"
  *   - HL                     hierarchy: Bill → Account → Service Point
  *   - REF (qualifiers IT, AN) account number + line/MDN reference
- *   - IT1                    line items (per-MDN charges)
+ *   - IT1                    line items per service point (qty * unit_price)
  *   - PID                    plan / feature description
- *   - TXI                    tax line items
- *   - TDS                    invoice total (cents)
+ *   - TXI                    account-level taxes (sum into taxes_fees_cents)
+ *   - TDS                    invoice total (N2, implicit cents)
  *   - SE / GE / IEA          envelope close
  *
  * Caveats (TODO(domain) for Justin once we have real samples):
  *   - Each carrier's IG assigns slightly different REF qualifiers and HL
  *     level codes; this mapper uses the X12 standard defaults. Carrier-
  *     specific overrides should live alongside src/extraction/carriers/*.
+ *   - We don't decompose IT1s into plan-base vs features yet — every IT1
+ *     under a service point sums into plan_base_cents. Splitting requires
+ *     PID-driven categorization that's carrier-specific.
  *   - We don't parse credits or DPP installments yet — those typically come
  *     through as additional IT1 lines with negative amounts or specific PID
  *     codes; will be carrier-specific.
@@ -76,9 +79,8 @@ function parseEdiDate(value: string | undefined): string | null {
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Parse a money string into integer cents. EDI generally uses signed decimal
- * with an implicit precision but no currency symbol. We accept signed values
- * and round half-away-from-zero.
+ * Parse an X12 R1 (real-valued) monetary field into integer cents.
+ * Used for IT1.04 unit price and similar. "55.00" → 5500, "5500" → 550000.
  */
 function parseCents(value: string | undefined): number | null {
   if (!value) return null;
@@ -87,6 +89,35 @@ function parseCents(value: string | undefined): number | null {
   const num = Number(cleaned);
   if (!Number.isFinite(num)) return null;
   return Math.round(num * 100);
+}
+
+/**
+ * Parse an X12 N2 (numeric, implicit 2-decimal) monetary field. The standard
+ * convention is "10000" = $100.00 = 10000 cents — i.e. the integer is already
+ * in cents. Used by TDS01 (invoice total) and TXI.02 (tax amount).
+ *
+ * Defensive: if the value contains an explicit decimal point we fall back to
+ * R1 semantics to handle non-conforming senders.
+ */
+function parseImpliedCents(value: string | undefined): number | null {
+  if (!value) return null;
+  const cleaned = value.trim().replace(/[, ]/g, '');
+  if (cleaned.length === 0) return null;
+  if (cleaned.includes('.')) {
+    return parseCents(cleaned);
+  }
+  if (!/^-?\d+$/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Read the IT1 quantity (IT1.02). Defaults to 1 when missing/blank. */
+function parseQty(value: string | undefined): number {
+  if (!value) return 1;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return 1;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -200,15 +231,19 @@ function extractLineFromHl(ctx: HlContext): ExtractedLine {
     }
   }
 
-  // Plan base charge: first IT1 with non-tax/quantity-1 amount.
+  // Plan base charge — sum every IT1 under this service point. A single SP
+  // can carry multiple IT1s (base plan + features + protection) and any of
+  // them can be zero-valued (free trials, comp lines), so we accumulate
+  // rather than picking the first positive one. Per X12 spec, line amount
+  // is qty * unit price (IT1.02 * IT1.04).
   let planBaseCents: number | null = null;
   for (const it1 of findAllSegments(ctx.segments, 'IT1')) {
     // IT1: 01=line-item-id, 02=qty, 03=uom, 04=unit-price, 05=basis-of-unit-price
-    const cents = parseCents(it1.elements[3]);
-    if (cents !== null && cents > 0) {
-      planBaseCents = cents;
-      break;
-    }
+    const unitCents = parseCents(it1.elements[3]);
+    if (unitCents === null) continue;
+    const qty = parseQty(it1.elements[1]);
+    const amount = Math.round(qty * unitCents);
+    planBaseCents = (planBaseCents ?? 0) + amount;
   }
 
   return {
@@ -330,11 +365,21 @@ export function parseEdi811(input: Buffer | string): Edi811Result {
           if (acctNumber) break;
         }
       }
+      // Sum any TXI segments at the account level into taxes_fees_cents.
+      // X12 TXI.02 is N2 (implicit-2-decimal, integer = cents) — distinct
+      // from IT1.04 which is R1. Some senders put non-conforming decimals
+      // here; parseImpliedCents falls back gracefully.
+      let taxesFeesCents: number | null = null;
+      for (const txi of findAllSegments(ctx.segments, 'TXI')) {
+        const amt = parseImpliedCents(txi.elements[1]);
+        if (amt === null) continue;
+        taxesFeesCents = (taxesFeesCents ?? 0) + amt;
+      }
       currentAccount = {
         account_number_last4: lastFour(acctNumber),
         label: null,
         total_charges_cents: 0,
-        taxes_fees_cents: null,
+        taxes_fees_cents: taxesFeesCents,
         account_level_credits: [],
         lines: [],
       };
@@ -355,7 +400,8 @@ export function parseEdi811(input: Buffer | string): Edi811Result {
       }
       const line = extractLineFromHl(ctx);
       currentAccount.lines.push(line);
-      if (line.plan_base_cents) {
+      // null-explicit so 0-valued lines (comp / promo) are still counted.
+      if (line.plan_base_cents !== null) {
         currentAccount.total_charges_cents += line.plan_base_cents;
       }
     }
@@ -367,13 +413,17 @@ export function parseEdi811(input: Buffer | string): Edi811Result {
     );
   }
 
-  // If account totals are 0 but we have a TDS total, distribute it onto the
-  // first account so the schema's account total constraint is satisfied. The
-  // rules engine reads per-line + per-account amounts; aggregate-level total
-  // is just a sanity check.
-  const summed = accounts.reduce((acc, a) => acc + a.total_charges_cents, 0);
-  if (summed === 0 && accounts[0]) {
-    accounts[0].total_charges_cents = totalCents;
+  // Defensive fallback for malformed 811s where IT1 unit prices were
+  // unparseable but TDS01 was readable. Only applied for single-account
+  // bills — distributing TDS across multiple accounts blindly would corrupt
+  // per-account accounting (and we have no signal for the right split).
+  // Multi-account bills with zero-summed lines surface honestly as
+  // total_charges_cents=0 on each account; the rules engine treats that as
+  // "no charges" rather than fabricating data.
+  if (accounts.length === 1 && accounts[0]) {
+    if (accounts[0].total_charges_cents === 0) {
+      accounts[0].total_charges_cents = totalCents;
+    }
   }
 
   const bill: ExtractedBill = {
