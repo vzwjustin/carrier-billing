@@ -128,6 +128,13 @@ export function mapEdi811ToBill(
         const name = elOrNull(seg, 2);
         if (qualifier === N1_BILL_TO && name) {
           billToName = name;
+          // If an N1*BT lands inside an open account loop (and we're not
+          // already inside a subscriber sub-loop), backfill the account
+          // label so it reflects the carrier's bill-to name even when the
+          // segment arrived after HL*A.
+          if (currentAccount && !currentAccount.currentLine) {
+            currentAccount.account.label = name;
+          }
         }
         break;
       }
@@ -475,7 +482,10 @@ function parseIntOrNull(raw: string): number | null {
   const t = raw.trim();
   if (t.length === 0) return null;
   const n = Number(t);
-  if (!Number.isFinite(n)) return null;
+  // Reject negatives at the parsing edge — the only callers feed schema-bound
+  // non-negative fields (remaining_payments). Letting a negative through here
+  // would surface later as a less actionable Zod error.
+  if (!Number.isFinite(n) || n < 0) return null;
   return Math.trunc(n);
 }
 
