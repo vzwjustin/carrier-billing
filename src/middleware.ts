@@ -18,7 +18,7 @@ import { updateSession } from '@/lib/supabase/middleware';
 function buildCsp(nonce: string): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://*.posthog.com https://*.i.posthog.com`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://*.posthog.com https://*.i.posthog.com`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
