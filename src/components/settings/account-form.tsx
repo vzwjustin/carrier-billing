@@ -39,7 +39,7 @@ export function AccountForm({
   }
 
   return (
-    <form action={onSubmit} className="space-y-5">
+    <form action={onSubmit} className="space-y-5" data-netlify="false">
       <div className="space-y-1.5">
         <Label htmlFor="email">Email</Label>
         <Input

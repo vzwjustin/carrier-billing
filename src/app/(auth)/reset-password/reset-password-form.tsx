@@ -57,7 +57,7 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate data-netlify="false">
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
