@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
 import { cn } from '@/lib/utils';
@@ -144,6 +145,16 @@ export default async function AppLayout({
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+        {profile?.subscription_status === 'past_due' ? (
+          <div className="mb-6">
+            <Banner
+              variant="warning"
+              title="Your subscription is past due"
+              description="Your last payment failed. Update your payment method to keep running audits."
+              action={{ label: 'Update payment', href: '/billing/past-due' }}
+            />
+          </div>
+        ) : null}
         {children}
       </main>
     </div>

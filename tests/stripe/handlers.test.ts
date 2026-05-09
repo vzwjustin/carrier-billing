@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type Stripe from 'stripe';
 
+const { inngestSendMock } = vi.hoisted(() => ({
+  inngestSendMock: vi.fn(async () => ({ ids: ['evt_x'] })),
+}));
+vi.mock('@/inngest/client', () => ({
+  inngest: { send: inngestSendMock },
+}));
+
 import { handleStripeEvent } from '@/lib/stripe/handlers';
 
 // --- Supabase mock ---------------------------------------------------------
@@ -120,6 +127,8 @@ let client: MockClient;
 beforeEach(() => {
   client = makeClient();
   vi.clearAllMocks();
+  inngestSendMock.mockReset();
+  inngestSendMock.mockResolvedValue({ ids: ['evt_x'] });
 });
 
 describe('handleStripeEvent', () => {
@@ -268,34 +277,64 @@ describe('handleStripeEvent', () => {
     expect(update?.select).toBe('id, email');
   });
 
-  it('invoice.payment_failed logs the audit.subscription_payment_failed marker (C3)', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  it('invoice.payment_failed dispatches billing.payment_failed Inngest event', async () => {
     client.__nextUpdateRows = [
       { id: 'profile_pay', email: 'paying@example.com' },
     ];
     const event = makeEvent('invoice.payment_failed', {
       id: 'in_marker',
       customer: 'cus_marker',
+      amount_due: 4900,
     });
 
     await handleStripeEvent(event, client as unknown as never);
 
-    const markerCall = consoleSpy.mock.calls.find(
-      (call) => call[0] === '[stripe.payment_failed]',
-    );
-    expect(markerCall).toBeDefined();
-    const payload = JSON.parse(markerCall![1] as string) as Record<
-      string,
-      unknown
-    >;
-    expect(payload).toMatchObject({
-      event: 'audit.subscription_payment_failed',
-      userId: 'profile_pay',
-      customerEmail: 'paying@example.com',
-      stripeCustomerId: 'cus_marker',
-      invoiceId: 'in_marker',
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    expect(inngestSendMock).toHaveBeenCalledWith({
+      name: 'billing.payment_failed',
+      data: {
+        userId: 'profile_pay',
+        customerEmail: 'paying@example.com',
+        stripeCustomerId: 'cus_marker',
+        invoiceId: 'in_marker',
+        amountDueCents: 4900,
+      },
     });
-    consoleSpy.mockRestore();
+  });
+
+  it('invoice.payment_failed without profile email skips dispatch and warns', async () => {
+    client.__nextUpdateRows = [{ id: 'profile_no_email', email: null }];
+    const event = makeEvent('invoice.payment_failed', {
+      id: 'in_no_email',
+      customer: 'cus_no_email',
+      amount_due: 1000,
+    });
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    expect(inngestSendMock).not.toHaveBeenCalled();
+    // The profile update still ran.
+    expect(client.__updates).toHaveLength(1);
+    expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
+  });
+
+  it('invoice.payment_failed swallows inngest.send errors so past_due update sticks', async () => {
+    client.__nextUpdateRows = [
+      { id: 'profile_send_err', email: 'send-err@example.com' },
+    ];
+    inngestSendMock.mockRejectedValueOnce(new Error('inngest down'));
+    const event = makeEvent('invoice.payment_failed', {
+      id: 'in_send_err',
+      customer: 'cus_send_err',
+      amount_due: 2500,
+    });
+
+    await expect(
+      handleStripeEvent(event, client as unknown as never),
+    ).resolves.toBeUndefined();
+
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
   });
 
   it('unknown event types are no-ops', async () => {

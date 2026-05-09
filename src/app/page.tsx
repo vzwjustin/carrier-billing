@@ -1,8 +1,13 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { Upload, FileSearch, Sparkles } from 'lucide-react';
 
 import { SiteNav } from '@/components/marketing/site-nav';
 import { SiteFooter } from '@/components/marketing/site-footer';
+
+// Flip to `true` once `public/report-sample.png` is in place. Keeps the
+// "coming soon" placeholder visible until the asset lands.
+const SAMPLE_REPORT_IMAGE_AVAILABLE = false;
 
 export default function HomePage(): React.ReactElement {
   return (
@@ -245,7 +250,6 @@ function WhatWeFind(): React.ReactElement {
 }
 
 function SampleReport(): React.ReactElement {
-  // TODO(launch): replace with real anonymized report screenshot
   return (
     <section className="border-b border-neutral-200">
       <div className="mx-auto w-full max-w-6xl px-4 py-16">
@@ -258,21 +262,32 @@ function SampleReport(): React.ReactElement {
           </p>
         </div>
         <div className="mt-10 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <div className="flex aspect-[16/9] w-full items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100 px-8">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-medium uppercase tracking-wide text-neutral-50">
-                Preview
-              </span>
-              <p className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl">
-                Sample report — coming soon
-              </p>
-              <p className="max-w-md text-sm text-neutral-600">
-                A full anonymized example will appear here at launch. In the
-                meantime, run a free preview to see the real report on your
-                own bill.
-              </p>
+          {SAMPLE_REPORT_IMAGE_AVAILABLE ? (
+            <Image
+              src="/report-sample.png"
+              alt="Anonymized CarrierAudit report showing identified annual savings on a Verizon Business account."
+              width={1600}
+              height={900}
+              priority
+              className="aspect-[16/9] w-full object-cover"
+            />
+          ) : (
+            <div className="flex aspect-[16/9] w-full items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100 px-8">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-medium uppercase tracking-wide text-neutral-50">
+                  Preview
+                </span>
+                <p className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl">
+                  Sample report — coming soon
+                </p>
+                <p className="max-w-md text-sm text-neutral-600">
+                  A full anonymized example will appear here at launch. In the
+                  meantime, run a free preview to see the real report on your
+                  own bill.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
           <div className="border-t border-neutral-200 px-6 py-4 text-sm text-neutral-600">
             $1,847/mo in waste found on a typical 80-line Verizon Business
             account &mdash; anonymized.

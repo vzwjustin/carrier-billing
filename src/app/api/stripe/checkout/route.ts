@@ -184,6 +184,8 @@ export async function POST(request: Request): Promise<Response> {
       cancel_url: `${appUrl}/pricing`,
       metadata: { userId: user.id, mode },
       allow_promotion_codes: true,
+      automatic_tax: { enabled: true },
+      customer_update: { address: 'auto' },
     } as const;
 
     const session =
