@@ -111,28 +111,59 @@ export const dataOveragePatternRule: Rule = {
           return;
         }
 
-        // Branch B: heavy use (>50 GB) on a top-tier plan — informational
-        // monitoring finding.
+        // Branches B & C cover the 50..100 GB band when no soft cap matched.
         if (used <= HIGH_DATA_GB) return;
-        if (!line.plan_name) return;
-        if (!HIGH_TIER_RE.test(line.plan_name)) return;
 
+        const isTopTier =
+          line.plan_name !== null && HIGH_TIER_RE.test(line.plan_name);
+
+        if (isTopTier) {
+          // Branch B: heavy use (>50 GB) on a top-tier plan — informational
+          // monitoring finding. Likely correctly placed; flag for trend watch.
+          findings.push({
+            rule_id: RULE_ID,
+            severity: 'info',
+            title: `Heavy data user on plan "${line.plan_name}"`,
+            description: `This line used ${used.toFixed(2)} GB this period. Heavy users on top-tier plans are usually correctly placed, but this line is worth monitoring against the plan's deprioritization threshold.`,
+            recommended_action:
+              'Track this line over 2-3 billing periods. If usage consistently approaches the plan’s deprioritization cap, confirm there’s no tier above it that would be a better fit.',
+            estimated_monthly_savings_cents: 0,
+            confidence: 0.4,
+            affected_line_indexes: [lineIndex],
+            affected_account_indexes: [accountIndex],
+            evidence: {
+              plan_name: line.plan_name,
+              data_used_gb: used,
+              threshold_gb: HIGH_DATA_GB,
+              branch: 'heavy_top_tier',
+            },
+          });
+          return;
+        }
+
+        // Branch C: heavy use (>50 GB, ≤100 GB) on a non-top-tier plan with
+        // no recognized soft cap — closes the previous coverage hole where a
+        // mid-tier or unknown plan at 75 GB produced no finding at all. Lower
+        // confidence than the soft-cap branch because we don't know the
+        // exact deprioritization threshold for this plan.
         findings.push({
           rule_id: RULE_ID,
           severity: 'info',
-          title: `Heavy data user on plan "${line.plan_name}"`,
-          description: `This line used ${used.toFixed(2)} GB this period. Heavy users on top-tier plans are usually correctly placed, but this line is worth monitoring against the plan's deprioritization threshold.`,
+          title: line.plan_name
+            ? `Heavy data use on non-top-tier plan "${line.plan_name}"`
+            : `Heavy data use — ${used.toFixed(0)} GB this period`,
+          description: `This line used ${used.toFixed(2)} GB this period on ${line.plan_name ? `"${line.plan_name}"` : 'an unrecognized plan'}. Lines pushing past ${HIGH_DATA_GB} GB on a non-top-tier plan often hit the carrier's deprioritization threshold during congestion. Worth a tier-fit review.`,
           recommended_action:
-            'Track this line over 2-3 billing periods. If usage consistently approaches the plan’s deprioritization cap, confirm there’s no tier above it that would be a better fit.',
+            'Confirm the line\'s plan is the right tier for sustained heavy use. If usage stays at this volume, evaluate moving up a tier (or moving heavy traffic to a dedicated hotspot/router).',
           estimated_monthly_savings_cents: 0,
-          confidence: 0.4,
+          confidence: 0.35,
           affected_line_indexes: [lineIndex],
           affected_account_indexes: [accountIndex],
           evidence: {
             plan_name: line.plan_name,
             data_used_gb: used,
             threshold_gb: HIGH_DATA_GB,
-            branch: 'heavy_top_tier',
+            branch: 'heavy_non_top_tier',
           },
         });
       });

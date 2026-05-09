@@ -19,13 +19,42 @@ import { getAdminClient } from '@/lib/supabase/admin';
  * PII discipline (CLAUDE.md §1#9): logs only auditId, userId, counts.
  */
 
-const TTL_MINUTES = 30;
+export const TTL_MINUTES = 30;
 
-type OrphanRow = {
+export type OrphanRow = {
   id: string;
   user_id: string;
   created_at: string;
 };
+
+/**
+ * Atomic refund + status-flip via the `refund_orphan_audit` Postgres RPC
+ * (defined in supabase/migrations/0005_check_constraints_and_refund_rpc.sql).
+ *
+ * The RPC flips `status = 'failed'` gated on `status = 'pending'` and only
+ * refunds the credit if the flip actually happened — both writes happen in a
+ * single PL/pgSQL block. That makes the operation idempotent (a concurrent
+ * /start that already advanced the row no-ops here, leaving the credit with
+ * the user) and atomic (no partial state on retry).
+ *
+ * Errors are re-thrown so Inngest retries the step.
+ *
+ * Exported for unit testing — the production caller is `cleanupOrphanAuditsFn`
+ * below.
+ */
+export async function refundOrphanAudit(
+  supabase: ReturnType<typeof getAdminClient>,
+  orphan: OrphanRow,
+): Promise<void> {
+  const { error: rpcError } = await supabase.rpc('refund_orphan_audit', {
+    p_audit_id: orphan.id,
+    p_user_id: orphan.user_id,
+    p_reason: 'upload-not-finalized',
+  });
+  if (rpcError) {
+    throw new Error(`refund_orphan_audit failed: ${rpcError.message}`);
+  }
+}
 
 export const cleanupOrphanAuditsFn = inngest.createFunction(
   { id: 'cleanup-orphan-audits', retries: 1 },
@@ -50,34 +79,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
     for (const orphan of orphans) {
       await step.run(`refund-and-fail-${orphan.id}`, async () => {
         const supabase = getAdminClient();
-
-        const { error: rpcError } = await supabase.rpc(
-          'increment_audit_credits',
-          { profile_id: orphan.user_id, delta: 1 },
-        );
-        if (rpcError) {
-          throw new Error(
-            `increment_audit_credits (refund) failed: ${rpcError.message}`,
-          );
-        }
-
-        // Status guard: only fail rows still in `pending` so a concurrent
-        // /start that flipped the row to `extracting` wins the race.
-        const { error: updateError } = await supabase
-          .from('audits')
-          .update({
-            status: 'failed',
-            failure_reason: 'upload-not-finalized',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', orphan.id)
-          .eq('status', 'pending');
-        if (updateError) {
-          throw new Error(
-            `audits update (mark-failed) failed: ${updateError.message}`,
-          );
-        }
-
+        await refundOrphanAudit(supabase, orphan);
         logger.info('cleanupOrphanAudits: refunded and failed', {
           auditId: orphan.id,
           userId: orphan.user_id,

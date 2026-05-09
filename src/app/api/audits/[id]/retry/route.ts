@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -66,22 +67,37 @@ export async function POST(
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
     }
     if (data.user_id !== user.id) {
-      // RLS should already have hidden this, but belt-and-suspenders.
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
     }
-    if (data.status !== 'pending') {
+    if (data.status !== 'failed') {
       return NextResponse.json(
-        { error: `Audit is already ${data.status}.` },
+        { error: `Audit is not in a failed state (current: ${data.status}).` },
         { status: 409 },
       );
     }
 
-    // B2 — idempotency key. Browser/proxy retries (or a duplicate /start POST)
-    // must not enqueue the worker twice. Inngest dedupes events with the same
-    // `id` for ~24h, so anchoring to the audit id ensures a single bill.uploaded
-    // event ever fires for this audit.
+    // Reset the audit row using the service-role client so we don't have to
+    // write a separate RLS update policy for failure_reason. The user's
+    // ownership has already been verified above.
+    const admin = getAdminClient();
+    const { error: updateError } = await admin
+      .from('audits')
+      .update({
+        status: 'pending',
+        failure_reason: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', auditId);
+
+    if (updateError) {
+      return NextResponse.json(
+        { error: 'Failed to reset audit.' },
+        { status: 500 },
+      );
+    }
+
     await inngest.send({
-      id: `${auditId}-uploaded`,
+      id: `${auditId}-uploaded-retry-${Date.now()}`,
       name: 'bill.uploaded',
       data: {
         auditId: data.id,

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Dropzone } from '@/components/upload/dropzone';
@@ -46,14 +47,12 @@ export function UploadForm(): React.JSX.Element {
   const router = useRouter();
   const [file, setFile] = React.useState<File | null>(null);
   const [phase, setPhase] = React.useState<Phase>('idle');
-  const [error, setError] = React.useState<string | null>(null);
 
   const busy = phase !== 'idle';
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!file || busy) return;
-    setError(null);
 
     try {
       // Step 1: create audit + signed upload URL.
@@ -107,31 +106,10 @@ export function UploadForm(): React.JSX.Element {
       router.push(`/audits/${auditId}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed.';
-      setError(message);
+      toast.error(message);
       setPhase('idle');
     }
   };
-
-  const handleReset = () => {
-    setError(null);
-    setPhase('idle');
-  };
-
-  if (error) {
-    return (
-      <div className="space-y-4 rounded-lg border border-red-200 bg-red-50 p-6">
-        <div>
-          <h2 className="text-base font-medium text-red-900">
-            Something went wrong
-          </h2>
-          <p className="mt-1 text-sm text-red-800">{error}</p>
-        </div>
-        <Button type="button" variant="outline" onClick={handleReset}>
-          Try again
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

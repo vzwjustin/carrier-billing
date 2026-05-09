@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { ReportView } from '@/components/audits/report-view';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ const POLL_MS = 2000;
 const ACTIVE_STATUSES = new Set(['pending', 'extracting', 'analyzing']);
 
 const STEPS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'pending', label: 'Uploading' },
+  { key: 'pending', label: 'Queued' },
   { key: 'extracting', label: 'Extracting' },
   { key: 'analyzing', label: 'Analyzing' },
   { key: 'completed', label: 'Done' },
@@ -122,26 +123,21 @@ export function AuditViewer({
 
   if (data.status === 'failed') {
     return (
-      <div className="space-y-6">
-        <Stepper status={data.status} />
-        <div className="rounded-lg border border-red-200 bg-red-50 p-6">
-          <h2 className="text-base font-medium text-red-900">
-            We couldn&apos;t finish this audit
-          </h2>
-          <p className="mt-1 text-sm text-red-800">
-            {data.failure_reason ??
-              'Something went wrong while processing the bill.'}
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Link href="/audits/new">
-              <Button>Upload another bill</Button>
-            </Link>
-            <Link href="/audits">
-              <Button variant="outline">Back to audits</Button>
-            </Link>
-          </div>
-        </div>
-      </div>
+      <FailedView
+        auditId={auditId}
+        failureReason={data.failure_reason}
+        onRetry={() => {
+          // Reset local state to 'pending' so the polling loop kicks in again.
+          setData((prev) => ({
+            ...prev,
+            status: 'pending',
+            failure_reason: null,
+            currentStep: 'Restarting…',
+            progress: 5,
+          }));
+          setError(null);
+        }}
+      />
     );
   }
 
@@ -276,10 +272,6 @@ function SavingsSummary({
           value={String(highSeverityCount)}
         />
       </div>
-
-      <p className="text-xs text-neutral-500">
-        Detailed findings list arrives in Phase 3.
-      </p>
     </div>
   );
 }
@@ -344,6 +336,75 @@ function SummaryCard({
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
       <p className="text-xs uppercase tracking-wide text-neutral-500">{label}</p>
       <p className="mt-1 text-base font-medium text-neutral-900">{value}</p>
+    </div>
+  );
+}
+
+interface FailedViewProps {
+  auditId: string;
+  failureReason: string | null;
+  onRetry: () => void;
+}
+
+function FailedView({
+  auditId,
+  failureReason,
+  onRetry,
+}: FailedViewProps): React.JSX.Element {
+  const [retrying, setRetrying] = React.useState(false);
+
+  const handleRetry = React.useCallback(async () => {
+    setRetrying(true);
+    try {
+      const res = await fetch(`/api/audits/${auditId}/retry`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const body: unknown = await res.json().catch(() => ({}));
+        const message =
+          typeof body === 'object' && body !== null && 'error' in body &&
+          typeof (body as { error: unknown }).error === 'string'
+            ? (body as { error: string }).error
+            : 'Could not retry audit.';
+        toast.error(message);
+        return;
+      }
+      toast.success('Retrying audit');
+      onRetry();
+    } catch {
+      toast.error('Could not retry audit.');
+    } finally {
+      setRetrying(false);
+    }
+  }, [auditId, onRetry]);
+
+  return (
+    <div className="space-y-6">
+      <Stepper status="failed" />
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6">
+        <h2 className="text-base font-medium text-red-900">
+          We couldn&apos;t finish this audit
+        </h2>
+        <p className="mt-1 text-sm text-red-800">
+          {failureReason ?? 'Something went wrong while processing the bill.'}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            onClick={() => {
+              void handleRetry();
+            }}
+            disabled={retrying}
+          >
+            {retrying ? 'Retrying…' : 'Retry'}
+          </Button>
+          <Link href="/audits/new">
+            <Button variant="outline">Upload another bill</Button>
+          </Link>
+          <Link href="/audits">
+            <Button variant="outline">Back to audits</Button>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

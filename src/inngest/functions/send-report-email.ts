@@ -186,10 +186,19 @@ export const sendReportEmailFn = inngest.createFunction(
       });
 
       if (response.error) {
-        // Throw so Inngest retries (up to the function's retry limit).
-        throw new Error(
-          `resend send failed: ${response.error.name}: ${response.error.message}`,
-        );
+        // (E3) PII-safe Resend failure surface.
+        //
+        // Resend's `error.message` includes the failing recipient address
+        // for several common failure modes (e.g. "to address `foo@bar.com`
+        // is invalid"). Per CLAUDE.md §1#9 we cannot let the email body
+        // OR the recipient leak into Inngest logs / Sentry. We surface ONLY
+        // the error name/code; the user-side correlate is the auditId,
+        // which is already present in every log line.
+        const code =
+          typeof (response.error as { name?: unknown }).name === 'string'
+            ? (response.error as { name: string }).name
+            : 'unknown';
+        throw new Error(`resend send failed: ${code}`);
       }
       const messageId =
         response.data && typeof response.data.id === 'string'

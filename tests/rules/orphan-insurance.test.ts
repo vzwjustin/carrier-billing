@@ -106,7 +106,7 @@ describe('orphan_insurance rule', () => {
     expect(evidence.triggerReasons).toContain('feature_only_zombie');
   });
 
-  it('flags suspended BYOD line as orphan with both reasons recorded', async () => {
+  it('flags suspended BYOD line as orphan via line_suspended (is_byod is context-only)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -138,7 +138,8 @@ describe('orphan_insurance rule', () => {
     };
     expect(evidence.is_byod).toBe(true);
     expect(evidence.triggerReasons).toContain('line_suspended');
-    expect(evidence.triggerReasons).toContain('suspended_byod');
+    // suspended_byod was redundant with line_suspended — dropped from the rule.
+    expect(evidence.triggerReasons).not.toContain('suspended_byod');
   });
 
   it('records triggerReasons array in evidence', async () => {

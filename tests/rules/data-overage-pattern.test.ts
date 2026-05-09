@@ -116,6 +116,52 @@ describe('data_overage_pattern rule', () => {
     expect(findings).toHaveLength(0);
   });
 
+  it('fires (heavy_non_top_tier) for previously-uncovered 50-100 GB on a mid/unknown plan', async () => {
+    // Regression: 75 GB on a plan with no soft-cap match and no top-tier
+    // keyword used to leave the rule silent. Now Branch C catches it as info.
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              plan_name: 'Custom Mid-Tier Bundle',
+              data_used_gb: 75,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await dataOveragePatternRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.severity).toBe('info');
+    const evidence = f.evidence as { branch: string; threshold_gb: number };
+    expect(evidence.branch).toBe('heavy_non_top_tier');
+    expect(evidence.threshold_gb).toBe(50);
+  });
+
+  it('fires (heavy_non_top_tier) when plan_name is null and usage is 60 GB', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              plan_name: null,
+              data_used_gb: 60,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await dataOveragePatternRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    const evidence = f.evidence as { branch: string };
+    expect(evidence.branch).toBe('heavy_non_top_tier');
+  });
+
   it('does not fire on light usage (any plan)', async () => {
     const c = ctx({
       accounts: [

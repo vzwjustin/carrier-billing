@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,37 +9,52 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-import { signInAction } from './actions';
+import { requestPasswordResetAction } from './actions';
 
-const LoginSchema = z.object({
+const ResetSchema = z.object({
   email: z.string().email('Enter a valid email'),
-  password: z.string().min(1, 'Password is required'),
 });
 
-type LoginInput = z.infer<typeof LoginSchema>;
+type ResetInput = z.infer<typeof ResetSchema>;
 
-export function LoginForm() {
+export function ResetPasswordForm() {
   const [serverError, setServerError] = useState<string | null>(null);
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<LoginInput>({
-    resolver: zodResolver(LoginSchema),
-    defaultValues: { email: '', password: '' },
+  } = useForm<ResetInput>({
+    resolver: zodResolver(ResetSchema),
+    defaultValues: { email: '' },
   });
 
-  const onSubmit = (data: LoginInput) => {
+  const onSubmit = (data: ResetInput) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await signInAction(data);
-      if (result && !result.ok) {
+      const result = await requestPasswordResetAction(data);
+      if (!result.ok) {
         setServerError(result.error);
+        return;
       }
+      setSubmittedEmail(data.email);
     });
   };
+
+  if (submittedEmail) {
+    return (
+      <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
+        <p className="font-medium text-neutral-900">Check your email</p>
+        <p>
+          If an account exists for{' '}
+          <span className="font-medium">{submittedEmail}</span>, we sent a
+          password reset link. Click the link to choose a new password.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -57,34 +71,13 @@ export function LoginForm() {
           <p className="text-xs text-red-600">{errors.email.message}</p>
         ) : null}
       </div>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="password">Password</Label>
-          <Link
-            href="/reset-password"
-            className="text-xs text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </div>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          disabled={isPending}
-          {...register('password')}
-        />
-        {errors.password ? (
-          <p className="text-xs text-red-600">{errors.password.message}</p>
-        ) : null}
-      </div>
       {serverError ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {serverError}
         </p>
       ) : null}
       <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending ? 'Signing in…' : 'Log in'}
+        {isPending ? 'Sending…' : 'Send reset link'}
       </Button>
     </form>
   );

@@ -24,8 +24,18 @@ export type ExtractedFeature = z.infer<typeof ExtractedFeatureSchema>;
 
 export const ExtractedCreditSchema = z.object({
   name: z.string().min(1),
-  // Signed: a $10/mo discount line item shows as -1000.
-  monthly_cents: z.number().int(),
+  // Credits as printed on the bill are non-positive: a $10/mo discount shows
+  // as -1000, and the rare zero-value placeholder shows as 0. A positive
+  // value here means the LLM (or carrier normalizer) flipped the sign and
+  // would silently turn a $10 discount into a $10 charge once we treat the
+  // value as signed elsewhere — reject at the schema boundary so we never
+  // persist that.
+  monthly_cents: z
+    .number()
+    .int()
+    .refine((v) => v <= 0, {
+      message: 'Credit monthly_cents must be 0 or negative (signed)',
+    }),
   expires_on: z.string().date().nullable(),
   is_promo: z.boolean().default(true),
 });

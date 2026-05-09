@@ -9,7 +9,7 @@ function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
 }
 
 describe('account_level_promo_about_to_expire rule', () => {
-  it('fires high severity when account credit expires within 14 days', async () => {
+  it('does not fire when account credit expires within 30 days (covered by expired_promo_credit)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -24,16 +24,10 @@ describe('account_level_promo_about_to_expire rule', () => {
       ],
     });
     const findings = await accountPromoExpiringSoonRule.evaluate(c);
-    expect(findings).toHaveLength(1);
-    const f = findings[0];
-    if (!f) throw new Error('expected finding');
-    expect(f.severity).toBe('high');
-    expect(f.estimated_monthly_savings_cents).toBe(2500);
-    expect(f.affected_line_indexes).toEqual([]);
-    expect(f.affected_account_indexes).toEqual([0]);
+    expect(findings).toHaveLength(0);
   });
 
-  it('fires medium severity when account credit expires in 15-60 days', async () => {
+  it('fires medium severity when account credit expires in 31-60 days', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -53,6 +47,47 @@ describe('account_level_promo_about_to_expire rule', () => {
     if (!f) throw new Error('expected finding');
     expect(f.severity).toBe('medium');
     expect(f.estimated_monthly_savings_cents).toBe(3000);
+  });
+
+  it('does not fire at the 30-day boundary (handled by expired_promo_credit)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          account_level_credits: [
+            makeCredit({
+              name: 'Boundary Credit',
+              monthly_cents: -1000,
+              expires_on: '2026-06-07', // exactly 30 days from TEST_TODAY
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await accountPromoExpiringSoonRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('fires at the 31-day boundary (start of this rule\'s window)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          account_level_credits: [
+            makeCredit({
+              name: 'Start of window',
+              monthly_cents: -1000,
+              expires_on: '2026-06-08', // exactly 31 days from TEST_TODAY
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await accountPromoExpiringSoonRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.severity).toBe('medium');
+    const evidence = f.evidence as { days_until_expiry: number };
+    expect(evidence.days_until_expiry).toBe(31);
   });
 
   it('does not fire when account credit expires more than 60 days out', async () => {
@@ -117,7 +152,7 @@ describe('account_level_promo_about_to_expire rule', () => {
             makeCredit({
               name: 'Signed Negative',
               monthly_cents: -4200,
-              expires_on: '2026-05-20', // 12 days from TEST_TODAY
+              expires_on: '2026-06-20', // 43 days from TEST_TODAY
             }),
           ],
         }),
@@ -127,7 +162,7 @@ describe('account_level_promo_about_to_expire rule', () => {
     const f = findings[0];
     if (!f) throw new Error('expected finding');
     expect(f.estimated_monthly_savings_cents).toBe(4200);
-    expect(f.severity).toBe('high');
+    expect(f.severity).toBe('medium');
   });
 
   it('emits one finding per qualifying credit across multiple accounts', async () => {
@@ -135,11 +170,12 @@ describe('account_level_promo_about_to_expire rule', () => {
       accounts: [
         makeAccount({
           label: 'Account A',
+          // 0..30-day credits are NOT this rule's responsibility anymore.
           account_level_credits: [
             makeCredit({
-              name: 'Credit A',
+              name: 'Credit A (in window)',
               monthly_cents: -1000,
-              expires_on: '2026-05-12', // 4 days
+              expires_on: '2026-06-15', // 38 days
             }),
           ],
         }),
@@ -147,14 +183,19 @@ describe('account_level_promo_about_to_expire rule', () => {
           label: 'Account B',
           account_level_credits: [
             makeCredit({
-              name: 'Credit B',
+              name: 'Credit B (in window)',
               monthly_cents: -2000,
-              expires_on: '2026-06-20', // 43 days
+              expires_on: '2026-07-01', // 54 days
             }),
             makeCredit({
               name: 'Credit B-2 (no expiry)',
               monthly_cents: -500,
               expires_on: null,
+            }),
+            makeCredit({
+              name: 'Credit B-3 (under 30 days, other rule)',
+              monthly_cents: -300,
+              expires_on: '2026-05-20', // 12 days — handled by expired_promo_credit
             }),
           ],
         }),
@@ -162,10 +203,9 @@ describe('account_level_promo_about_to_expire rule', () => {
     });
     const findings = await accountPromoExpiringSoonRule.evaluate(c);
     expect(findings).toHaveLength(2);
-    expect(findings[0]?.severity).toBe('high');
     expect(findings[0]?.affected_account_indexes).toEqual([0]);
-    expect(findings[1]?.severity).toBe('medium');
     expect(findings[1]?.affected_account_indexes).toEqual([1]);
+    findings.forEach((f) => expect(f.severity).toBe('medium'));
   });
 
   it('records days_until_expiry in evidence', async () => {
@@ -176,7 +216,7 @@ describe('account_level_promo_about_to_expire rule', () => {
             makeCredit({
               name: 'Tracked Credit',
               monthly_cents: -2000,
-              expires_on: '2026-05-22', // 14 days
+              expires_on: '2026-06-22', // 45 days
             }),
           ],
         }),
@@ -192,9 +232,8 @@ describe('account_level_promo_about_to_expire rule', () => {
       monthly_cents: number;
     };
     expect(evidence.credit_name).toBe('Tracked Credit');
-    expect(evidence.expires_on).toBe('2026-05-22');
-    expect(evidence.days_until_expiry).toBe(14);
+    expect(evidence.expires_on).toBe('2026-06-22');
+    expect(evidence.days_until_expiry).toBe(45);
     expect(evidence.monthly_cents).toBe(-2000);
-    expect(f.severity).toBe('high'); // boundary: days <= 14
   });
 });

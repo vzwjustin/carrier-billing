@@ -32,9 +32,11 @@ export async function handleStripeEvent(
       return;
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
+      // C4 — pass event type so the handler can attribute the upsert.
       await onSubscriptionUpserted(
         event.data.object as Stripe.Subscription,
         supabase,
+        event.type,
       );
       return;
     case 'customer.subscription.deleted':
@@ -112,28 +114,55 @@ async function onCheckoutSessionCompleted(
 async function onSubscriptionUpserted(
   subscription: Stripe.Subscription,
   supabase: SupabaseClient,
+  eventType:
+    | 'customer.subscription.created'
+    | 'customer.subscription.updated',
 ): Promise<void> {
+  // C4 — observability breadcrumb so Sentry traces show which Stripe event
+  // type triggered this upsert (created vs updated). No behavior change.
+  Sentry.addBreadcrumb({
+    category: 'stripe',
+    message: 'subscription upserted',
+    level: 'info',
+    data: {
+      event_type: eventType,
+      subscription_id: subscription.id,
+      status: subscription.status,
+    },
+  });
+
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
     Sentry.captureMessage(
       'subscription event without customer id',
-      { level: 'warning', extra: { subscription_id: subscription.id } },
+      {
+        level: 'warning',
+        extra: { subscription_id: subscription.id, event_type: eventType },
+      },
     );
     return;
   }
 
-  const { error } = await supabase
+  // B7 — verify the update actually matched a profile. A 0-row result means
+  // the customer id is unknown to us (orphaned customer, race with a profile
+  // delete, or Stripe sending an event for a customer we never persisted).
+  // In that case throw so the webhook surfaces 5xx and Stripe retries; >1 row
+  // means data corruption (duplicate stripe_customer_id) and must throw too.
+  const { data, error } = await supabase
     .from('profiles')
     .update({
       subscription_id: subscription.id,
       subscription_status: normalizeSubscriptionStatus(subscription.status),
       updated_at: new Date().toISOString(),
     })
-    .eq('stripe_customer_id', customerId);
+    .eq('stripe_customer_id', customerId)
+    .select('id');
 
   if (error) {
     throw new Error(`profile subscription update failed: ${error.message}`);
   }
+
+  assertExactlyOneProfileMatched(data, customerId, eventType);
 }
 
 async function onSubscriptionDeleted(
@@ -149,18 +178,25 @@ async function onSubscriptionDeleted(
     return;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .update({
       subscription_status: 'canceled',
       subscription_id: null,
       updated_at: new Date().toISOString(),
     })
-    .eq('stripe_customer_id', customerId);
+    .eq('stripe_customer_id', customerId)
+    .select('id');
 
   if (error) {
     throw new Error(`profile subscription cancel failed: ${error.message}`);
   }
+
+  assertExactlyOneProfileMatched(
+    data,
+    customerId,
+    'customer.subscription.deleted',
+  );
 }
 
 async function onInvoicePaymentFailed(
@@ -183,17 +219,44 @@ async function onInvoicePaymentFailed(
     data: { invoice_id: invoice.id, customer: customerId },
   });
 
-  const { error } = await supabase
+  // We need the userId + customer email to emit the notification marker, so
+  // resolve the profile via the same UPDATE that flips status to past_due.
+  const { data, error } = await supabase
     .from('profiles')
     .update({
       subscription_status: 'past_due',
       updated_at: new Date().toISOString(),
     })
-    .eq('stripe_customer_id', customerId);
+    .eq('stripe_customer_id', customerId)
+    .select('id, email');
 
   if (error) {
     throw new Error(`profile past_due update failed: ${error.message}`);
   }
+
+  const matched = assertExactlyOneProfileMatched(
+    data,
+    customerId,
+    'invoice.payment_failed',
+  );
+
+  // C3 — payment-failed notification marker.
+  //
+  // We don't own the email pipeline (Stream A) yet, so we emit a structured
+  // log line that downstream tooling can pick up. A future Inngest function
+  // should consume `audit.subscription_payment_failed` and call the Resend
+  // template. Tracked as deferred work; no email send wired today.
+  const profile = matched as { id: string; email?: string | null };
+  console.log(
+    '[stripe.payment_failed]',
+    JSON.stringify({
+      event: 'audit.subscription_payment_failed',
+      userId: profile.id,
+      customerEmail: profile.email ?? null,
+      stripeCustomerId: customerId,
+      invoiceId: invoice.id,
+    }),
+  );
 }
 
 async function trackCheckoutCompleted(
@@ -211,6 +274,47 @@ async function trackCheckoutCompleted(
 }
 
 // --- Helpers ---------------------------------------------------------------
+
+/**
+ * Verify that a profile-update affected exactly one row when matching by
+ * `stripe_customer_id`.
+ *
+ * - 0 rows: customer id is unknown to us. Log to Sentry and throw — the
+ *   webhook will surface 5xx and Stripe will retry, giving any racing
+ *   profile-write a chance to land first.
+ * - 1 row: happy path; returns the matched row for downstream use.
+ * - >1 rows: data corruption (duplicate stripe_customer_id across profiles).
+ *   Throw immediately so we surface and repair manually.
+ */
+function assertExactlyOneProfileMatched<T extends { id: string }>(
+  rows: T[] | null,
+  customerId: string,
+  eventType: string,
+): T {
+  const matched = rows ?? [];
+  if (matched.length === 0) {
+    Sentry.captureMessage('stripe webhook matched 0 profiles by customer id', {
+      level: 'warning',
+      extra: { customerId, eventType },
+    });
+    throw new Error(
+      `profile lookup by stripe_customer_id matched 0 rows (${eventType})`,
+    );
+  }
+  if (matched.length > 1) {
+    Sentry.captureMessage(
+      'stripe webhook matched multiple profiles by customer id',
+      {
+        level: 'error',
+        extra: { customerId, eventType, matchCount: matched.length },
+      },
+    );
+    throw new Error(
+      `profile lookup by stripe_customer_id matched ${matched.length} rows (${eventType}) — data corruption`,
+    );
+  }
+  return matched[0] as T;
+}
 
 type ProfilePatch = {
   stripe_customer_id?: string;

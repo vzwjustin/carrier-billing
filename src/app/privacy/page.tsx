@@ -139,14 +139,18 @@ export default function PrivacyPage(): React.ReactElement {
   );
 }
 
+// TODO(launch): replace draft notice with reviewed version
+const LAST_UPDATED = 'May 8, 2026';
+
 function PlaceholderBanner(): React.ReactElement {
   return (
     <div
       role="note"
       className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
     >
-      <strong className="font-semibold">PLACEHOLDER</strong> &mdash; finalize
-      before launch. This document has not been reviewed by counsel.
+      <strong className="font-semibold">DRAFT</strong> &mdash; this document
+      has not yet been reviewed by counsel. Last updated:{' '}
+      <span className="font-medium">{LAST_UPDATED}</span>.
     </div>
   );
 }

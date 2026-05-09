@@ -1,0 +1,176 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * Tests for POST /api/audits/[id]/start — the route that transitions an
+ * audit from `pending` (file in storage) to the Inngest worker.
+ *
+ * These cover B2 (idempotency key on `bill.uploaded` send): a duplicate /start
+ * POST or a browser/proxy retry must not enqueue the worker twice. We assert
+ * the `id` field is present and is anchored to the audit id so Inngest's
+ * de-dupe (window: ~24h) collapses retries onto a single run.
+ */
+
+// ─── Mocks ────────────────────────────────────────────────────────────────
+type GetUserResult = {
+  data: { user: { id: string } | null };
+  error: null;
+};
+type AuditRowResp = {
+  data: { id: string; user_id: string; status: string; storage_path: string } | null;
+  error: null | { message: string };
+};
+
+const getUserMock = vi.fn<() => Promise<GetUserResult>>();
+const auditsSelectMock = vi.fn<() => Promise<AuditRowResp>>();
+const inngestSendMock = vi.fn(async (_event: unknown) => undefined);
+
+// `from('audits').select(...).eq(...).maybeSingle()` chain
+function makeFromChain() {
+  return {
+    select: () => ({
+      eq: () => ({
+        maybeSingle: () => auditsSelectMock(),
+      }),
+    }),
+  };
+}
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: { getUser: () => getUserMock() },
+    from: (_table: string) => makeFromChain(),
+  }),
+}));
+
+vi.mock('@/inngest/client', () => ({
+  inngest: { send: (event: unknown) => inngestSendMock(event) },
+}));
+
+vi.mock('@/env', () => ({
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder',
+  },
+}));
+
+// Import after mocks register.
+import { POST } from '@/app/api/audits/[id]/start/route';
+
+const TEST_AUDIT_ID = '11111111-1111-4111-8111-111111111111';
+const TEST_USER_ID = '22222222-2222-4222-8222-222222222222';
+
+function makeContext() {
+  return { params: Promise.resolve({ id: TEST_AUDIT_ID }) };
+}
+
+beforeEach(() => {
+  getUserMock.mockReset();
+  auditsSelectMock.mockReset();
+  inngestSendMock.mockReset();
+
+  getUserMock.mockResolvedValue({
+    data: { user: { id: TEST_USER_ID } },
+    error: null,
+  });
+  auditsSelectMock.mockResolvedValue({
+    data: {
+      id: TEST_AUDIT_ID,
+      user_id: TEST_USER_ID,
+      status: 'pending',
+      storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+    },
+    error: null,
+  });
+});
+
+describe('POST /api/audits/[id]/start', () => {
+  it('happy path: returns 200 and sends bill.uploaded with idempotency id', async () => {
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(200);
+
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    const sent = inngestSendMock.mock.calls[0]?.[0] as
+      | undefined
+      | {
+          id?: string;
+          name?: string;
+          data?: Record<string, unknown>;
+        };
+    expect(sent).toBeDefined();
+    expect(sent?.name).toBe('bill.uploaded');
+    // (B2) Idempotency key — must be present and anchored to the audit id.
+    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded`);
+    expect(sent?.data?.auditId).toBe(TEST_AUDIT_ID);
+    expect(sent?.data?.userId).toBe(TEST_USER_ID);
+    expect(sent?.data?.storagePath).toBe(`${TEST_USER_ID}/audit/bill.pdf`);
+  });
+
+  it('duplicate POST sends two events with the SAME idempotency id (Inngest dedupes)', async () => {
+    // Two browser/proxy retries hitting /start before the row is moved off
+    // `pending`. Both should enqueue events; both events should carry the
+    // identical `id` so Inngest's server-side dedupe collapses them to one
+    // worker run.
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const r1 = await POST(req, makeContext());
+    const r2 = await POST(req, makeContext());
+
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(inngestSendMock).toHaveBeenCalledTimes(2);
+    const a = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
+    const b = inngestSendMock.mock.calls[1]?.[0] as { id?: string };
+    expect(a?.id).toBeDefined();
+    expect(a?.id).toBe(b?.id);
+  });
+
+  it('returns 401 when there is no authenticated user', async () => {
+    getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(401);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the audit is not pending — no event sent', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: {
+        id: TEST_AUDIT_ID,
+        user_id: TEST_USER_ID,
+        status: 'extracting',
+        storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+      },
+      error: null,
+    });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(409);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the audit is owned by another user', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: {
+        id: TEST_AUDIT_ID,
+        user_id: 'someone-else',
+        status: 'pending',
+        storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+      },
+      error: null,
+    });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(404);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+});

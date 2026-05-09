@@ -93,6 +93,65 @@ export class ExtractionError extends Error {
   }
 }
 
+/**
+ * Strip raw-bill-content fields from an ExtractionError.details payload before
+ * it crosses a logging boundary. Per CLAUDE.md §1#9, logs must never carry
+ * employee names, phone numbers, account numbers, or any extracted bill body.
+ *
+ * Redaction policy:
+ *  - Drop top-level keys named `raw`, `text`, `content` (these have historically
+ *    held verbatim model output / pre-validation parsed bill JSON).
+ *  - For every other string-valued field, replace digit runs of 4+ characters
+ *    with `[REDACTED]` so any leaked phone tail / account tail / dollar figure
+ *    is scrubbed in case a future call site stuffs them into a different key.
+ *  - Nested objects/arrays are walked recursively. Functions and class
+ *    instances are dropped to avoid serialization surprises.
+ *
+ * Validation issue arrays from zod are preserved structurally (path + message
+ * + code) but their `.received` / raw values are scrubbed via the same string
+ * scrubber, since those echo the offending input.
+ *
+ * Returns a *new* object — never mutates the input.
+ */
+export function redactDetails(details: unknown): unknown {
+  return redactValue(details, 0);
+}
+
+const REDACTED_KEYS = new Set(['raw', 'text', 'content', 'received']);
+const DIGIT_RUN = /\d{4,}/g;
+// Maximum recursion depth — defensive guard against pathological cycles.
+const MAX_DEPTH = 6;
+
+function redactValue(value: unknown, depth: number): unknown {
+  if (depth > MAX_DEPTH) return '[REDACTED]';
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return scrubString(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue(item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (REDACTED_KEYS.has(key)) {
+        out[key] = '[REDACTED]';
+        continue;
+      }
+      out[key] = redactValue(child, depth + 1);
+    }
+    return out;
+  }
+  // Functions, symbols, etc. — drop them.
+  return undefined;
+}
+
+function scrubString(value: string): string {
+  // Only scrub strings that look like they could carry bill content. Cap the
+  // length we keep so a leaked verbatim model dump can never blow up logs.
+  const truncated = value.length > 500 ? value.slice(0, 500) + '…' : value;
+  return truncated.replace(DIGIT_RUN, '[REDACTED]');
+}
+
 type DocumentBlock = {
   type: 'document';
   source: { type: 'base64'; media_type: 'application/pdf'; data: string };

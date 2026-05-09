@@ -8,9 +8,8 @@ import {
   isHotspotDevice,
   isPlanNameDeprecated,
   monthsUntil,
-  sumLineCharges,
 } from '@/rules/helpers';
-import { makeLine, TEST_TODAY } from './fixtures';
+import { TEST_TODAY } from './fixtures';
 
 describe('monthsUntil', () => {
   it('positive when date is in the future', () => {
@@ -96,22 +95,6 @@ describe('isPlanNameDeprecated', () => {
   });
   it('false when no patterns match', () => {
     expect(isPlanNameDeprecated('Business Unlimited Pro', [/More\s*Everything/i])).toBe(false);
-  });
-});
-
-describe('sumLineCharges', () => {
-  it('adds base + features + dpp and applies signed credits', () => {
-    const line = makeLine({
-      plan_base_cents: 5000,
-      features: [{ name: 'Insurance', category: 'insurance', monthly_cents: 1500 }],
-      dpp_installments: [
-        { device: 'iPhone 15', monthly_cents: 3000, remaining_payments: 10, total_payments: 36 },
-      ],
-      credits: [
-        { name: 'Loyalty', monthly_cents: -1000, expires_on: null, is_promo: true },
-      ],
-    });
-    expect(sumLineCharges(line)).toBe(8500);
   });
 });
 

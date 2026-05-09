@@ -96,9 +96,9 @@ describe('completed_device_payment_still_billed rule', () => {
     expect(findings).toHaveLength(0);
   });
 
-  it('fires via the computed-remaining branch (total - paid === 0)', async () => {
-    // total - (total - remaining) === remaining, so this exercises the
-    // defensive computed path with remaining === 0 explicitly.
+  it('fires when remaining_payments is 0 regardless of total_payments value', async () => {
+    // total_payments is captured for evidence only; the rule trusts
+    // remaining_payments directly.
     const c = ctx({
       accounts: [
         makeAccount({
@@ -122,5 +122,34 @@ describe('completed_device_payment_still_billed rule', () => {
     const f = findings[0];
     if (!f) throw new Error('expected finding');
     expect(f.estimated_monthly_savings_cents).toBe(3499);
+    expect(f.evidence).toMatchObject({
+      remaining_payments: 0,
+      total_payments: 24,
+    });
+  });
+
+  it('does not fire when remaining_payments is null even if total_payments is present', async () => {
+    // Without an explicit remaining count we have no positive signal that
+    // the plan is complete — the rule should stay silent.
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              dpp_installments: [
+                makeDpp({
+                  device: 'iPhone 13',
+                  monthly_cents: 2799,
+                  remaining_payments: null,
+                  total_payments: 36,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await completedDevicePaymentRule.evaluate(c);
+    expect(findings).toHaveLength(0);
   });
 });

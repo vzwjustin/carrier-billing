@@ -23,7 +23,10 @@ export const orphanInsuranceRule: Rule = {
         //   3. Plan base is $0 and line isn't suspended → "feature-only" zombie line
         //      that's accumulating add-ons against nothing. (Some carriers leave
         //      lines like this when a device is returned but features aren't audited.)
-        //   4. Suspended line with a BYOD-marked device → still an orphan.
+        // is_byod is captured in evidence for context, but does NOT add a
+        // separate trigger reason: a suspended BYOD line is already covered
+        // by `line_suspended`, and pushing both produced duplicate-looking
+        // reasons in the evidence array.
         const triggerReasons: string[] = [];
         const isSuspended = line.is_suspended;
         const noDevice =
@@ -37,7 +40,6 @@ export const orphanInsuranceRule: Rule = {
         if (isSuspended) triggerReasons.push('line_suspended');
         if (noDevice) triggerReasons.push('no_device_no_dpp');
         if (isFeatureOnlyZombie) triggerReasons.push('feature_only_zombie');
-        if (isSuspended && isByod) triggerReasons.push('suspended_byod');
 
         if (triggerReasons.length === 0) return;
 

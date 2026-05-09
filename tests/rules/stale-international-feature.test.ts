@@ -9,7 +9,7 @@ function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
 }
 
 describe('stale_international_feature rule', () => {
-  it('fires low severity when an international feature is present', async () => {
+  it('fires info severity when an international feature is present', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -31,7 +31,7 @@ describe('stale_international_feature rule', () => {
     expect(findings).toHaveLength(1);
     const f = findings[0];
     if (!f) throw new Error('expected finding');
-    expect(f.severity).toBe('low');
+    expect(f.severity).toBe('info');
     expect(f.estimated_monthly_savings_cents).toBe(0);
     expect(f.confidence).toBe(0.6);
   });

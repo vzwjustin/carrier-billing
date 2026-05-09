@@ -10,6 +10,8 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic';
 
+const PAGE_SIZE = 25;
+
 interface AuditListRow {
   id: string;
   created_at: string;
@@ -28,7 +30,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending',
+  pending: 'Queued',
   extracting: 'Extracting',
   analyzing: 'Analyzing',
   completed: 'Completed',
@@ -65,18 +67,44 @@ function StatusBadge({ status }: { status: string }): React.JSX.Element {
   );
 }
 
-export default async function AuditsPage(): Promise<React.JSX.Element> {
+interface AuditsPageProps {
+  searchParams?: Promise<{ after?: string | string[] }>;
+}
+
+function parseAfter(raw: string | string[] | undefined): string | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  // Validate as ISO timestamp; reject anything else to avoid query injection.
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return raw;
+}
+
+export default async function AuditsPage(
+  props: AuditsPageProps,
+): Promise<React.JSX.Element> {
+  const search = props.searchParams ? await props.searchParams : undefined;
+  const after = parseAfter(search?.after);
+
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('audits')
     .select(
       'id,created_at,original_filename,carrier,status,estimated_annual_savings_cents',
     )
     .order('created_at', { ascending: false })
-    .limit(50)
-    .returns<AuditListRow[]>();
+    .limit(PAGE_SIZE + 1);
 
-  const rows = data ?? [];
+  if (after) {
+    query = query.lt('created_at', after);
+  }
+
+  const { data, error } = await query.returns<AuditListRow[]>();
+
+  const all = data ?? [];
+  const hasNextPage = all.length > PAGE_SIZE;
+  const rows = hasNextPage ? all.slice(0, PAGE_SIZE) : all;
+  const lastRow = rows[rows.length - 1];
+  const nextCursor = hasNextPage && lastRow ? lastRow.created_at : null;
 
   return (
     <div className="space-y-6">
@@ -98,11 +126,13 @@ export default async function AuditsPage(): Promise<React.JSX.Element> {
       {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
           <p className="text-sm text-neutral-700">
-            No audits yet. Upload your first bill.
+            {after
+              ? 'No more audits to show.'
+              : 'No audits yet. Upload your first bill.'}
           </p>
           <div className="mt-4">
-            <Link href="/audits/new">
-              <Button>Upload a bill</Button>
+            <Link href={after ? '/audits' : '/audits/new'}>
+              <Button>{after ? 'Back to start' : 'Upload a bill'}</Button>
             </Link>
           </div>
         </div>
@@ -156,6 +186,31 @@ export default async function AuditsPage(): Promise<React.JSX.Element> {
           </table>
         </div>
       )}
+
+      {(after || nextCursor) && rows.length > 0 ? (
+        <div className="flex items-center justify-between">
+          <div>
+            {after ? (
+              <Link href="/audits">
+                <Button variant="outline" size="sm">
+                  ← First page
+                </Button>
+              </Link>
+            ) : null}
+          </div>
+          <div>
+            {nextCursor ? (
+              <Link
+                href={`/audits?after=${encodeURIComponent(nextCursor)}`}
+              >
+                <Button variant="outline" size="sm">
+                  Next →
+                </Button>
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

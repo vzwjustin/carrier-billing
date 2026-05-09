@@ -245,6 +245,7 @@ function WhatWeFind(): React.ReactElement {
 }
 
 function SampleReport(): React.ReactElement {
+  // TODO(launch): replace with real anonymized report screenshot
   return (
     <section className="border-b border-neutral-200">
       <div className="mx-auto w-full max-w-6xl px-4 py-16">
@@ -257,81 +258,23 @@ function SampleReport(): React.ReactElement {
           </p>
         </div>
         <div className="mt-10 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <div className="aspect-[16/9] w-full bg-neutral-100">
-            <svg
-              viewBox="0 0 1600 900"
-              xmlns="http://www.w3.org/2000/svg"
-              role="img"
-              aria-label="Sample audit report preview"
-              className="h-full w-full"
-            >
-              <rect width="1600" height="900" fill="#f5f5f5" />
-              <rect
-                x="80"
-                y="80"
-                width="1440"
-                height="120"
-                rx="12"
-                fill="#ffffff"
-                stroke="#e5e5e5"
-              />
-              <rect x="120" y="120" width="280" height="20" rx="4" fill="#d4d4d4" />
-              <rect x="120" y="150" width="180" height="32" rx="4" fill="#171717" />
-              <rect
-                x="80"
-                y="240"
-                width="700"
-                height="280"
-                rx="12"
-                fill="#ffffff"
-                stroke="#e5e5e5"
-              />
-              <rect x="120" y="280" width="220" height="16" rx="4" fill="#d4d4d4" />
-              <rect x="120" y="310" width="380" height="48" rx="4" fill="#171717" />
-              <rect x="120" y="380" width="320" height="14" rx="4" fill="#a3a3a3" />
-              <rect x="120" y="410" width="260" height="14" rx="4" fill="#a3a3a3" />
-              <rect x="120" y="440" width="300" height="14" rx="4" fill="#a3a3a3" />
-              <rect
-                x="820"
-                y="240"
-                width="700"
-                height="280"
-                rx="12"
-                fill="#ffffff"
-                stroke="#e5e5e5"
-              />
-              <rect x="860" y="280" width="220" height="16" rx="4" fill="#d4d4d4" />
-              <rect x="860" y="310" width="600" height="14" rx="4" fill="#a3a3a3" />
-              <rect x="860" y="335" width="540" height="14" rx="4" fill="#a3a3a3" />
-              <rect x="860" y="360" width="580" height="14" rx="4" fill="#a3a3a3" />
-              <rect
-                x="80"
-                y="560"
-                width="1440"
-                height="260"
-                rx="12"
-                fill="#ffffff"
-                stroke="#e5e5e5"
-              />
-              <rect x="120" y="600" width="240" height="16" rx="4" fill="#d4d4d4" />
-              <rect x="120" y="640" width="1360" height="14" rx="4" fill="#e5e5e5" />
-              <rect x="120" y="670" width="1360" height="14" rx="4" fill="#e5e5e5" />
-              <rect x="120" y="700" width="1360" height="14" rx="4" fill="#e5e5e5" />
-              <rect x="120" y="730" width="1360" height="14" rx="4" fill="#e5e5e5" />
-              <text
-                x="800"
-                y="470"
-                textAnchor="middle"
-                fontFamily="ui-sans-serif, system-ui, sans-serif"
-                fontSize="28"
-                fill="#737373"
-              >
-                Sample report
-              </text>
-            </svg>
+          <div className="flex aspect-[16/9] w-full items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100 px-8">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-medium uppercase tracking-wide text-neutral-50">
+                Preview
+              </span>
+              <p className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl">
+                Sample report — coming soon
+              </p>
+              <p className="max-w-md text-sm text-neutral-600">
+                A full anonymized example will appear here at launch. In the
+                meantime, run a free preview to see the real report on your
+                own bill.
+              </p>
+            </div>
           </div>
           <div className="border-t border-neutral-200 px-6 py-4 text-sm text-neutral-600">
-            $1,847/mo in waste found on this 80-line Verizon Business
+            $1,847/mo in waste found on a typical 80-line Verizon Business
             account &mdash; anonymized.
           </div>
         </div>

@@ -114,6 +114,60 @@ describe('ExtractedBillSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a zero monthly_cents on a credit (rare placeholder credit)', () => {
+    const bill = minimalBill();
+    const firstAccount = bill.accounts[0];
+    if (!firstAccount) throw new Error('fixture missing account');
+    const firstLine = firstAccount.lines[0];
+    if (!firstLine) throw new Error('fixture missing line');
+    firstLine.credits = [
+      {
+        name: 'Pending Promo',
+        monthly_cents: 0,
+        expires_on: null,
+        is_promo: true,
+      },
+    ];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a positive monthly_cents on a credit (credits must be 0 or negative)', () => {
+    // Guards against an LLM/extraction sign flip that would silently turn a
+    // $10 discount into a $10 charge once treated as signed elsewhere.
+    const bill = minimalBill();
+    const firstAccount = bill.accounts[0];
+    if (!firstAccount) throw new Error('fixture missing account');
+    const firstLine = firstAccount.lines[0];
+    if (!firstLine) throw new Error('fixture missing line');
+    firstLine.credits = [
+      {
+        name: 'Wrong-sign credit',
+        monthly_cents: 1000,
+        expires_on: '2026-12-31',
+        is_promo: true,
+      },
+    ];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a positive monthly_cents on an account-level credit', () => {
+    const bill = minimalBill();
+    const firstAccount = bill.accounts[0];
+    if (!firstAccount) throw new Error('fixture missing account');
+    firstAccount.account_level_credits = [
+      {
+        name: 'Wrong-sign account credit',
+        monthly_cents: 2500,
+        expires_on: null,
+        is_promo: true,
+      },
+    ];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
   it('rejects an empty accounts array', () => {
     const bill = minimalBill();
     bill.accounts = [];

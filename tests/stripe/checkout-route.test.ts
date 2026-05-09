@@ -12,25 +12,72 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-// Admin supabase: model the chained .from(...).select(...).eq(...).maybeSingle()
-// for profile lookup, and .from(...).update(...).eq(...) for the customer id
-// persistence.
-type ProfileResult = {
-  data: { id: string; stripe_customer_id: string | null } | null;
+// Admin supabase: model the chains used by the checkout route.
+//
+//   .from('profiles').select('id, stripe_customer_id').eq('id', userId).maybeSingle()
+//   .from('profiles').update(patch).eq('id', userId)                              // legacy
+//   .from('profiles').update(patch).eq('id', userId).is('stripe_customer_id', null).select('id')   // B6
+//   .from('profiles').select('stripe_customer_id').eq('id', userId).maybeSingle() // B6 reread
+type ProfileSelectResult = {
+  data:
+    | { id: string; stripe_customer_id: string | null }
+    | { stripe_customer_id: string | null }
+    | null;
+  error: null | { message: string };
+};
+type ConditionalUpdateResult = {
+  data: Array<{ id: string }> | null;
   error: null | { message: string };
 };
 
-const maybeSingleMock = vi.fn<() => Promise<ProfileResult>>();
+const maybeSingleQueue: ProfileSelectResult[] = [];
+const conditionalUpdateQueue: ConditionalUpdateResult[] = [];
+
+const maybeSingleMock = vi.fn(async (): Promise<ProfileSelectResult> => {
+  return (
+    maybeSingleQueue.shift() ?? {
+      data: null,
+      error: { message: 'mock not configured' },
+    }
+  );
+});
+
 const updateEqMock = vi.fn<() => Promise<{ error: null | { message: string } }>>();
-const updateMock = vi.fn((_patch: unknown) => ({ eq: () => updateEqMock() }));
+const updateMock = vi.fn();
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     from: () => ({
-      select: () => ({
-        eq: () => ({ maybeSingle: () => maybeSingleMock() }),
+      select: (_cols: string) => ({
+        eq: (_col: string, _val: string) => ({
+          maybeSingle: () => maybeSingleMock(),
+        }),
       }),
-      update: (patch: unknown) => updateMock(patch),
+      update: (patch: unknown) => {
+        updateMock(patch);
+        const eqResult = {
+          // Legacy direct await: `.update().eq()` → `{ error }`
+          then(resolve: (v: { error: null | { message: string } }) => void) {
+            updateEqMock().then(resolve);
+          },
+          // B6 conditional path: `.update().eq().is().select(...)`
+          is(_col: string, _val: unknown) {
+            return {
+              select(_sel: string) {
+                return Promise.resolve(
+                  conditionalUpdateQueue.shift() ?? {
+                    data: [{ id: 'profile_default' }],
+                    error: null,
+                  },
+                );
+              },
+            };
+          },
+        };
+        return {
+          eq: () => eqResult,
+        };
+      },
     }),
   }),
 }));
@@ -38,14 +85,24 @@ vi.mock('@/lib/supabase/admin', () => ({
 const customersCreateMock = vi.fn<
   (args: { email?: string; metadata?: Record<string, string> }) => Promise<{ id: string }>
 >();
+const customersDelMock = vi.fn<(id: string) => Promise<{ id: string; deleted: boolean }>>();
 const sessionsCreateMock = vi.fn<
   (args: Record<string, unknown>) => Promise<{ url: string | null }>
 >();
 
 vi.mock('@/lib/stripe/client', () => ({
   getStripe: () => ({
-    customers: { create: (args: Parameters<typeof customersCreateMock>[0]) => customersCreateMock(args) },
-    checkout: { sessions: { create: (args: Parameters<typeof sessionsCreateMock>[0]) => sessionsCreateMock(args) } },
+    customers: {
+      create: (args: Parameters<typeof customersCreateMock>[0]) =>
+        customersCreateMock(args),
+      del: (id: string) => customersDelMock(id),
+    },
+    checkout: {
+      sessions: {
+        create: (args: Parameters<typeof sessionsCreateMock>[0]) =>
+          sessionsCreateMock(args),
+      },
+    },
   }),
 }));
 
@@ -69,10 +126,13 @@ function makeRequest(body: unknown): Request {
 
 beforeEach(() => {
   getUserMock.mockReset();
-  maybeSingleMock.mockReset();
+  maybeSingleMock.mockClear();
+  maybeSingleQueue.length = 0;
+  conditionalUpdateQueue.length = 0;
   updateMock.mockClear();
   updateEqMock.mockReset();
   customersCreateMock.mockReset();
+  customersDelMock.mockReset();
   sessionsCreateMock.mockReset();
 });
 
@@ -89,6 +149,10 @@ describe('POST /api/stripe/checkout', () => {
     getUserMock.mockResolvedValue({
       data: { user: { id: 'user_1', email: 'u@example.com' } },
     });
+    maybeSingleQueue.push({
+      data: { id: 'user_1', stripe_customer_id: 'cus_existing' },
+      error: null,
+    });
 
     const res = await POST(makeRequest({ mode: 'lifetime' }));
     expect(res.status).toBe(400);
@@ -98,12 +162,13 @@ describe('POST /api/stripe/checkout', () => {
     getUserMock.mockResolvedValue({
       data: { user: { id: 'user_1', email: 'u@example.com' } },
     });
-    maybeSingleMock.mockResolvedValue({
+    maybeSingleQueue.push({
       data: { id: 'user_1', stripe_customer_id: null },
       error: null,
     });
     customersCreateMock.mockResolvedValue({ id: 'cus_new' });
-    updateEqMock.mockResolvedValue({ error: null });
+    // The conditional update wins (1 row matched).
+    conditionalUpdateQueue.push({ data: [{ id: 'user_1' }], error: null });
     sessionsCreateMock.mockResolvedValue({
       url: 'https://checkout.stripe.com/c/sess_one',
     });
@@ -118,6 +183,9 @@ describe('POST /api/stripe/checkout', () => {
       email: 'u@example.com',
       metadata: { userId: 'user_1' },
     });
+
+    // No orphan to clean up — we won the race.
+    expect(customersDelMock).not.toHaveBeenCalled();
 
     // Profile was updated with the new customer id.
     expect(updateMock).toHaveBeenCalledTimes(1);
@@ -139,7 +207,7 @@ describe('POST /api/stripe/checkout', () => {
     getUserMock.mockResolvedValue({
       data: { user: { id: 'user_2', email: 'u2@example.com' } },
     });
-    maybeSingleMock.mockResolvedValue({
+    maybeSingleQueue.push({
       data: { id: 'user_2', stripe_customer_id: 'cus_existing' },
       error: null,
     });
@@ -167,7 +235,7 @@ describe('POST /api/stripe/checkout', () => {
     getUserMock.mockResolvedValue({
       data: { user: { id: 'user_3', email: 'u3@example.com' } },
     });
-    maybeSingleMock.mockResolvedValue({
+    maybeSingleQueue.push({
       data: { id: 'user_3', stripe_customer_id: 'cus_3' },
       error: null,
     });
@@ -179,5 +247,98 @@ describe('POST /api/stripe/checkout', () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as Record<string, unknown>;
     expect(Object.keys(json)).toEqual(['url']);
+  });
+
+  // --- B6: concurrent customer-creation race -------------------------------
+
+  it('B6: when a concurrent writer wins, deletes our orphan customer and reuses the winner', async () => {
+    getUserMock.mockResolvedValue({
+      data: { user: { id: 'user_race', email: 'race@example.com' } },
+    });
+    // Initial profile read: no customer id (we think we're first).
+    maybeSingleQueue.push({
+      data: { id: 'user_race', stripe_customer_id: null },
+      error: null,
+    });
+    // Stripe customer is created.
+    customersCreateMock.mockResolvedValue({ id: 'cus_loser' });
+    // Conditional update affects 0 rows — the racing writer beat us.
+    conditionalUpdateQueue.push({ data: [], error: null });
+    // Re-read profile sees the winning id.
+    maybeSingleQueue.push({
+      data: { stripe_customer_id: 'cus_winner' },
+      error: null,
+    });
+    customersDelMock.mockResolvedValue({ id: 'cus_loser', deleted: true });
+    sessionsCreateMock.mockResolvedValue({
+      url: 'https://checkout.stripe.com/c/sess_race',
+    });
+
+    const res = await POST(makeRequest({ mode: 'one_time' }));
+    expect(res.status).toBe(200);
+
+    // The orphan customer (the one we just created) was deleted.
+    expect(customersDelMock).toHaveBeenCalledTimes(1);
+    expect(customersDelMock).toHaveBeenCalledWith('cus_loser');
+
+    // The session was created with the winning customer id.
+    const params = sessionsCreateMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(params['customer']).toBe('cus_winner');
+  });
+
+  it('B6: only one customer ends up associated with the profile across two concurrent calls', async () => {
+    getUserMock.mockResolvedValue({
+      data: { user: { id: 'user_dual', email: 'dual@example.com' } },
+    });
+
+    // First call: no customer id.
+    maybeSingleQueue.push({
+      data: { id: 'user_dual', stripe_customer_id: null },
+      error: null,
+    });
+    // Second call: also no customer id (both sides see null at read time).
+    maybeSingleQueue.push({
+      data: { id: 'user_dual', stripe_customer_id: null },
+      error: null,
+    });
+
+    // Two customers get created concurrently.
+    customersCreateMock
+      .mockResolvedValueOnce({ id: 'cus_a' })
+      .mockResolvedValueOnce({ id: 'cus_b' });
+
+    // First conditional update wins (1 row), second loses (0 rows).
+    conditionalUpdateQueue.push({ data: [{ id: 'user_dual' }], error: null });
+    conditionalUpdateQueue.push({ data: [], error: null });
+
+    // The losing path re-reads the profile and sees the winner.
+    maybeSingleQueue.push({
+      data: { stripe_customer_id: 'cus_a' },
+      error: null,
+    });
+
+    customersDelMock.mockResolvedValue({ id: 'cus_b', deleted: true });
+
+    sessionsCreateMock.mockResolvedValue({
+      url: 'https://checkout.stripe.com/c/sess_ok',
+    });
+
+    // Run both concurrently — order of resolution mirrors queue order.
+    const [resA, resB] = await Promise.all([
+      POST(makeRequest({ mode: 'one_time' })),
+      POST(makeRequest({ mode: 'one_time' })),
+    ]);
+    expect(resA.status).toBe(200);
+    expect(resB.status).toBe(200);
+
+    // Exactly one orphan (cus_b) was deleted; cus_a remains the canonical id.
+    expect(customersDelMock).toHaveBeenCalledTimes(1);
+    expect(customersDelMock).toHaveBeenCalledWith('cus_b');
+
+    // Both sessions were created against the SAME winning customer id.
+    const customers = sessionsCreateMock.mock.calls.map(
+      (call) => (call[0] as Record<string, unknown>)['customer'],
+    );
+    expect(customers).toEqual(['cus_a', 'cus_a']);
   });
 });

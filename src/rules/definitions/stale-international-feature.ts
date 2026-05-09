@@ -10,12 +10,15 @@ export const staleInternationalFeatureRule: Rule = {
   evaluate: ({ bill }) => {
     const findings: Finding[] = [];
 
-    // TODO(domain): once usage history is available, suppress when
-    // international usage > 0 in the period.
-    // TODO(future): when we have multi-period history (cross-bill state),
-    // we can check whether the international feature was present BEFORE the
-    // current period and still went unused — that lets us upgrade severity
-    // to 'medium' for the persistent-no-usage case.
+    // Severity is 'info' (not 'low') and savings is 0: without usage
+    // history we cannot tell whether the feature is genuinely stale, so this
+    // is a "ask the line owner" prompt rather than a recommended action with
+    // dollars attached. Keeping the rule slot reserved so the upgrade path
+    // below is incremental rather than a new rule registration.
+    // TODO(domain): gate on usage history when carriers expose it — when
+    // international usage in the period is 0 AND the feature was present in
+    // a prior period, upgrade to severity 'low' (or 'medium' for persistent
+    // no-usage across multiple periods) and surface real estimated savings.
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
         const intlFeatures = findFeatureByCategory(line, 'international');
@@ -29,9 +32,9 @@ export const staleInternationalFeatureRule: Rule = {
 
         findings.push({
           rule_id: RULE_ID,
-          severity: 'low',
+          severity: 'info',
           title: 'Verify international add-on is still needed',
-          description: `This line carries international add-on(s) (${names}) costing ${formatCents(totalCents)}/mo. This is flagged for review only — we don't have usage history yet to confirm whether it's stale. International add-ons are commonly left enabled long after a one-time trip.`,
+          description: `This line carries international add-on(s) (${names}) costing ${formatCents(totalCents)}/mo. Informational only — without usage history we can't tell if it's stale. International add-ons are commonly left enabled long after a one-time trip.`,
           recommended_action:
             'Ask the line owner whether they traveled internationally this period. If not, remove the feature and re-add only when a trip is planned.',
           estimated_monthly_savings_cents: 0,

@@ -54,19 +54,6 @@ export function findFeatureByCategory(
   return line.features.filter((f) => f.category === category);
 }
 
-/**
- * Net monthly charge for a line: plan + features + DPP installments minus
- * any (signed) credits. Credits already carry their sign on the bill.
- */
-export function sumLineCharges(line: ExtractedLine): number {
-  const base = line.plan_base_cents ?? 0;
-  const features = line.features.reduce((sum, f) => sum + f.monthly_cents, 0);
-  const dpp = line.dpp_installments.reduce((sum, d) => sum + d.monthly_cents, 0);
-  // Credits on the bill are typically negative; preserve sign.
-  const credits = line.credits.reduce((sum, c) => sum + c.monthly_cents, 0);
-  return base + features + dpp + credits;
-}
-
 /** Test a plan name against a list of "deprecated" regex patterns. */
 export function isPlanNameDeprecated(
   planName: string | null,

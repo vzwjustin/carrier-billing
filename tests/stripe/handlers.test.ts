@@ -6,19 +6,36 @@ import { handleStripeEvent } from '@/lib/stripe/handlers';
 // --- Supabase mock ---------------------------------------------------------
 //
 // We model the supabase client surface used by handleStripeEvent:
-//   - `.from(table).update(patch).eq(col, value)` returning `{ error }`
-//   - `.rpc(name, args)` returning `{ error }`
+//   - `.from(table).update(patch).eq(col, value)`           → `{ error }`
+//   - `.from(table).update(patch).eq(col, value).select(c)` → `{ data, error }`
+//     (B7 fix: subscription/payment-failed handlers verify exactly one row.)
+//   - `.rpc(name, args)`                                    → `{ error }`
+//
+// `__nextUpdateRows` controls what `.select(...)` returns. Defaults to a
+// single matching row so happy-path tests stay terse.
 
-type UpdateCall = { table: string; patch: Record<string, unknown>; eq: [string, unknown] };
+type UpdateCall = {
+  table: string;
+  patch: Record<string, unknown>;
+  eq: [string, unknown];
+  select?: string;
+};
 type RpcCall = { name: string; args: Record<string, unknown> };
 
 interface MockClient {
   from: (table: string) => unknown;
-  rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: null | { message: string } }>;
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ error: null | { message: string } }>;
   __updates: UpdateCall[];
   __rpcs: RpcCall[];
   __nextUpdateError: { message: string } | null;
   __nextRpcError: { message: string } | null;
+  __nextUpdateRows:
+    | Array<Record<string, unknown>>
+    | (() => Array<Record<string, unknown>>)
+    | null;
 }
 
 function makeClient(): MockClient {
@@ -27,15 +44,51 @@ function makeClient(): MockClient {
     __rpcs: [],
     __nextUpdateError: null,
     __nextRpcError: null,
+    __nextUpdateRows: null,
     from(table: string) {
       return {
         update(patch: Record<string, unknown>) {
+          const recordCall = (eq: [string, unknown], select?: string) => {
+            state.__updates.push({ table, patch, eq, select });
+          };
+          const consumeRows = (): Array<Record<string, unknown>> => {
+            const next = state.__nextUpdateRows;
+            state.__nextUpdateRows = null;
+            if (typeof next === 'function') return next();
+            return next ?? [{ id: 'profile_default' }];
+          };
+          const consumeError = () => {
+            const err = state.__nextUpdateError;
+            state.__nextUpdateError = null;
+            return err;
+          };
           return {
-            eq: async (col: string, value: unknown) => {
-              state.__updates.push({ table, patch, eq: [col, value] });
-              const err = state.__nextUpdateError;
-              state.__nextUpdateError = null;
-              return { error: err };
+            eq(col: string, value: unknown) {
+              const eqArgs: [string, unknown] = [col, value];
+              const directThenable = {
+                then(
+                  resolve: (v: { error: typeof state.__nextUpdateError }) => void,
+                ) {
+                  recordCall(eqArgs);
+                  resolve({ error: consumeError() });
+                },
+                select(cols: string) {
+                  return {
+                    then(
+                      resolve: (v: {
+                        data: Array<Record<string, unknown>>;
+                        error: typeof state.__nextUpdateError;
+                      }) => void,
+                    ) {
+                      recordCall(eqArgs, cols);
+                      const error = consumeError();
+                      const data = error ? [] : consumeRows();
+                      resolve({ data, error });
+                    },
+                  };
+                },
+              };
+              return directThenable;
             },
           };
         },
@@ -128,6 +181,7 @@ describe('handleStripeEvent', () => {
     expect(update?.eq).toEqual(['stripe_customer_id', 'cus_42']);
     expect(update?.patch['subscription_status']).toBe('past_due');
     expect(update?.patch['subscription_id']).toBe('sub_42');
+    expect(update?.select).toBe('id');
   });
 
   it('customer.subscription.created stores active status', async () => {
@@ -142,6 +196,43 @@ describe('handleStripeEvent', () => {
     const update = client.__updates[0];
     expect(update?.patch['subscription_status']).toBe('active');
     expect(update?.patch['subscription_id']).toBe('sub_new');
+    expect(update?.select).toBe('id');
+  });
+
+  it('customer.subscription.created with status=trialing persists trialing (C1)', async () => {
+    const event = makeEvent('customer.subscription.created', {
+      id: 'sub_trial',
+      customer: 'cus_trial',
+      status: 'trialing',
+    });
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    const update = client.__updates[0];
+    expect(update?.patch['subscription_status']).toBe('trialing');
+  });
+
+  it('access gate returns { ok: true, reason: "subscription" } for trialing profiles (C1)', async () => {
+    // Mock the admin client used by assertCanRunAudit.
+    vi.resetModules();
+    const maybeSingleMock = vi.fn().mockResolvedValue({
+      data: { subscription_status: 'trialing', audit_credits: 0 },
+      error: null,
+    });
+    vi.doMock('@/lib/supabase/admin', () => ({
+      getAdminClient: () => ({
+        from: () => ({
+          select: () => ({
+            eq: () => ({ maybeSingle: () => maybeSingleMock() }),
+          }),
+        }),
+      }),
+    }));
+
+    const { assertCanRunAudit } = await import('@/lib/access/gate');
+    const result = await assertCanRunAudit('user_trial');
+    expect(result).toEqual({ ok: true, reason: 'subscription' });
+    vi.doUnmock('@/lib/supabase/admin');
   });
 
   it('customer.subscription.deleted sets canceled and clears subscription_id', async () => {
@@ -158,9 +249,11 @@ describe('handleStripeEvent', () => {
     expect(update?.eq).toEqual(['stripe_customer_id', 'cus_gone']);
     expect(update?.patch['subscription_status']).toBe('canceled');
     expect(update?.patch['subscription_id']).toBeNull();
+    expect(update?.select).toBe('id');
   });
 
   it('invoice.payment_failed marks the profile past_due', async () => {
+    client.__nextUpdateRows = [{ id: 'profile_x', email: 'x@example.com' }];
     const event = makeEvent('invoice.payment_failed', {
       id: 'in_fail',
       customer: 'cus_fail',
@@ -172,6 +265,37 @@ describe('handleStripeEvent', () => {
     const update = client.__updates[0];
     expect(update?.eq).toEqual(['stripe_customer_id', 'cus_fail']);
     expect(update?.patch['subscription_status']).toBe('past_due');
+    expect(update?.select).toBe('id, email');
+  });
+
+  it('invoice.payment_failed logs the audit.subscription_payment_failed marker (C3)', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    client.__nextUpdateRows = [
+      { id: 'profile_pay', email: 'paying@example.com' },
+    ];
+    const event = makeEvent('invoice.payment_failed', {
+      id: 'in_marker',
+      customer: 'cus_marker',
+    });
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    const markerCall = consoleSpy.mock.calls.find(
+      (call) => call[0] === '[stripe.payment_failed]',
+    );
+    expect(markerCall).toBeDefined();
+    const payload = JSON.parse(markerCall![1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(payload).toMatchObject({
+      event: 'audit.subscription_payment_failed',
+      userId: 'profile_pay',
+      customerEmail: 'paying@example.com',
+      stripeCustomerId: 'cus_marker',
+      invoiceId: 'in_marker',
+    });
+    consoleSpy.mockRestore();
   });
 
   it('unknown event types are no-ops', async () => {
@@ -200,4 +324,75 @@ describe('handleStripeEvent', () => {
       handleStripeEvent(event, client as unknown as never),
     ).rejects.toThrow(/past_due update failed/);
   });
+
+  // --- B7: row-count verification on every customer-id-keyed handler -------
+
+  describe.each([
+    {
+      label: 'customer.subscription.updated',
+      event: makeEvent('customer.subscription.updated', {
+        id: 'sub_b7',
+        customer: 'cus_b7',
+        status: 'active',
+      }),
+      expectedThrow: /matched 0 rows .*customer\.subscription\.updated/,
+      multiThrow: /matched 2 rows .*customer\.subscription\.updated/,
+    },
+    {
+      label: 'customer.subscription.created',
+      event: makeEvent('customer.subscription.created', {
+        id: 'sub_b7c',
+        customer: 'cus_b7c',
+        status: 'active',
+      }),
+      expectedThrow: /matched 0 rows .*customer\.subscription\.created/,
+      multiThrow: /matched 2 rows .*customer\.subscription\.created/,
+    },
+    {
+      label: 'customer.subscription.deleted',
+      event: makeEvent('customer.subscription.deleted', {
+        id: 'sub_b7d',
+        customer: 'cus_b7d',
+        status: 'canceled',
+      }),
+      expectedThrow: /matched 0 rows .*customer\.subscription\.deleted/,
+      multiThrow: /matched 2 rows .*customer\.subscription\.deleted/,
+    },
+    {
+      label: 'invoice.payment_failed',
+      event: makeEvent('invoice.payment_failed', {
+        id: 'in_b7',
+        customer: 'cus_b7p',
+      }),
+      expectedThrow: /matched 0 rows .*invoice\.payment_failed/,
+      multiThrow: /matched 2 rows .*invoice\.payment_failed/,
+    },
+  ])(
+    '$label profile lookup row-count verification (B7)',
+    ({ event, expectedThrow, multiThrow }) => {
+      it('1 row matched: succeeds', async () => {
+        client.__nextUpdateRows = [{ id: 'profile_one', email: 'a@b.co' }];
+        await expect(
+          handleStripeEvent(event, client as unknown as never),
+        ).resolves.toBeUndefined();
+      });
+
+      it('0 rows matched: throws so Stripe retries', async () => {
+        client.__nextUpdateRows = [];
+        await expect(
+          handleStripeEvent(event, client as unknown as never),
+        ).rejects.toThrow(expectedThrow);
+      });
+
+      it('>1 rows matched: throws (data corruption)', async () => {
+        client.__nextUpdateRows = [
+          { id: 'profile_one', email: 'a@b.co' },
+          { id: 'profile_two', email: 'c@d.co' },
+        ];
+        await expect(
+          handleStripeEvent(event, client as unknown as never),
+        ).rejects.toThrow(multiThrow);
+      });
+    },
+  );
 });
