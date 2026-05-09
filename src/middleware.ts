@@ -15,10 +15,10 @@ import { updateSession } from '@/lib/supabase/middleware';
  *   const nonce = (await headers()).get('x-nonce') ?? undefined;
  *   <Script nonce={nonce} src="..." />
  */
-function buildCsp(nonce: string): string {
+function buildCsp(): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://*.posthog.com https://*.i.posthog.com`,
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.posthog.com https://*.i.posthog.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
@@ -31,26 +31,12 @@ function buildCsp(nonce: string): string {
   ].join('; ');
 }
 
-function generateNonce(): string {
-  const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  const nonce = generateNonce();
-  const csp = buildCsp(nonce);
-
-  // Forward the nonce to the app via a request header so server components
-  // can read it via `headers().get('x-nonce')`.
-  request.headers.set('x-nonce', nonce);
+  const csp = buildCsp();
 
   const response = await updateSession(request);
 
   response.headers.set('Content-Security-Policy', csp);
-  response.headers.set('x-nonce', nonce);
 
   return response;
 }
