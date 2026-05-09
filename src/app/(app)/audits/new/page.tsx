@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { UploadForm } from '@/components/upload/upload-form';
 import { assertCanRunAudit } from '@/lib/access/gate';
@@ -32,22 +33,12 @@ export default async function NewAuditPage(): Promise<React.JSX.Element> {
             New audit
           </h1>
         </div>
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">
-            Subscription past due
-          </h2>
-          <p className="mt-2 text-sm text-amber-800">
-            Your subscription is past due, so we can&apos;t start a new audit
-            right now. Please update your payment method to continue. In-flight
-            audits will still finish.
-          </p>
-          <Link
-            href="/settings/billing"
-            className="mt-4 inline-flex rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
-          >
-            Update payment
-          </Link>
-        </div>
+        <Banner
+          variant="warning"
+          title="Subscription past due"
+          description="Your subscription is past due, so we can't start a new audit right now. Please update your payment method to continue. In-flight audits will still finish."
+          action={{ label: 'Update payment', href: '/billing/past-due' }}
+        />
       </div>
     );
   }
@@ -89,17 +80,17 @@ export default async function NewAuditPage(): Promise<React.JSX.Element> {
   // gate.ok === true — narrow to either subscription or credit.
   const banner =
     gate.reason === 'subscription' ? (
-      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-        <span className="font-medium">Unlimited subscription active.</span>{' '}
-        Run as many audits as you need.
-      </div>
+      <Banner
+        variant="success"
+        title="Unlimited subscription active"
+        description="Run as many audits as you need."
+      />
     ) : (
-      <div className="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800">
-        <span className="font-medium">
-          {gate.remaining} credit{gate.remaining === 1 ? '' : 's'} remaining.
-        </span>{' '}
-        Each audit uses one credit.
-      </div>
+      <Banner
+        variant="info"
+        title={`${gate.remaining} credit${gate.remaining === 1 ? '' : 's'} remaining`}
+        description="Each audit uses one credit."
+      />
     );
 
   return (

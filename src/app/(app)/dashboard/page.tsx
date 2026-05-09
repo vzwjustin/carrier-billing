@@ -19,6 +19,11 @@ interface DashboardAuditRow {
   estimated_annual_savings_cents: number | null;
 }
 
+interface CompletedAggregateRow {
+  estimated_annual_savings_cents: number | null;
+  high_severity_count: number | null;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-neutral-100 text-neutral-700',
   extracting: 'bg-blue-100 text-blue-700',
@@ -53,7 +58,7 @@ function formatDate(value: string): string {
 export default async function DashboardPage(): Promise<React.JSX.Element> {
   const supabase = await createClient();
 
-  const [{ count }, latestRes] = await Promise.all([
+  const [{ count }, latestRes, completedRes] = await Promise.all([
     supabase.from('audits').select('id', { head: true, count: 'exact' }),
     supabase
       .from('audits')
@@ -63,10 +68,24 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       .order('created_at', { ascending: false })
       .limit(5)
       .returns<DashboardAuditRow[]>(),
+    supabase
+      .from('audits')
+      .select('estimated_annual_savings_cents,high_severity_count')
+      .eq('status', 'completed')
+      .returns<CompletedAggregateRow[]>(),
   ]);
 
   const latest = latestRes.data ?? [];
   const totalAudits = count ?? latest.length;
+  const completed = completedRes.data ?? [];
+  const lifetimeSavingsCents = completed.reduce(
+    (acc, row) => acc + (row.estimated_annual_savings_cents ?? 0),
+    0,
+  );
+  const totalHighSeverity = completed.reduce(
+    (acc, row) => acc + (row.high_severity_count ?? 0),
+    0,
+  );
 
   return (
     <div className="space-y-8">
@@ -89,6 +108,41 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           </Link>
         </div>
       </section>
+
+      {totalAudits > 0 ? (
+        <section
+          aria-label="Audit summary"
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          <StatTile
+            eyebrow="Audits run"
+            value={totalAudits.toLocaleString('en-US')}
+            helper={
+              totalAudits === 1
+                ? 'Just getting started.'
+                : 'Across every bill you’ve uploaded.'
+            }
+          />
+          <StatTile
+            eyebrow="Lifetime savings identified"
+            value={
+              lifetimeSavingsCents > 0
+                ? formatCents(lifetimeSavingsCents)
+                : '—'
+            }
+            helper="Sum of estimated annual savings on completed audits."
+          />
+          <StatTile
+            eyebrow="High-severity findings"
+            value={totalHighSeverity.toLocaleString('en-US')}
+            helper={
+              totalHighSeverity === 0
+                ? 'No urgent issues right now.'
+                : 'Worth showing your carrier rep.'
+            }
+          />
+        </section>
+      ) : null}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -178,6 +232,28 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function StatTile({
+  eyebrow,
+  value,
+  helper,
+}: {
+  eyebrow: string;
+  value: string;
+  helper: string;
+}): React.JSX.Element {
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+        {eyebrow}
+      </p>
+      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-neutral-500">{helper}</p>
     </div>
   );
 }

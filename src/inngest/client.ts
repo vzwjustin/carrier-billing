@@ -22,6 +22,15 @@ export type Events = {
       userId: string;
     };
   };
+  'billing.payment_failed': {
+    data: {
+      userId: string;
+      customerEmail: string;
+      stripeCustomerId: string;
+      invoiceId: string | null;
+      amountDueCents: number | null;
+    };
+  };
 };
 
 export const inngest = new Inngest({

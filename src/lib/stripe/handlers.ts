@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 
+import { inngest } from '@/inngest/client';
 import { trackServer } from '@/lib/analytics/events';
 import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
 
@@ -240,23 +241,39 @@ async function onInvoicePaymentFailed(
     'invoice.payment_failed',
   );
 
-  // C3 — payment-failed notification marker.
-  //
-  // We don't own the email pipeline (Stream A) yet, so we emit a structured
-  // log line that downstream tooling can pick up. A future Inngest function
-  // should consume `audit.subscription_payment_failed` and call the Resend
-  // template. Tracked as deferred work; no email send wired today.
   const profile = matched as { id: string; email?: string | null };
-  console.log(
-    '[stripe.payment_failed]',
-    JSON.stringify({
-      event: 'audit.subscription_payment_failed',
-      userId: profile.id,
-      customerEmail: profile.email ?? null,
-      stripeCustomerId: customerId,
-      invoiceId: invoice.id,
-    }),
-  );
+  const customerEmail = profile.email ?? null;
+
+  if (!customerEmail) {
+    Sentry.captureMessage('payment_failed: profile has no email', {
+      level: 'warning',
+      extra: { userId: profile.id },
+    });
+    return;
+  }
+
+  // Dispatch the notification email via Inngest. Wrapped in try/catch because
+  // a dispatch failure must NOT roll back the past_due profile update — the
+  // user's billing state is more important than the email. Inngest will
+  // retry the email function on its own once delivered.
+  try {
+    await inngest.send({
+      name: 'billing.payment_failed',
+      data: {
+        userId: profile.id,
+        customerEmail,
+        stripeCustomerId: customerId,
+        invoiceId: invoice.id ?? null,
+        amountDueCents:
+          typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
+      },
+    });
+  } catch (sendErr) {
+    Sentry.captureException(sendErr, {
+      tags: { surface: 'stripe.payment_failed.dispatch' },
+      extra: { userId: profile.id, invoiceId: invoice.id ?? null },
+    });
+  }
 }
 
 async function trackCheckoutCompleted(

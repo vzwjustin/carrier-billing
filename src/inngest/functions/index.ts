@@ -1,5 +1,6 @@
 import { cleanupOrphanAuditsFn } from './cleanup-orphan-audits';
 import { processBillFn } from './process-bill';
+import { sendPaymentFailedEmailFn } from './send-payment-failed-email';
 import { sendReportEmailFn } from './send-report-email';
 
 /**
@@ -8,7 +9,13 @@ import { sendReportEmailFn } from './send-report-email';
 export const functions = [
   processBillFn,
   sendReportEmailFn,
+  sendPaymentFailedEmailFn,
   cleanupOrphanAuditsFn,
 ] as const;
 
-export { cleanupOrphanAuditsFn, processBillFn, sendReportEmailFn };
+export {
+  cleanupOrphanAuditsFn,
+  processBillFn,
+  sendPaymentFailedEmailFn,
+  sendReportEmailFn,
+};

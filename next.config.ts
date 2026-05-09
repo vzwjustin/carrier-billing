@@ -1,20 +1,9 @@
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
-const CSP_DIRECTIVES = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.posthog.com https://*.i.posthog.com",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://*.posthog.com https://*.i.posthog.com https://*.sentry.io",
-  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-  "frame-ancestors 'none'",
-  "form-action 'self' https://checkout.stripe.com",
-  "base-uri 'self'",
-  "object-src 'none'",
-].join('; ');
-
+// Content-Security-Policy is set per-request in `src/middleware.ts` so each
+// response carries a fresh nonce. The other security headers are static and
+// set here.
 const SECURITY_HEADERS = [
   {
     key: 'Strict-Transport-Security',
@@ -27,7 +16,6 @@ const SECURITY_HEADERS = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=()',
   },
-  { key: 'Content-Security-Policy', value: CSP_DIRECTIVES },
 ];
 
 const nextConfig: NextConfig = {
