@@ -24,6 +24,15 @@ const CreateAuditSchema = z.object({
 
 const SAFE_FILENAME_RE = /[^A-Za-z0-9._-]+/g;
 
+/** Extensions accepted at the upload route. EDI 811 files come in as plain
+ *  ASCII; the worker also content-sniffs to guard against confused extensions. */
+const ACCEPTED_EXTENSIONS = ['.pdf', '.edi', '.x12', '.811', '.txt'] as const;
+
+function isAcceptedFilename(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 function safeFilename(input: string): string {
   // Strip any directory components and unsafe characters.
   const base = input.split(/[\\/]/).pop() ?? input;
@@ -51,9 +60,9 @@ export async function POST(request: Request): Promise<Response> {
 
   const { filename, fileSize } = parsed.data;
 
-  if (!filename.toLowerCase().endsWith('.pdf')) {
+  if (!isAcceptedFilename(filename)) {
     return NextResponse.json(
-      { error: 'Only PDF files are accepted.' },
+      { error: 'Only PDF or EDI 811 files are accepted.' },
       { status: 400 },
     );
   }

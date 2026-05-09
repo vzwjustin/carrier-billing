@@ -71,11 +71,14 @@ export function UploadForm(): React.JSX.Element {
       }
       const { auditId, uploadUrl } = createBody;
 
-      // Step 2: upload PDF to signed URL.
+      // Step 2: upload to signed URL. EDI 811 files are 7-bit ASCII; we send
+      // them as text/plain so Supabase Storage doesn't reject the PUT for a
+      // mismatched declared content-type.
       setPhase('uploading');
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
       const putRes = await fetch(uploadUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/pdf' },
+        headers: { 'Content-Type': isPdf ? 'application/pdf' : 'text/plain' },
         body: file,
       });
       if (!putRes.ok) {
