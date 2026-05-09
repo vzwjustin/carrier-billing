@@ -1,10 +1,18 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import { MobileNav } from '@/components/app-nav/mobile-nav';
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
 import { cn } from '@/lib/utils';
+
+const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/audits/new', label: 'New audit' },
+  { href: '/settings', label: 'Settings' },
+  { href: '/settings/billing', label: 'Billing' },
+] as const;
 
 interface ProfileRow {
   audit_credits: number | null;
@@ -84,7 +92,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
+      <header className="relative border-b border-neutral-200 bg-white">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-6">
             <Link
@@ -93,22 +101,16 @@ export default async function AppLayout({
             >
               CarrierAudit
             </Link>
-            <nav className="flex items-center gap-4 text-sm text-neutral-600">
-              <Link href="/dashboard" className="hover:text-neutral-900">
-                Dashboard
-              </Link>
-              <Link href="/audits/new" className="hover:text-neutral-900">
-                New audit
-              </Link>
-              <Link href="/settings" className="hover:text-neutral-900">
-                Settings
-              </Link>
-              <Link
-                href="/settings/billing"
-                className="hover:text-neutral-900"
-              >
-                Billing
-              </Link>
+            <nav className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="hover:text-neutral-900"
+                >
+                  {item.label}
+                </Link>
+              ))}
             </nav>
           </div>
           <div className="flex items-center gap-3">
@@ -133,14 +135,15 @@ export default async function AppLayout({
                 {badge.label}
               </span>
             )}
-            <span className="hidden text-sm text-neutral-500 sm:inline">
+            <span className="hidden text-sm text-neutral-500 lg:inline">
               {user.email}
             </span>
-            <form action="/auth/signout" method="post">
+            <form action="/auth/signout" method="post" className="hidden sm:block">
               <Button type="submit" variant="outline" size="sm">
                 Sign out
               </Button>
             </form>
+            <MobileNav items={NAV_ITEMS} email={user.email ?? null} />
           </div>
         </div>
       </header>
