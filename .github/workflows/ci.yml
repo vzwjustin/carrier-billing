@@ -7,11 +7,24 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
+  smoke:
+    name: Smoke (env probe)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe
+        run: |
+          echo "Runner is alive."
+          echo "OS: $(uname -a)"
+          echo "Node: $(node --version || echo 'no node')"
+          echo "GH ref: $GITHUB_REF"
+          echo "GH event: $GITHUB_EVENT_NAME"
+          echo "GH actor: $GITHUB_ACTOR"
+
   quality:
     name: Lint, typecheck, test, build
+    needs: smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,29 +41,17 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
-      - name: Diagnostics
-        run: |
-          echo "=== Versions ==="
-          node --version
-          pnpm --version
-          echo "=== package.json packageManager ==="
-          node -e "console.log(require('./package.json').packageManager)"
-          echo "=== pnpm-lock.yaml head ==="
-          head -5 pnpm-lock.yaml
-
       - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile 2>&1 | tee /tmp/install.log
-          echo "=== install exit ok ==="
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint 2>&1 | tee /tmp/lint.log
+        run: pnpm lint
 
       - name: Typecheck
-        run: pnpm typecheck 2>&1 | tee /tmp/typecheck.log
+        run: pnpm typecheck
 
       - name: Unit tests
-        run: pnpm test 2>&1 | tee /tmp/test.log
+        run: pnpm test
 
       - name: Build
         env:
@@ -59,32 +60,4 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_placeholder
           NEXT_PUBLIC_APP_URL: http://localhost:3000
-          # Sentry sourcemap upload (no-ops when these secrets are absent — e.g.
-          # forked PRs). Required for release builds on main.
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: pnpm build 2>&1 | tee /tmp/build.log
-
-      - name: Post failure log to PR
-        if: failure() && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          {
-            echo '### CI failure log (truncated)'
-            echo
-            for f in install lint typecheck test build; do
-              if [ -f "/tmp/$f.log" ]; then
-                echo "<details><summary>$f.log (last 80 lines)</summary>"
-                echo
-                echo '```'
-                tail -80 "/tmp/$f.log" || true
-                echo '```'
-                echo '</details>'
-                echo
-              fi
-            done
-          } > /tmp/comment.md
-          gh pr comment "$PR" --body-file /tmp/comment.md || true
+        run: pnpm build

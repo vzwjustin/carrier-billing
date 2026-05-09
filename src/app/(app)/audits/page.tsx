@@ -12,6 +12,15 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 25;
 
+const VALID_STATUSES = [
+  'pending',
+  'extracting',
+  'analyzing',
+  'completed',
+  'failed',
+] as const;
+type AuditStatus = (typeof VALID_STATUSES)[number];
+
 interface AuditListRow {
   id: string;
   created_at: string;
@@ -68,15 +77,56 @@ function StatusBadge({ status }: { status: string }): React.JSX.Element {
 }
 
 interface AuditsPageProps {
-  searchParams?: Promise<{ after?: string | string[] }>;
+  searchParams?: Promise<{
+    after?: string | string[];
+    q?: string | string[];
+    status?: string | string[];
+  }>;
+}
+
+function pickString(raw: string | string[] | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function parseAfter(raw: string | string[] | undefined): string | null {
-  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const value = pickString(raw);
+  if (!value) return null;
   // Validate as ISO timestamp; reject anything else to avoid query injection.
-  const d = new Date(raw);
+  const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return raw;
+  return value;
+}
+
+function parseStatus(
+  raw: string | string[] | undefined,
+): AuditStatus | null {
+  const value = pickString(raw);
+  if (!value) return null;
+  return (VALID_STATUSES as ReadonlyArray<string>).includes(value)
+    ? (value as AuditStatus)
+    : null;
+}
+
+function parseQ(raw: string | string[] | undefined): string | null {
+  const value = pickString(raw);
+  if (!value) return null;
+  // Cap length so we don't issue absurd queries.
+  return value.slice(0, 80);
+}
+
+function buildHref(params: {
+  after?: string | null;
+  q?: string | null;
+  status?: AuditStatus | null;
+}): string {
+  const sp = new URLSearchParams();
+  if (params.after) sp.set('after', params.after);
+  if (params.q) sp.set('q', params.q);
+  if (params.status) sp.set('status', params.status);
+  const query = sp.toString();
+  return query ? `/audits?${query}` : '/audits';
 }
 
 export default async function AuditsPage(
@@ -84,6 +134,8 @@ export default async function AuditsPage(
 ): Promise<React.JSX.Element> {
   const search = props.searchParams ? await props.searchParams : undefined;
   const after = parseAfter(search?.after);
+  const status = parseStatus(search?.status);
+  const q = parseQ(search?.q);
 
   const supabase = await createClient();
   let query = supabase
@@ -97,6 +149,14 @@ export default async function AuditsPage(
   if (after) {
     query = query.lt('created_at', after);
   }
+  if (status) {
+    query = query.eq('status', status);
+  }
+  if (q) {
+    // Escape PostgREST `%` and `,` to keep the LIKE pattern safe.
+    const escaped = q.replace(/[\\%_,]/g, (m) => `\\${m}`);
+    query = query.ilike('original_filename', `%${escaped}%`);
+  }
 
   const { data, error } = await query.returns<AuditListRow[]>();
 
@@ -105,6 +165,9 @@ export default async function AuditsPage(
   const rows = hasNextPage ? all.slice(0, PAGE_SIZE) : all;
   const lastRow = rows[rows.length - 1];
   const nextCursor = hasNextPage && lastRow ? lastRow.created_at : null;
+
+  const filtersActive = Boolean(q || status);
+  const firstPageHref = buildHref({ q, status });
 
   return (
     <div className="space-y-6">
@@ -117,6 +180,51 @@ export default async function AuditsPage(
         </Link>
       </div>
 
+      <form
+        method="get"
+        action="/audits"
+        className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-3 sm:flex-row sm:items-center"
+      >
+        <label className="flex-1 sm:max-w-md">
+          <span className="sr-only">Search by filename</span>
+          <input
+            type="text"
+            name="q"
+            defaultValue={q ?? ''}
+            placeholder="Search by filename…"
+            maxLength={80}
+            className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          />
+        </label>
+        <label className="sm:w-44">
+          <span className="sr-only">Filter by status</span>
+          <select
+            name="status"
+            defaultValue={status ?? ''}
+            className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          >
+            <option value="">All statuses</option>
+            {VALID_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s] ?? s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-center gap-2">
+          <Button type="submit" size="sm">
+            Apply
+          </Button>
+          {filtersActive ? (
+            <Link href="/audits">
+              <Button type="button" size="sm" variant="ghost">
+                Clear
+              </Button>
+            </Link>
+          ) : null}
+        </div>
+      </form>
+
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           We couldn&apos;t load your audits. Please refresh the page.
@@ -126,14 +234,22 @@ export default async function AuditsPage(
       {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
           <p className="text-sm text-neutral-700">
-            {after
-              ? 'No more audits to show.'
-              : 'No audits yet. Upload your first bill.'}
+            {filtersActive
+              ? 'No audits match those filters.'
+              : after
+                ? 'No more audits to show.'
+                : 'No audits yet. Upload your first bill.'}
           </p>
           <div className="mt-4">
-            <Link href={after ? '/audits' : '/audits/new'}>
-              <Button>{after ? 'Back to start' : 'Upload a bill'}</Button>
-            </Link>
+            {filtersActive ? (
+              <Link href="/audits">
+                <Button>Clear filters</Button>
+              </Link>
+            ) : (
+              <Link href={after ? '/audits' : '/audits/new'}>
+                <Button>{after ? 'Back to start' : 'Upload a bill'}</Button>
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -191,7 +307,7 @@ export default async function AuditsPage(
         <div className="flex items-center justify-between">
           <div>
             {after ? (
-              <Link href="/audits">
+              <Link href={firstPageHref}>
                 <Button variant="outline" size="sm">
                   ← First page
                 </Button>
@@ -200,9 +316,7 @@ export default async function AuditsPage(
           </div>
           <div>
             {nextCursor ? (
-              <Link
-                href={`/audits?after=${encodeURIComponent(nextCursor)}`}
-              >
+              <Link href={buildHref({ after: nextCursor, q, status })}>
                 <Button variant="outline" size="sm">
                   Next →
                 </Button>
