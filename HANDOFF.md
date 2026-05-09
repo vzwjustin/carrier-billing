@@ -1,7 +1,7 @@
 # CarrierAudit — Handoff for next Claude session
 
 > **You are picking up work on a Next.js 15 SaaS** (`CarrierAudit`) that audits business wireless bills.
-> The canonical product spec is [`CLAUDE.md`](./CLAUDE.md). The README is [`README.md`](./README.md). This file is a **work-tonight TODO** — everything below is a real, scoped task with file paths.
+> The canonical product spec is [`SPEC.md`](./SPEC.md). The README is [`README.md`](./README.md). This file is a **work-tonight TODO** — everything below is a real, scoped task with file paths.
 >
 > Phases 0–4 of the build plan are shipped. Phase 5 (launch prep) is partially done as of the last commit on this branch.
 
@@ -136,13 +136,13 @@ RUN_LLM_TESTS=1 ./node_modules/.bin/vitest run tests/extraction/llm.test.ts
 
 ## Files not to touch without asking
 
-- `CLAUDE.md` — canonical spec, frozen.
+- `SPEC.md` — canonical spec, frozen.
 - `supabase/migrations/0001_init.sql` through `0004_billing_helpers.sql` — already applied to prod; only add new migrations.
 - `tests/fixtures/bills/*.pdf` — anonymized real bills; don't regenerate without consulting Justin.
 
 ---
 
-## Coding conventions (cribbed from CLAUDE.md operating principles)
+## Coding conventions (cribbed from SPEC.md operating principles)
 
 - TypeScript strict (`noUncheckedIndexedAccess`); no `any`.
 - Zod everywhere there's a boundary (API routes, Inngest functions, LLM outputs, env vars, form inputs).

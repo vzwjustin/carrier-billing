@@ -4,7 +4,7 @@ CarrierAudit is a SaaS that lets a business owner, office manager, MSP, or fract
 
 ## Status
 
-Phases 0–4 shipped. Phase 5 (landing / polish / launch prep) is in progress. See [`CLAUDE.md`](./CLAUDE.md) for the canonical phase plan — that document wins on any conflict.
+Phases 0–4 shipped. Phase 5 (landing / polish / launch prep) is in progress. See [`SPEC.md`](./SPEC.md) for the canonical phase plan — that document wins on any conflict.
 
 ## What works today
 
@@ -21,7 +21,7 @@ Phases 0–4 shipped. Phase 5 (landing / polish / launch prep) is in progress. S
 
 ## Tech stack
 
-Quick summary — see [`CLAUDE.md` §2](./CLAUDE.md) for the locked choices and rationale.
+Quick summary — see [`SPEC.md` §2](./SPEC.md) for the locked choices and rationale.
 
 | Layer | Choice |
 | --- | --- |
@@ -136,7 +136,7 @@ Quick summary — see [`CLAUDE.md` §2](./CLAUDE.md) for the locked choices and 
 
 ## Project layout
 
-See [`CLAUDE.md` §3](./CLAUDE.md) for the full tree. High-level:
+See [`SPEC.md` §3](./SPEC.md) for the full tree. High-level:
 
 - `src/app/` — Next.js App Router (marketing, auth, app, API).
 - `src/extraction/` — PDF + LLM bill extraction pipeline.
@@ -248,18 +248,18 @@ When any of these secrets is missing the build still succeeds — the Sentry wra
 - **End-to-end:** `pnpm test:e2e` runs the Playwright happy-path tests. The config boots `pnpm dev` automatically; expect the first run to take a minute. Sandboxed Supabase + Stripe environments are required for a full signup → buy → upload → report flow; the committed specs cover the auth-free public surface and `/api/health`.
 - `pnpm test:e2e` runs the public-surface specs by default; set `RUN_FULL_E2E=1` plus the env vars in [`tests/e2e/README.md`](./tests/e2e/README.md) to run the full signup → buy → upload → report path against your sandbox.
 
-Per [`CLAUDE.md` §9](./CLAUDE.md), the rules engine is the product — every rule needs positive + negative unit tests with realistic fixture data. The extraction pipeline gets schema-validation + golden-snapshot tests against anonymized fixtures under `tests/fixtures/bills/`.
+Per [`SPEC.md` §9](./SPEC.md), the rules engine is the product — every rule needs positive + negative unit tests with realistic fixture data. The extraction pipeline gets schema-validation + golden-snapshot tests against anonymized fixtures under `tests/fixtures/bills/`.
 
 ## Security + privacy
 
-- **PII discipline (CLAUDE.md §1#9).** Logs only contain audit IDs, user IDs, rule IDs, and aggregate counts. Raw bill content, employee names, full phone numbers, and full account numbers never leave the database — we mask to last-four for both account numbers and MDNs at extraction time.
+- **PII discipline (SPEC.md §1#9).** Logs only contain audit IDs, user IDs, rule IDs, and aggregate counts. Raw bill content, employee names, full phone numbers, and full account numbers never leave the database — we mask to last-four for both account numbers and MDNs at extraction time.
 - **RLS enforced ownership.** Every user-scoped table has Row Level Security; the service-role admin client is only used inside `src/lib/supabase/admin.ts` from Inngest workers and webhook handlers.
 - **Share tokens.** Generated as 24 random bytes (base64url) via `node:crypto.randomBytes`; opt-in (only when the user clicks "Share"); resolvable to a single completed audit via the `share_token` column.
 - **Storage.** `bills` and `reports` buckets are private. The PDF report endpoint always serves bytes through Next, never via direct storage URLs.
 
 ## Phase plan
 
-Build proceeds in the phases defined in [`CLAUDE.md` §6](./CLAUDE.md):
+Build proceeds in the phases defined in [`SPEC.md` §6](./SPEC.md):
 
 0. Project setup ✅
 1. PDF upload + extraction pipeline ✅
@@ -272,4 +272,4 @@ Each phase ends with a `STOP` checkpoint for human review.
 
 ---
 
-See [`CLAUDE.md`](./CLAUDE.md) for the canonical spec — that document wins on any conflict.
+See [`SPEC.md`](./SPEC.md) for the canonical spec — that document wins on any conflict.
