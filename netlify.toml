@@ -1,0 +1,17 @@
+[build]
+  command = "pnpm run build"
+  publish = ".next"
+
+[build.environment]
+  # Build-time fallbacks. Real values must be set in the Netlify dashboard
+  # for production runtime. SKIP_ENV_VALIDATION lets the build succeed when
+  # the dashboard env is partially populated (e.g. preview deploys before
+  # secrets are configured).
+  SKIP_ENV_VALIDATION = "1"
+  NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54321"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "placeholder"
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_placeholder"
+  NEXT_PUBLIC_APP_URL = "http://localhost:3000"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
