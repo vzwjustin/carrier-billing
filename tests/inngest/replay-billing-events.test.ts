@@ -158,30 +158,57 @@ function makeSupabaseStub(
                 }
               }
             };
+            // R1-F3: CAS chain now also filters on `processed_status` so a
+            // `markSuccess` that flipped status without touching
+            // `last_attempted_at` is no longer claimable. The chainable below
+            // accepts any number of `.is()` / `.eq()` filters before `.select()`
+            // terminates the CAS claim. Filter values are not checked against
+            // the row state in this mock — the per-test `stolen` set remains
+            // the override for "claim lost".
+            const casChainable: {
+              is: (c: string, v: unknown) => typeof casChainable;
+              eq: (c: string, v: unknown) => typeof casChainable;
+              select: (cols: string) => Promise<{
+                data: Array<{ id: unknown }>;
+                error: null;
+              }>;
+            } = {
+              is(_c, _v) {
+                return casChainable;
+              },
+              eq(_c, _v) {
+                return casChainable;
+              },
+              select(_cols) {
+                return Promise.resolve(
+                  options.stolen && options.stolen.has(String(val))
+                    ? { data: [] as Array<{ id: unknown }>, error: null }
+                    : (() => {
+                        updateLog.push({ patch, eq: [col, val] });
+                        applyPatch();
+                        return {
+                          data: [{ id: val }] as Array<{ id: unknown }>,
+                          error: null,
+                        };
+                      })(),
+                );
+              },
+            };
             const directThenable: {
               then: (resolve: (v: { error: null }) => void) => void;
-              is: (col2: string, val2: unknown) => unknown;
+              is: (col2: string, val2: unknown) => typeof casChainable;
+              eq: (col2: string, val2: unknown) => typeof casChainable;
             } = {
               then(resolve) {
                 updateLog.push({ patch, eq: [col, val] });
                 applyPatch();
                 resolve({ error: null });
               },
-              is(col2: string, _val2: unknown) {
-                // Returns a chain ending in `.select()` — H3 CAS claim.
-                return {
-                  select(_cols: string) {
-                    return Promise.resolve(
-                      options.stolen && options.stolen.has(String(val))
-                        ? { data: [], error: null }
-                        : (() => {
-                            updateLog.push({ patch, eq: [col, val] });
-                            applyPatch();
-                            return { data: [{ id: val }], error: null };
-                          })(),
-                    );
-                  },
-                };
+              is(_col2, _val2) {
+                return casChainable;
+              },
+              eq(_col2, _val2) {
+                return casChainable;
               },
             };
             return directThenable;

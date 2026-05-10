@@ -19,7 +19,7 @@ vi.mock('@/lib/stripe/client', () => ({
 type BillingEventRow = {
   id: string;
   stripe_event_id: string;
-  processed_status: 'success' | 'failed' | null;
+  processed_status: 'success' | 'failed' | 'in_flight' | null;
   last_attempted_at: string | null;
   processed_at: string | null;
   last_error: string | null;
@@ -72,14 +72,22 @@ const fromMock = vi.fn((table: string) => ({
       },
     }),
   }),
-  update: (patch: Record<string, unknown>) => ({
-    eq: async (_col: string, val: string) => {
-      const row = billingEvents.find((r) => r.id === val);
-      if (row) {
+  // R1-F1: markInFlight uses a CAS chain `.update().eq().or().select()`. The
+  // thenable builder lets legacy `await .update().eq(...)` (markSuccess /
+  // markFailure) and the new CAS chain both work against the same in-memory
+  // row set. Filters narrow which rows match; mutations apply only to matches.
+  update: (patch: Record<string, unknown>) => {
+    const filters: Array<(r: BillingEventRow) => boolean> = [];
+    const applyToMatched = (): BillingEventRow[] => {
+      const matched = billingEvents.filter((r) =>
+        filters.every((f) => f(r)),
+      );
+      for (const row of matched) {
         if ('processed_status' in patch) {
           row.processed_status = patch['processed_status'] as
             | 'success'
             | 'failed'
+            | 'in_flight'
             | null;
         }
         if ('processed_at' in patch) {
@@ -92,9 +100,62 @@ const fromMock = vi.fn((table: string) => ({
           row.last_attempted_at = patch['last_attempted_at'] as string | null;
         }
       }
-      return { error: null };
-    },
-  }),
+      return matched;
+    };
+    const builder: {
+      eq: (col: string, val: unknown) => typeof builder;
+      is: (col: string, val: unknown) => typeof builder;
+      or: (clause: string) => typeof builder;
+      select: (cols?: string) => Promise<{
+        data: Array<{ id: string }>;
+        error: null;
+      }>;
+      then: (
+        onFulfilled: (v: { error: null }) => unknown,
+        onRejected?: (e: unknown) => unknown,
+      ) => Promise<unknown>;
+    } = {
+      eq(col, val) {
+        filters.push((r) => (r as Record<string, unknown>)[col] === val);
+        return builder;
+      },
+      is(col, val) {
+        filters.push((r) => (r as Record<string, unknown>)[col] === val);
+        return builder;
+      },
+      or(clause) {
+        const parts = clause.split(',');
+        const preds = parts.map((p) => {
+          const m = p.match(/^(\w+)\.(is|eq)\.(.+)$/);
+          if (!m) return () => false;
+          const [, col, op, val] = m;
+          if (op === 'is' && val === 'null') {
+            return (r: BillingEventRow) =>
+              (r as Record<string, unknown>)[col!] === null;
+          }
+          if (op === 'eq') {
+            return (r: BillingEventRow) =>
+              String((r as Record<string, unknown>)[col!]) === val;
+          }
+          return () => false;
+        });
+        filters.push((r) => preds.some((p) => p(r)));
+        return builder;
+      },
+      select(_cols) {
+        const matched = applyToMatched();
+        return Promise.resolve({
+          data: matched.map((r) => ({ id: r.id })),
+          error: null,
+        });
+      },
+      then(onFulfilled, onRejected) {
+        applyToMatched();
+        return Promise.resolve({ error: null }).then(onFulfilled, onRejected);
+      },
+    };
+    return builder;
+  },
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({

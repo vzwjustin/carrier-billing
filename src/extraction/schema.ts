@@ -86,7 +86,7 @@ export const ExtractedAccountSchema = z.object({
     .nullable(),
   label: z.string().max(40).nullable(),
   total_charges_cents: z.number().int().nonnegative().max(100_000_000),
-  taxes_fees_cents: z.number().int().nonnegative().nullable(),
+  taxes_fees_cents: z.number().int().nonnegative().max(10_000_000).nullable(),
   account_level_credits: z.array(ExtractedCreditSchema).default([]),
   lines: z.array(ExtractedLineSchema),
 });

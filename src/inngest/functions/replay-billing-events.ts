@@ -175,12 +175,23 @@ export async function replayBillingEvent(
   // the candidate select: if another worker already moved the timestamp,
   // our UPDATE matches 0 rows and we skip without invoking the handler.
   // `.select('id')` lets us read the row count.
-  const claim = await supabase
+  //
+  // R1-F3 — also CAS on processed_status. `markSuccess` in the webhook route
+  // flips processed_status without touching last_attempted_at, so a row that
+  // the webhook completed AFTER our SELECT can still pass the timestamp CAS.
+  // previousStatus='failed' (below) protects the credit grant, but other
+  // handler side effects (subscription_status writes, past_due flip,
+  // inngest.send) would otherwise fire twice. CAS-on-status closes that.
+  const claimBase = supabase
     .from('billing_events')
     .update({ last_attempted_at: now.toISOString() })
     .eq('id', row.id)
-    .is('last_attempted_at', row.last_attempted_at)
-    .select('id');
+    .is('last_attempted_at', row.last_attempted_at);
+  const claimWithStatus =
+    row.processed_status === null
+      ? claimBase.is('processed_status', null)
+      : claimBase.eq('processed_status', row.processed_status);
+  const claim = await claimWithStatus.select('id');
 
   const claimedRows = (claim.data ?? []) as Array<{ id: string }>;
   if (claimedRows.length === 0) {

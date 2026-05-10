@@ -31,7 +31,7 @@ vi.mock('@/lib/stripe/client', () => ({
 type BillingEventRow = {
   id: string;
   stripe_event_id: string;
-  processed_status: 'success' | 'failed' | null;
+  processed_status: 'success' | 'failed' | 'in_flight' | null;
   last_attempted_at: string | null;
   processed_at: string | null;
   last_error: string | null;
@@ -43,6 +43,25 @@ const billingEvents: BillingEventRow[] = [];
 // `processed_status='success'` returns an error and leaves the row's
 // processed_status untouched.
 let nextMarkSuccessError: { message: string } | null = null;
+
+function applyPatch(row: BillingEventRow, patch: Record<string, unknown>): void {
+  if ('processed_status' in patch) {
+    row.processed_status = patch['processed_status'] as
+      | 'success'
+      | 'failed'
+      | 'in_flight'
+      | null;
+  }
+  if ('processed_at' in patch) {
+    row.processed_at = patch['processed_at'] as string | null;
+  }
+  if ('last_error' in patch) {
+    row.last_error = patch['last_error'] as string | null;
+  }
+  if ('last_attempted_at' in patch) {
+    row.last_attempted_at = patch['last_attempted_at'] as string | null;
+  }
+}
 
 const fromMock = vi.fn(() => ({
   select: () => ({
@@ -81,38 +100,85 @@ const fromMock = vi.fn(() => ({
       },
     }),
   }),
-  update: (patch: Record<string, unknown>) => ({
-    eq: async (_col: string, val: string) => {
-      // M-S1 simulation: fail the markSuccess UPDATE only.
-      if (
-        nextMarkSuccessError &&
-        patch['processed_status'] === 'success'
-      ) {
+  // R1-F1: markInFlight now uses a CAS chain `.update().eq().or().select()`.
+  // The builder below is thenable so legacy `await .update().eq(...)` (used by
+  // markSuccess / markFailure) still resolves to `{ error }`; chaining `.or()`
+  // / `.is()` and terminating with `.select()` exercises the CAS path and
+  // returns `{ data: matchedRows, error }`. Filters narrow which row(s) match;
+  // mutations are applied only to matched rows.
+  update: (patch: Record<string, unknown>) => {
+    const filters: Array<(r: BillingEventRow) => boolean> = [];
+    const evalNow = (): {
+      matched: BillingEventRow[];
+      error: { message: string } | null;
+    } => {
+      if (nextMarkSuccessError && patch['processed_status'] === 'success') {
         const err = nextMarkSuccessError;
         nextMarkSuccessError = null;
-        return { error: err };
+        return { matched: [], error: err };
       }
-      const row = billingEvents.find((r) => r.id === val);
-      if (row) {
-        if ('processed_status' in patch) {
-          row.processed_status = patch['processed_status'] as
-            | 'success'
-            | 'failed'
-            | null;
-        }
-        if ('processed_at' in patch) {
-          row.processed_at = patch['processed_at'] as string | null;
-        }
-        if ('last_error' in patch) {
-          row.last_error = patch['last_error'] as string | null;
-        }
-        if ('last_attempted_at' in patch) {
-          row.last_attempted_at = patch['last_attempted_at'] as string | null;
-        }
-      }
-      return { error: null };
-    },
-  }),
+      const matched = billingEvents.filter((r) =>
+        filters.every((f) => f(r)),
+      );
+      for (const row of matched) applyPatch(row, patch);
+      return { matched, error: null };
+    };
+    const builder: {
+      eq: (col: string, val: unknown) => typeof builder;
+      is: (col: string, val: unknown) => typeof builder;
+      or: (clause: string) => typeof builder;
+      select: (cols?: string) => Promise<{
+        data: Array<{ id: string }> | null;
+        error: { message: string } | null;
+      }>;
+      then: (
+        onFulfilled: (v: { error: { message: string } | null }) => unknown,
+        onRejected?: (e: unknown) => unknown,
+      ) => Promise<unknown>;
+    } = {
+      eq(col, val) {
+        filters.push((r) => (r as Record<string, unknown>)[col] === val);
+        return builder;
+      },
+      is(col, val) {
+        filters.push((r) => (r as Record<string, unknown>)[col] === val);
+        return builder;
+      },
+      or(clause) {
+        // 'processed_status.is.null,processed_status.eq.failed' ⇒ OR of preds.
+        const parts = clause.split(',');
+        const preds = parts.map((p) => {
+          const m = p.match(/^(\w+)\.(is|eq)\.(.+)$/);
+          if (!m) return () => false;
+          const [, col, op, val] = m;
+          if (op === 'is' && val === 'null') {
+            return (r: BillingEventRow) =>
+              (r as Record<string, unknown>)[col!] === null;
+          }
+          if (op === 'eq') {
+            return (r: BillingEventRow) =>
+              String((r as Record<string, unknown>)[col!]) === val;
+          }
+          return () => false;
+        });
+        filters.push((r) => preds.some((p) => p(r)));
+        return builder;
+      },
+      select(_cols) {
+        const r = evalNow();
+        return Promise.resolve(
+          r.error
+            ? { data: null, error: r.error }
+            : { data: r.matched.map((row) => ({ id: row.id })), error: null },
+        );
+      },
+      then(onFulfilled, onRejected) {
+        const r = evalNow();
+        return Promise.resolve({ error: r.error }).then(onFulfilled, onRejected);
+      },
+    };
+    return builder;
+  },
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -248,6 +314,37 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     const body = (await res.json()) as { received: boolean; deduped?: boolean };
     expect(body).toEqual({ received: true, deduped: true });
     expect(handleStripeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('R1-F2: event already in_flight ⇒ 200 deduped, handler not invoked', async () => {
+    // Pre-seed the row as currently being processed by another worker. The
+    // entry-path short-circuit must catch this and ack 200 deduped without
+    // re-invoking the handler in parallel. Non-credit handler effects
+    // (subscription_status writes, past_due flip, inngest.send) are not gated
+    // by previousStatus and would otherwise fire twice.
+    billingEvents.push({
+      id: 'be_in_flight_seed',
+      stripe_event_id: 'evt_dup_in_flight',
+      processed_status: 'in_flight',
+      processed_at: null,
+      last_attempted_at: new Date().toISOString(),
+      last_error: null,
+    });
+
+    const event = makeCheckoutEvent('evt_dup_in_flight');
+    constructEventMock.mockReturnValue(event);
+
+    const res = await POST(makeRequest('{}'));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { received: boolean; deduped?: boolean };
+    expect(body).toEqual({ received: true, deduped: true });
+    expect(handleStripeEventMock).not.toHaveBeenCalled();
+
+    // The row should remain in_flight — the other worker still owns it.
+    const row = billingEvents.find(
+      (r) => r.stripe_event_id === 'evt_dup_in_flight',
+    );
+    expect(row?.processed_status).toBe('in_flight');
   });
 
   it('event with processed_status=failed ⇒ handler re-invoked with previousStatus=failed', async () => {

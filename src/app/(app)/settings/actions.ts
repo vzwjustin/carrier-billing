@@ -162,6 +162,12 @@ export async function updateOutboundWebhookAction(
   return { ok: true };
 }
 
+// R2-F5 — per-user cooldown on plaintext-secret retrieval. 1 second between
+// reveals (~60/min/user). Defense against post-XSS or session-hijack repeated-
+// call exfiltration. Per-row timestamp; can be swapped for an Upstash bucket
+// without losing the column. See migration 0015.
+const REVEAL_COOLDOWN_MS = 1000;
+
 export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecretResult> {
   const supabase = await createClient();
   const {
@@ -172,16 +178,36 @@ export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecr
   const admin = getAdminClient();
   const { data, error } = await admin
     .from('profiles')
-    .select('outbound_webhook_secret')
+    .select('outbound_webhook_secret, last_secret_reveal_at')
     .eq('id', user.id)
     .maybeSingle();
 
   if (error) return { ok: false, error: 'Could not retrieve secret.' };
-  const secret = (data as { outbound_webhook_secret?: string | null } | null)
-    ?.outbound_webhook_secret;
+  const row = data as {
+    outbound_webhook_secret?: string | null;
+    last_secret_reveal_at?: string | null;
+  } | null;
+  const secret = row?.outbound_webhook_secret;
   if (typeof secret !== 'string' || secret.length === 0) {
     return { ok: false, error: 'No secret configured.' };
   }
+
+  const last = row?.last_secret_reveal_at;
+  if (typeof last === 'string') {
+    const lastMs = Date.parse(last);
+    if (Number.isFinite(lastMs) && Date.now() - lastMs < REVEAL_COOLDOWN_MS) {
+      return {
+        ok: false,
+        error: 'Please wait a moment before revealing again.',
+      };
+    }
+  }
+
+  await admin
+    .from('profiles')
+    .update({ last_secret_reveal_at: new Date().toISOString() })
+    .eq('id', user.id);
+
   return { ok: true, secret };
 }
 

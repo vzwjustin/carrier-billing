@@ -157,7 +157,16 @@ export async function POST(request: Request): Promise<Response> {
 
     if (signError || !signed) {
       // Clean up the orphaned audit row so the user can retry cleanly.
-      await admin.from('audits').delete().eq('id', auditId);
+      // R2-F11 — match the decrement-rollback pattern at L121-141 so a
+      // failed rollback surfaces in Sentry instead of being silently lost.
+      try {
+        await admin.from('audits').delete().eq('id', auditId);
+      } catch (rollbackErr) {
+        Sentry.captureException(rollbackErr, {
+          tags: { surface: 'audits.create.rollback_signed_url_orphan' },
+          extra: { auditId, userId: user.id },
+        });
+      }
       // If we consumed a credit on this request, refund it. The orphan-cleanup
       // cron only sees rows that survive — since we just deleted the row, the
       // credit would otherwise be lost. Subscription users never spent a
