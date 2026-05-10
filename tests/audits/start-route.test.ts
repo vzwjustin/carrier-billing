@@ -20,9 +20,13 @@ type AuditRowResp = {
   error: null | { message: string };
 };
 
-const getUserMock = vi.fn<() => Promise<GetUserResult>>();
-const auditsSelectMock = vi.fn<() => Promise<AuditRowResp>>();
-const inngestSendMock = vi.fn(async (_event: unknown) => undefined);
+// Wrap top-level mocks in vi.hoisted so they're initialized before the
+// vi.mock factories below run (per CLAUDE.md test-mocking rule).
+const { getUserMock, auditsSelectMock, inngestSendMock } = vi.hoisted(() => ({
+  getUserMock: vi.fn<() => Promise<GetUserResult>>(),
+  auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
+  inngestSendMock: vi.fn(async (_event: unknown) => undefined),
+}));
 
 // `from('audits').select(...).eq(...).maybeSingle()` chain
 function makeFromChain() {
