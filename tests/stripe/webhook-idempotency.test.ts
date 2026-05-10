@@ -26,10 +26,19 @@ type BillingEventRow = {
 };
 const billingEvents: BillingEventRow[] = [];
 
-const fromMock = vi.fn((_table: string) => ({
+// Cosmetic L: surface the `table` argument so we can assert the dedupe path
+// targets `billing_events` (and would catch any regression that pointed it at
+// the wrong table).
+const fromMock = vi.fn((table: string) => ({
   select: (_cols: string) => ({
     eq: (_col: string, val: string) => ({
       maybeSingle: async () => {
+        // Sanity-check: the existence read must hit billing_events.
+        if (table !== 'billing_events') {
+          throw new Error(
+            `unexpected table for dedupe select: ${table} (expected billing_events)`,
+          );
+        }
         const row = billingEvents.find((r) => r.stripe_event_id === val);
         return row
           ? { data: { id: row.id, processed_status: row.processed_status }, error: null }
@@ -163,6 +172,13 @@ describe('POST /api/stripe/webhook — idempotency', () => {
     };
     expect(secondJson).toEqual({ received: true, deduped: true });
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
+
+    // Cosmetic L: every dedupe-path `from(...)` call targets `billing_events`.
+    // Catches any regression that points the dedupe lookup at the wrong table.
+    expect(fromMock).toHaveBeenCalled();
+    for (const call of fromMock.mock.calls) {
+      expect(call[0]).toBe('billing_events');
+    }
   });
 
   it('two different events of the same type both call the handler', async () => {

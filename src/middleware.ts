@@ -4,16 +4,33 @@ import { updateSession } from '@/lib/supabase/middleware';
 
 /**
  * Build the Content-Security-Policy. This is an allowlist CSP, not a nonce CSP:
- * Next/PostHog/Sentry currently need inline/eval allowances in this app. Keep
+ * Next/PostHog/Sentry currently need inline allowances in this app. Keep
  * this comment honest so future hardening can remove those allowances in a
  * deliberate browser-tested pass.
  */
-function buildCsp(): string {
+export function buildCsp(): string {
+  // unsafe-eval is required by Next dev mode HMR; not needed in production.
+  // PostHog and Stripe.js do not require eval. Gate it on NODE_ENV so the
+  // production response stays tight.
+  const isProd = process.env.NODE_ENV === 'production';
+  const scriptSrc = [
+    "'self'",
+    "'unsafe-inline'",
+    ...(isProd ? [] : ["'unsafe-eval'"]),
+    'https://js.stripe.com',
+    'https://*.posthog.com',
+    'https://*.i.posthog.com',
+  ].join(' ');
+
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.posthog.com https://*.i.posthog.com",
+    `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    // img-src: explicit hosts only. Bare `https:` would let any HTTPS host
+    // load images, which defeats the point of the allowlist. The app loads
+    // user-uploaded thumbnails from Supabase storage; data:/blob: cover
+    // inline previews and same-origin generated images.
+    "img-src 'self' data: blob: https://*.supabase.co",
     "font-src 'self' data:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://*.posthog.com https://*.i.posthog.com https://*.sentry.io",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",

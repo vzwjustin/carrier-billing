@@ -131,4 +131,24 @@ describe('unused_mifi_or_jetpack_line rule', () => {
     const findings = await unusedMifiLineRule.evaluate(c);
     expect(findings).toHaveLength(0);
   });
+
+  it('does NOT fire when data_used_gb is null (missing data is not zero)', async () => {
+    // Some carriers do not surface per-line usage on every bill. Treating
+    // null as 0 would mis-flag every hotspot on those carriers.
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              device: 'Verizon Jetpack MiFi 8800L',
+              data_used_gb: null,
+              plan_base_cents: 4000,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await unusedMifiLineRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
 });

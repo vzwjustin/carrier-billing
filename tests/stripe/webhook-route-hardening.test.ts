@@ -38,6 +38,12 @@ type BillingEventRow = {
 };
 const billingEvents: BillingEventRow[] = [];
 
+// M-S1: a per-test toggle so we can simulate the markSuccess UPDATE failing
+// after the handler succeeded. When set, the next UPDATE that writes
+// `processed_status='success'` returns an error and leaves the row's
+// processed_status untouched.
+let nextMarkSuccessError: { message: string } | null = null;
+
 const fromMock = vi.fn(() => ({
   select: () => ({
     eq: (_col: string, val: string) => ({
@@ -77,6 +83,15 @@ const fromMock = vi.fn(() => ({
   }),
   update: (patch: Record<string, unknown>) => ({
     eq: async (_col: string, val: string) => {
+      // M-S1 simulation: fail the markSuccess UPDATE only.
+      if (
+        nextMarkSuccessError &&
+        patch['processed_status'] === 'success'
+      ) {
+        const err = nextMarkSuccessError;
+        nextMarkSuccessError = null;
+        return { error: err };
+      }
       const row = billingEvents.find((r) => r.id === val);
       if (row) {
         if ('processed_status' in patch) {
@@ -155,6 +170,7 @@ beforeEach(() => {
   handleStripeEventMock.mockReset();
   handleStripeEventMock.mockResolvedValue(undefined);
   billingEvents.length = 0;
+  nextMarkSuccessError = null;
 });
 
 describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
@@ -257,6 +273,29 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     const row = billingEvents.find((r) => r.stripe_event_id === 'evt_replay');
     expect(row?.processed_status).toBe('success');
     expect(row?.last_error).toBeNull();
+  });
+
+  it('M-S1: markSuccess bookkeeping failure ⇒ 5xx so Stripe retries', async () => {
+    // The handler succeeded, but the bookkeeping UPDATE that flips
+    // processed_status to success returns an error. The route MUST 5xx
+    // (not 200) so Stripe retries the delivery and the next attempt has a
+    // chance to mark the row clean. The handler's side effects already
+    // landed; the credit grant is gated on previousStatus, so a retry won't
+    // double-credit.
+    const event = makeCheckoutEvent('evt_marksuccess_fail');
+    constructEventMock.mockReturnValue(event);
+    nextMarkSuccessError = { message: 'bookkeeping pg blew up' };
+
+    const res = await POST(makeRequest('{}'));
+    expect(res.status).toBe(500);
+
+    // Handler still ran exactly once.
+    expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
+    // Row remains with processed_status=null (the failing UPDATE didn't touch it).
+    const row = billingEvents.find(
+      (r) => r.stripe_event_id === 'evt_marksuccess_fail',
+    );
+    expect(row?.processed_status).toBeNull();
   });
 
   it('Stripe retry of a failed event flips processed_status from failed to success', async () => {

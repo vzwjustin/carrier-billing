@@ -49,7 +49,11 @@ export const dataOveragePatternRule: Rule = {
         // Branch S: known soft cap match — uses the actual per-tier threshold
         // from PLAN_SOFT_CAPS_GB rather than the generic 50/100 fallbacks.
         // This is authoritative when matched; skip the generic branches.
-        if (softCap !== null) {
+        // Guard `softCap > 0`: a zero soft-cap would mean "no premium-data
+        // allotment" (effectively no cap) and dividing by it would yield
+        // Infinity / NaN. Treat 0 as "no soft-cap data" and skip the
+        // warn-ratio branch entirely.
+        if (softCap !== null && softCap > 0) {
           const ratio = used / softCap;
           if (ratio < SOFT_CAP_WARN_RATIO) return;
 

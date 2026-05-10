@@ -58,6 +58,15 @@ const MIN_INTERCHANGE_BYTES = 106;
 const ISA_HEADER_BYTES = 106;
 
 /**
+ * (C6) Hard cap on the number of segments we'll materialize from a single
+ * interchange. A real wireless 811 has hundreds — even a multi-thousand-line
+ * enterprise account doesn't break a low five-figure count. 50,000 is well
+ * above any legitimate ceiling and bounds the worst-case parse work to
+ * something the worker can survive.
+ */
+export const MAX_EDI_SEGMENTS = 50_000;
+
+/**
  * Decode an X12 interchange. Returns the envelope metadata and a flat list
  * of every non-envelope segment between ST and SE (inclusive of ST/SE so
  * mapper code can sanity-check transaction set ids).
@@ -115,6 +124,14 @@ export function parseEdi811(raw: string): {
   // inter-segment whitespace. Empty segments are dropped.
   const tail = raw.slice(ISA_HEADER_BYTES);
   const rawSegments = tail.split(segmentTerminator);
+  // (C6) Bound the per-interchange segment count before we walk + allocate.
+  // Comparing the SPLIT result is sufficient: each post-split slice would
+  // otherwise become at most one Edi811Segment.
+  if (rawSegments.length > MAX_EDI_SEGMENTS) {
+    throw new Edi811ParseError(
+      `EDI interchange has ${rawSegments.length} segments, exceeds ${MAX_EDI_SEGMENTS} limit`,
+    );
+  }
   const segments: Edi811Segment[] = [];
   let sawSt = false;
   let sawSe = false;
@@ -149,6 +166,23 @@ export function parseEdi811(raw: string): {
 
   if (!sawSt || !sawSe) {
     throw new Edi811ParseError('transaction set ST/SE markers are missing');
+  }
+
+  // (M-E4) Reject non-811 transaction sets with the same friendly sentinel
+  // the LLM path uses so the user-facing failure_reason can collapse both
+  // branches into a single "this isn't a wireless bill" message. The ST01
+  // element is the transaction set identifier code; the wireless invoice
+  // transaction we support is 811. Any other value (810 invoice, 820
+  // remittance, etc.) is a misrouted file and should not silently succeed
+  // by mapping nothing.
+  for (const seg of segments) {
+    if (seg.id !== 'ST') continue;
+    const transactionSetCode = (seg.elements[1] ?? '').trim();
+    if (transactionSetCode.length > 0 && transactionSetCode !== '811') {
+      throw new Edi811ParseError(
+        `not a wireless bill — transaction set is not 811 (got ${transactionSetCode})`,
+      );
+    }
   }
 
   return {

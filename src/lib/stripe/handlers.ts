@@ -4,6 +4,7 @@ import type Stripe from 'stripe';
 
 import { inngest } from '@/inngest/client';
 import { trackServer } from '@/lib/analytics/events';
+import { scrubString } from '@/lib/observability/redact';
 import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
 
 /**
@@ -61,9 +62,13 @@ export async function handleStripeEvent(
       );
       return;
     case 'invoice.payment_failed':
+      // H2: pass event.created so the past_due flip honors the same
+      // ordering guard subscription events use (a delayed payment_failed
+      // arriving after a recovery must NOT resurrect past_due).
       await onInvoicePaymentFailed(
         event.data.object as Stripe.Invoice,
         supabase,
+        event.created,
       );
       return;
     default:
@@ -213,17 +218,23 @@ async function onSubscriptionDeleted(
 }
 
 /**
- * H9: SELECT current `subscription_event_at` then conditionally UPDATE.
+ * H9 + H4: SELECT for row-id lookup, then CAS UPDATE that re-checks the
+ * ordering guard inside the WHERE clause so the database arbitrates.
  *
- * If the incoming event's `event.created` is older than (or equal to) the
- * timestamp of the last applied subscription event, drop the update — the
- * profile already reflects a more recent decision. Otherwise apply the
- * patch AND advance `subscription_event_at`.
+ * Why the WHERE-side guard matters (H4): the previous implementation read
+ * `subscription_event_at` in a SELECT and then issued an unconditional UPDATE
+ * keyed by id. That was OK as long as Stripe's own per-subscription delivery
+ * was the only source of events — Stripe serializes deliveries per object so
+ * a SELECT-then-UPDATE in a single handler run could not race a sibling
+ * webhook hitting the same row. The H8 replay cron broke that invariant: a
+ * cron tick replaying a stale event can run concurrently with a fresh
+ * subscription.updated, and the SELECT/UPDATE window is wide enough for the
+ * stale patch to clobber the fresh one.
  *
- * Two-step rather than a single CAS UPDATE because the supabase-js mock surface
- * used in handler tests doesn't model `.or()`, and the small race window
- * (between SELECT and UPDATE) is bounded by Stripe's per-subscription
- * delivery serialization.
+ * Fix: the UPDATE is conditional on `subscription_event_at IS NULL OR
+ * subscription_event_at < eventCreatedAt`, so the older event's UPDATE
+ * affects 0 rows when a fresher one has already landed. We `.select('id')`
+ * to learn the row count and log a Sentry breadcrumb on the rejected case.
  */
 async function applySubscriptionPatchWithOrderGuard(
   supabase: SupabaseClient,
@@ -249,6 +260,8 @@ async function applySubscriptionPatchWithOrderGuard(
     eventType,
   );
 
+  // Pre-check the in-memory snapshot so we still emit the breadcrumb in the
+  // common single-writer case without relying on the database to tell us.
   const currentEventAt = matched.subscription_event_at ?? null;
   if (currentEventAt !== null && currentEventAt >= eventCreatedAt) {
     Sentry.addBreadcrumb({
@@ -265,23 +278,47 @@ async function applySubscriptionPatchWithOrderGuard(
     return;
   }
 
-  const { error: updateErr } = await supabase
+  // CAS: the UPDATE only fires if subscription_event_at is still null or
+  // strictly older than this event. If a concurrent (fresher) writer already
+  // landed between our SELECT above and this UPDATE, the WHERE clause will
+  // match 0 rows and we bail out without overwriting.
+  const { data: updatedRows, error: updateErr } = await supabase
     .from('profiles')
     .update({
       ...patch,
       subscription_event_at: eventCreatedAt,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', matched.id);
+    .eq('id', matched.id)
+    .or(
+      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
+    )
+    .select('id');
 
   if (updateErr) {
     throw new Error(`profile subscription update failed: ${updateErr.message}`);
+  }
+
+  const rows = (updatedRows ?? []) as Array<{ id: string }>;
+  if (rows.length === 0) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'subscription patch rejected by CAS guard (fresher event won)',
+      level: 'info',
+      data: {
+        eventType,
+        eventCreatedAt,
+        customerId,
+      },
+    });
+    return;
   }
 }
 
 async function onInvoicePaymentFailed(
   invoice: Stripe.Invoice,
   supabase: SupabaseClient,
+  eventCreated: number,
 ): Promise<void> {
   const customerId = readCustomerId(invoice.customer);
   if (!customerId) {
@@ -299,28 +336,90 @@ async function onInvoicePaymentFailed(
     data: { invoice_id: invoice.id, customer: customerId },
   });
 
-  // We need the userId + customer email to emit the notification marker, so
-  // resolve the profile via the same UPDATE that flips status to past_due.
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({
-      subscription_status: 'past_due',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('stripe_customer_id', customerId)
-    .select('id, email');
+  // H2: route the past_due flip through the same ordering guard subscription
+  // events use. Stripe does NOT serialize between subscription.* and invoice.*
+  // deliveries, so a delayed `invoice.payment_failed` can arrive AFTER a
+  // subscription.updated→active recovery and would otherwise resurrect the
+  // stale past_due. The CAS guard inside the helper drops the patch when a
+  // fresher subscription_event_at has already landed.
+  const eventCreatedAt = new Date(eventCreated * 1000).toISOString();
 
-  if (error) {
-    throw new Error(`profile past_due update failed: ${error.message}`);
+  const { data: profiles, error: selectErr } = await supabase
+    .from('profiles')
+    .select('id, subscription_event_at')
+    .eq('stripe_customer_id', customerId);
+
+  if (selectErr) {
+    throw new Error(`profile lookup failed: ${selectErr.message}`);
   }
 
-  const matched = assertExactlyOneProfileMatched(
-    data,
+  const matchedForGuard = assertExactlyOneProfileMatched(
+    profiles as Array<{ id: string; subscription_event_at?: string | null }> | null,
     customerId,
     'invoice.payment_failed',
   );
 
-  const profile = matched as { id: string; email?: string | null };
+  const currentEventAt = matchedForGuard.subscription_event_at ?? null;
+  if (currentEventAt !== null && currentEventAt >= eventCreatedAt) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'ignoring out-of-order invoice.payment_failed',
+      level: 'info',
+      data: {
+        eventCreatedAt,
+        currentEventAt,
+        customerId,
+      },
+    });
+    return;
+  }
+
+  const { data: updatedRows, error: updateErr } = await supabase
+    .from('profiles')
+    .update({
+      subscription_status: 'past_due',
+      subscription_event_at: eventCreatedAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', matchedForGuard.id)
+    .or(
+      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
+    )
+    .select('id');
+
+  if (updateErr) {
+    throw new Error(`profile past_due update failed: ${updateErr.message}`);
+  }
+
+  const rows = (updatedRows ?? []) as Array<{ id: string }>;
+  if (rows.length === 0) {
+    // Fresher event won between SELECT and UPDATE — skip the email too.
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'invoice.payment_failed CAS rejected (fresher event won)',
+      level: 'info',
+      data: { eventCreatedAt, customerId },
+    });
+    return;
+  }
+
+  // Re-fetch the profile to get the email (the CAS UPDATE only returned id).
+  const { data: emailRows, error: emailErr } = await supabase
+    .from('profiles')
+    .select('id, email')
+    .eq('id', matchedForGuard.id);
+
+  if (emailErr) {
+    throw new Error(`profile email lookup failed: ${emailErr.message}`);
+  }
+
+  const emailMatched = assertExactlyOneProfileMatched(
+    emailRows as Array<{ id: string; email?: string | null }> | null,
+    customerId,
+    'invoice.payment_failed',
+  );
+
+  const profile = emailMatched as { id: string; email?: string | null };
   const customerEmail = profile.email ?? null;
 
   if (!customerEmail) {
@@ -333,14 +432,14 @@ async function onInvoicePaymentFailed(
 
   // Dispatch the notification email via Inngest. Wrapped in try/catch because
   // a dispatch failure must NOT roll back the past_due profile update — the
-  // user's billing state is more important than the email. Inngest will
-  // retry the email function on its own once delivered.
+  // user's billing state is more important than the email. The consumer
+  // re-fetches the profile by userId so we deliberately do NOT include the
+  // email in the event payload (C2 — PII discipline).
   try {
     await inngest.send({
       name: 'billing.payment_failed',
       data: {
         userId: profile.id,
-        customerEmail,
         stripeCustomerId: customerId,
         invoiceId: invoice.id ?? null,
         amountDueCents:
@@ -348,10 +447,16 @@ async function onInvoicePaymentFailed(
       },
     });
   } catch (sendErr) {
-    Sentry.captureException(sendErr, {
-      tags: { surface: 'stripe.payment_failed.dispatch' },
-      extra: { userId: profile.id, invoiceId: invoice.id ?? null },
-    });
+    // M-S2: the underlying Stripe/Inngest error message can echo customer
+    // email/address. scrubString strips emails, phones, and long digit runs
+    // before the message is forwarded to Sentry's serializer.
+    Sentry.captureException(
+      new Error(scrubString(sendErr instanceof Error ? sendErr.message : String(sendErr))),
+      {
+        tags: { surface: 'stripe.payment_failed.dispatch' },
+        extra: { userId: profile.id, invoiceId: invoice.id ?? null },
+      },
+    );
   }
 }
 

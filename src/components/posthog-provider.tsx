@@ -43,6 +43,17 @@ export function PostHogProvider({ children }: PostHogProviderProps) {
 
 function PostHogInner({ children }: PostHogProviderProps) {
   useEffect(() => {
+    // Defense-in-depth: even though the parent guards on `usePathname()`,
+    // the App Router can render this component on a share route during
+    // navigation transitions. Re-check `window.location.pathname` *before*
+    // posthog.init so the autocapture of $current_url on first init never
+    // sees a `/share/<token>` URL.
+    if (
+      typeof window !== 'undefined' &&
+      window.location.pathname.startsWith('/share/')
+    ) {
+      return;
+    }
     initPostHog();
   }, []);
 

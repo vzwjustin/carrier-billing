@@ -25,35 +25,46 @@ describe('generateInboundToken', () => {
 describe('parseInboundRecipient', () => {
   it('extracts token + domain from a plain address', () => {
     expect(
-      parseInboundRecipient('bills+abc234567@inbound.example.com'),
-    ).toEqual({ token: 'abc234567', domain: 'inbound.example.com' });
+      parseInboundRecipient('bills+abcdefgh23456pqr@inbound.example.com'),
+    ).toEqual({ token: 'abcdefgh23456pqr', domain: 'inbound.example.com' });
   });
 
   it('handles angle-bracket-wrapped addresses with display name', () => {
     expect(
       parseInboundRecipient(
-        'CarrierAudit <bills+xyzpdq2345@inbound.example.com>',
+        'CarrierAudit <bills+xyzpdq2345abcdef@inbound.example.com>',
       ),
-    ).toEqual({ token: 'xyzpdq2345', domain: 'inbound.example.com' });
+    ).toEqual({ token: 'xyzpdq2345abcdef', domain: 'inbound.example.com' });
   });
 
   it('lower-cases token + domain', () => {
     expect(
-      parseInboundRecipient('Bills+ABCDE2345@INBOUND.example.com'),
-    ).toEqual({ token: 'abcde2345', domain: 'inbound.example.com' });
+      parseInboundRecipient('Bills+ABCDE2345FGHIJ23@INBOUND.example.com'),
+    ).toEqual({ token: 'abcde2345fghij23', domain: 'inbound.example.com' });
   });
 
   it('returns null when local-part has no token suffix', () => {
     expect(parseInboundRecipient('bills@inbound.example.com')).toBeNull();
   });
 
-  it('returns null when token is too short', () => {
+  it('returns null when token is too short (not exactly 16)', () => {
     expect(parseInboundRecipient('bills+abc@inbound.example.com')).toBeNull();
+    expect(
+      parseInboundRecipient('bills+abc234567@inbound.example.com'),
+    ).toBeNull();
+  });
+
+  it('returns null when token is too long (not exactly 16)', () => {
+    expect(
+      parseInboundRecipient(
+        'bills+abcdefghij234567abc@inbound.example.com',
+      ),
+    ).toBeNull();
   });
 
   it('returns null when local-part is wrong (e.g. reports+token)', () => {
     expect(
-      parseInboundRecipient('reports+abc234567@inbound.example.com'),
+      parseInboundRecipient('reports+abcdefgh23456789@inbound.example.com'),
     ).toBeNull();
   });
 
@@ -84,5 +95,35 @@ describe('verifyHmac', () => {
 
   it('returns false when body differs', () => {
     expect(verifyHmac(`${body} `, goodSig, secret)).toBe(false);
+  });
+
+  it('accepts uppercase hex (case-insensitive)', () => {
+    expect(verifyHmac(body, goodSig.toUpperCase(), secret)).toBe(true);
+  });
+
+  it('accepts a sha256= prefix', () => {
+    expect(verifyHmac(body, `sha256=${goodSig}`, secret)).toBe(true);
+  });
+
+  it('accepts uppercase hex with a sha256= prefix', () => {
+    expect(verifyHmac(body, `sha256=${goodSig.toUpperCase()}`, secret)).toBe(
+      true,
+    );
+  });
+
+  it('returns false on junk (non-hex) input', () => {
+    expect(verifyHmac(body, 'not hex', secret)).toBe(false);
+  });
+
+  it('returns false when input has wrong length even with the prefix', () => {
+    expect(verifyHmac(body, `sha256=${goodSig.slice(0, -2)}`, secret)).toBe(
+      false,
+    );
+  });
+
+  it('does not throw on non-string signature', () => {
+    expect(
+      verifyHmac(body, undefined as unknown as string, secret),
+    ).toBe(false);
   });
 });

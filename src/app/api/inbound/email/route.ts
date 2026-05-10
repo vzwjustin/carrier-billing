@@ -13,14 +13,18 @@
  * payload shape is the only thing we depend on.
  *
  * Flow:
- *   1. Verify signature (constant-time).
- *   2. Parse `to` → token → user via `profiles.inbound_email_token`.
- *   3. Run access gate (skip + log if user is past_due / out of credits —
+ *   1. Reject oversize payloads via Content-Length BEFORE reading the body.
+ *   2. Verify signature (constant-time).
+ *   3. Parse `to` → token → user via `profiles.inbound_email_token`.
+ *   4. Run access gate (skip + log if user is past_due / out of credits —
  *      we don't 4xx the provider, just no-op).
- *   4. Decode the first PDF attachment.
- *   5. Upload to Supabase Storage `bills/<userId>/<auditId>/<filename>`.
- *   6. Insert `audits` row + decrement credits (if applicable).
- *   7. Send `bill.uploaded` Inngest event with idempotency key
+ *   5. Decode the first PDF attachment.
+ *   6. Insert dedupe row (sha256 over `${userId}|${pdfSha256}|${filename}`)
+ *      BEFORE storage upload — flipping a whitespace byte in the email body
+ *      should not bypass dedupe.
+ *   7. Upload to Supabase Storage `bills/<userId>/<auditId>/<filename>`.
+ *   8. Insert `audits` row + decrement credits (if applicable).
+ *   9. Send `bill.uploaded` Inngest event with idempotency key
  *      `${auditId}-uploaded`. The existing pipeline takes over from there.
  *
  * Failure semantics: we always return 200 to the provider once the request
@@ -44,7 +48,10 @@ import { getAdminClient } from '@/lib/supabase/admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB — same cap as /api/audits
+const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB — same cap as /api/audits
+// Allow base64 overhead (~33%) plus JSON/headers slack on top of the PDF cap.
+// Anything larger than this in raw bytes is rejected before we even read it.
+const MAX_REQUEST_BYTES = 40 * 1024 * 1024;
 
 const InboundAttachmentSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -72,8 +79,22 @@ function isPdfAttachment(att: { content_type: string; filename: string }): boole
   return att.filename.toLowerCase().endsWith('.pdf');
 }
 
-function hashInboundPayload(raw: string): string {
-  return createHash('sha256').update(raw).digest('hex');
+/**
+ * Stable dedupe hash over the *PDF content* (not the wrapping email payload).
+ * Hashing the raw HTTP body would let a forger flip a whitespace byte to
+ * bypass dedupe and re-upload the same bill repeatedly. The triple
+ * `userId|pdfSha256|normalizedFilename` is what we actually want to be unique.
+ */
+function computeEventHash(
+  userId: string,
+  pdfBytes: Buffer,
+  filename: string,
+): string {
+  const pdfSha256 = createHash('sha256').update(pdfBytes).digest('hex');
+  const normalizedFilename = safeFilename(filename).toLowerCase();
+  return createHash('sha256')
+    .update(`${userId}|${pdfSha256}|${normalizedFilename}`)
+    .digest('hex');
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -90,6 +111,21 @@ export async function POST(request: Request): Promise<Response> {
     // turned it on. Providers won't retry forever on 503 but they shouldn't
     // be sending us anything in this case anyway.
     return NextResponse.json({ error: 'inbound_disabled' }, { status: 503 });
+  }
+
+  // Bound the read BEFORE pulling the body into memory. A multi-GB junk POST
+  // could otherwise OOM us on a serverless runtime. Reject 411 if missing.
+  const contentLengthHeader = request.headers.get('content-length');
+  if (!contentLengthHeader) {
+    return NextResponse.json({ error: 'missing_content_length' }, { status: 411 });
+  }
+  const contentLength = Number(contentLengthHeader);
+  if (
+    !Number.isFinite(contentLength) ||
+    contentLength <= 0 ||
+    contentLength > MAX_REQUEST_BYTES
+  ) {
+    return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   }
 
   const signature = request.headers.get('x-inbound-signature');
@@ -164,7 +200,7 @@ export async function POST(request: Request): Promise<Response> {
     if (bytes.length === 0) {
       return NextResponse.json({ ok: true, skipped: 'empty_attachment' });
     }
-    if (bytes.length > MAX_BYTES) {
+    if (bytes.length > MAX_PDF_BYTES) {
       return NextResponse.json({ ok: true, skipped: 'attachment_too_large' });
     }
 
@@ -179,7 +215,15 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ ok: true, skipped: `gate_${gate.reason}` });
     }
 
-    const eventHash = hashInboundPayload(raw);
+    // Compute the dedupe key over the actual PDF bytes + user + filename.
+    // Hashing the raw email body (previous behavior) was forgeable: any
+    // whitespace flip changed the hash. The triple here is the real "same
+    // bill?" question.
+    const eventHash = computeEventHash(userId, bytes, pdf.filename);
+
+    // Insert the dedupe row BEFORE storage upload so a duplicate forward
+    // doesn't leave behind an orphaned object. On 23505 the row already
+    // exists — short-circuit.
     const dedupeInsert = await admin.from('inbound_email_events').insert({
       event_hash: eventHash,
       user_id: userId,

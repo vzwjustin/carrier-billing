@@ -96,7 +96,7 @@ export const sendPaymentFailedEmailFn = inngest.createFunction(
     }
 
     const sendResult = (await step.run('send-email', async () => {
-      const recoveryUrl = `${env.NEXT_PUBLIC_APP_URL}/billing/past-due`;
+      const recoveryUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/billing/past-due`;
       const props: PaymentFailedEmailProps = {
         customerEmail: ctx.email,
         recoveryUrl,

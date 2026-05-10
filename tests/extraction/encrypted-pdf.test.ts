@@ -89,12 +89,23 @@ describe('extractText — encrypted PDF rejection', () => {
     expect((caught as PdfParseError).cause).toBe(generic);
   });
 
-  it('provides enough detail for the pipeline to route to OCR or fail loudly', async () => {
-    // The contract for the upstream pipeline (src/extraction/pipeline.ts) is:
-    //   "if extractText throws OR returns < 500 chars, try OCR".
-    // For encrypted PDFs the throw arrives BEFORE the length check, so the
-    // pipeline drops into its OCR fallback. We assert the error type that
-    // the pipeline branches on — losing this would silently degrade behavior.
+  it('provides enough detail for the pipeline to surface "encrypted-pdf" failure_reason', async () => {
+    // (M-E3) Updated contract: encrypted PDFs do NOT silently drop into the
+    // OCR fallback. Textract's password handling is unreliable across PDF
+    // owner-password variants and an OCR retry would just produce garbage
+    // text that the LLM might happily hallucinate over. Instead the
+    // pipeline catches `PdfParseError` with a `PasswordException` cause
+    // and re-throws `PipelineError('Encrypted PDF — cannot extract text',
+    // 'encrypted_pdf', err)`. The Inngest worker's deriveFailureReason
+    // collapses `PipelineError.step === 'encrypted_pdf'` into the
+    // user-actionable failure_reason `'encrypted-pdf'` so the UI can
+    // prompt the user to upload an unencrypted copy.
+    //
+    // This test pins the inner contract: extractText must wrap the
+    // PasswordException in a PdfParseError preserving `cause.name`. The
+    // pipeline-level branch is exercised in pipeline-size-cap.test.ts /
+    // pipeline integration tests (it requires more module mocking than
+    // belongs in this file).
     const passwordExc = new Error('No password given');
     passwordExc.name = 'PasswordException';
     pdfParseMock.mockRejectedValueOnce(passwordExc);

@@ -53,6 +53,7 @@ interface AuditRow {
   finding_count: number | null;
   high_severity_count: number | null;
   completed_at: string | null;
+  share_token_expires_at: string | null;
 }
 
 type MaybeSingleResult =
@@ -149,9 +150,15 @@ function makeAudit(over: Partial<AuditRow> = {}): AuditRow {
     finding_count: 0,
     high_severity_count: 0,
     completed_at: '2026-05-01T00:00:00Z',
+    // 30 days out — well within the share window.
+    share_token_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     ...over,
   };
 }
+
+// Tokens are exactly 32 chars (randomBytes(24).toString('base64url')). Use
+// padded literal strings of length 32 throughout the suite.
+const VALID_TOKEN_32 = 'abcdefghij1234567890abcdefghij12';
 
 beforeEach(() => {
   auditMaybeSingleMock.mockReset();
@@ -165,9 +172,8 @@ describe('GET /share/[token] page handler', () => {
       error: null,
     });
 
-    const validToken = 'abc12345abc12345abc12345'; // 24 chars, well within bounds
     const element = await ShareReportPage({
-      params: Promise.resolve({ token: validToken }),
+      params: Promise.resolve({ token: VALID_TOKEN_32 }),
     });
 
     // The function should return a JSX element (not throw notFound).
@@ -180,7 +186,7 @@ describe('GET /share/[token] page handler', () => {
     // Token passes length sanity; supabase reports no row.
     auditMaybeSingleMock.mockResolvedValueOnce({ data: null, error: null });
 
-    const unknownToken = 'unknown-token-xyz789-padding';
+    const unknownToken = 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'; // 32 chars
     await expect(
       ShareReportPage({
         params: Promise.resolve({ token: unknownToken }),
@@ -220,6 +226,20 @@ describe('GET /share/[token] page handler', () => {
     expect(adminFromMock).not.toHaveBeenCalled();
   });
 
+  it('(c4) tightened length validator rejects 31-char and 33-char candidates (L)', async () => {
+    const tooShort = 'x'.repeat(31);
+    const tooLong = 'x'.repeat(33);
+
+    await expect(
+      ShareReportPage({ params: Promise.resolve({ token: tooShort }) }),
+    ).rejects.toThrowError(NextNotFoundError);
+    await expect(
+      ShareReportPage({ params: Promise.resolve({ token: tooLong }) }),
+    ).rejects.toThrowError(NextNotFoundError);
+
+    expect(adminFromMock).not.toHaveBeenCalled();
+  });
+
   it('(d) audit found via token but status !== completed → notFound()', async () => {
     // A token can exist on a row whose status is still `analyzing`. Sharing
     // that link should 404 until the audit is complete — public viewers
@@ -229,11 +249,37 @@ describe('GET /share/[token] page handler', () => {
       error: null,
     });
 
-    const validToken = 'tok_validlength_padding';
     await expect(
       ShareReportPage({
-        params: Promise.resolve({ token: validToken }),
+        params: Promise.resolve({ token: VALID_TOKEN_32 }),
       }),
     ).rejects.toThrowError(NextNotFoundError);
+  });
+
+  it('(e) audit found but share_token_expires_at is in the past → notFound() (H11)', async () => {
+    auditMaybeSingleMock.mockResolvedValueOnce({
+      data: makeAudit({
+        share_token_expires_at: new Date(Date.now() - 1_000).toISOString(),
+      }),
+      error: null,
+    });
+
+    await expect(
+      ShareReportPage({
+        params: Promise.resolve({ token: VALID_TOKEN_32 }),
+      }),
+    ).rejects.toThrowError(NextNotFoundError);
+  });
+
+  it('(f) audit found with NULL expiry (grandfathered share) → renders normally', async () => {
+    auditMaybeSingleMock.mockResolvedValueOnce({
+      data: makeAudit({ share_token_expires_at: null }),
+      error: null,
+    });
+
+    const element = await ShareReportPage({
+      params: Promise.resolve({ token: VALID_TOKEN_32 }),
+    });
+    expect(element).toBeDefined();
   });
 });

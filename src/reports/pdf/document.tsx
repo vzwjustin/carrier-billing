@@ -289,9 +289,15 @@ function PageFooter({ auditId }: { auditId: string }): ReactElement {
 }
 
 function CoverPage({ report }: { report: ReportData }): ReactElement {
+  // Determinism: never call `new Date()` here. The PDF is cached on first
+  // render, and a non-deterministic timestamp would (a) make the cached file
+  // inconsistent with the audit row and (b) break snapshot tests. Fall back
+  // to `completed_at` when present; render an em-dash when missing rather
+  // than substituting "today" — `completed_at` is set by the worker on
+  // success, and `created_at` is not currently plumbed through ReportData.
   const generatedOn = report.audit.completed_at
     ? formatDate(report.audit.completed_at)
-    : formatDate(new Date().toISOString());
+    : '—';
 
   return (
     <Page size="A4" style={styles.page}>
