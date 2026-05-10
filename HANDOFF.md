@@ -7,6 +7,33 @@
 
 ---
 
+## Latest review-fix pass (2026-05-09): H8 + H9 + H10 done
+
+Stripe webhook hardening landed:
+
+- **H8** — webhook handler errors no longer swallowed. The route now returns
+  5xx on handler failure so Stripe retries, and bookkeeps `processed_status`
+  on every `billing_events` row. New columns (`processed_at`, `processed_status`,
+  `last_error`, `last_attempted_at`) live in `0008_stripe_webhook_hardening.sql`.
+- **H9** — `onSubscriptionUpserted` and `onSubscriptionDeleted` now SELECT
+  `profiles.subscription_event_at` and refuse updates whose `event.created` is
+  older. Also new in 0008: `profiles.subscription_event_at TIMESTAMPTZ`.
+- **H10** — handler comments now match the route's actual retry behavior.
+- **Recovery cron** — `src/inngest/functions/replay-billing-events.ts` runs
+  every 15 min, picks up `processed_status` IS NULL OR 'failed' rows newer
+  than 24h that have cooled past 60s since `last_attempted_at`, and re-invokes
+  the handler with `previousStatus='failed'` so non-idempotent ops short-circuit.
+- **PII** — `last_error` is `scrubString`-redacted and capped at 500 chars.
+- **Tests** — 26 new test cases across `tests/stripe/webhook-route-hardening.test.ts`,
+  `tests/stripe/handlers.test.ts` (new H9 + credit-replay describe), and
+  `tests/inngest/replay-billing-events.test.ts`. Existing webhook + handler
+  tests updated to model the new SELECT-then-UPDATE shape.
+
+> ⚠️ **Deploy-order:** apply migration 0008 BEFORE deploying any commit that
+> imports the hardened webhook route or the replay cron. Without the new
+> columns the route will throw `column does not exist` on every Stripe event
+> and the cron will fail every 15 minutes.
+
 ## What was just done (so you don't redo it)
 
 A multi-stream review found bugs and gaps; fixes landed across 7 streams. Highlights:

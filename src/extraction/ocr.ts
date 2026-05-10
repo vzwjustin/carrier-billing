@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import * as Sentry from '@sentry/nextjs';
 import {
   TextractClient,
   DetectDocumentTextCommand,
@@ -155,15 +156,17 @@ async function runAsync(buffer: Buffer): Promise<string> {
     // Steps 3-4: poll and aggregate.
     return await pollJob(jobId);
   } finally {
-    // Step 5: always clean up the staged object. Don't let cleanup errors
-    // mask the original failure — log via OcrError chain only on success.
+    // TODO(launch): non-rethrow — bucket lifecycle (`scripts/configure-textract-bucket.ts`) reaps orphans; surface to Sentry so accumulation is visible.
     try {
       await s3.send(
         new DeleteObjectCommand({ Bucket: bucket, Key: key }),
       );
-    } catch {
-      // Swallow cleanup failures: the object will be reaped by the bucket's
-      // lifecycle policy. Surfacing this would shadow the real error.
+    } catch (cleanupErr) {
+      Sentry.captureException(cleanupErr, {
+        level: 'warning',
+        tags: { module: 'extraction.ocr', op: 's3_cleanup' },
+        extra: { bucket, keyPrefix: 'carrieraudit/textract-staging/' },
+      });
     }
   }
 }

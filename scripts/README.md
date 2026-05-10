@@ -100,6 +100,56 @@ Resend dedupes by domain. Already-provisioned resources are reported as
 
 ---
 
+# `scripts/configure-textract-bucket.ts`
+
+Apply the lifecycle policy that expires staged Textract PDFs after 1 day.
+
+```bash
+pnpm tsx scripts/configure-textract-bucket.ts            # apply
+pnpm tsx scripts/configure-textract-bucket.ts --dry-run  # preview
+```
+
+The async OCR path uploads PDFs to
+`s3://$AWS_TEXTRACT_S3_BUCKET/carrieraudit/textract-staging/<uuid>.pdf` and
+deletes them in `finally`. If a delete fails it is captured by Sentry
+(`surface: ocr-s3-cleanup`, `level: warning`) and the bucket lifecycle rule
+acts as defense-in-depth, reaping orphans after 1 day so PII does not
+linger and storage costs stay bounded.
+
+| Field | Value |
+|---|---|
+| RuleId | `carrieraudit-textract-staging-expire-1d` |
+| Prefix filter | `carrieraudit/textract-staging/` |
+| Expiration | 1 day |
+| AbortIncompleteMultipartUpload | 1 day |
+| Status | Enabled |
+
+The script is idempotent: it merges the rule by `RuleId` so any unrelated
+rules already on the bucket are preserved.
+
+Required env (read from `.env.local`):
+`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_TEXTRACT_S3_BUCKET`.
+
+Equivalent aws-cli for ops runbook:
+
+```bash
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket "$AWS_TEXTRACT_S3_BUCKET" \
+  --lifecycle-configuration '{
+    "Rules": [{
+      "ID": "carrieraudit-textract-staging-expire-1d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "carrieraudit/textract-staging/" },
+      "Expiration": { "Days": 1 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    }]
+  }'
+```
+
+Re-run after rotating buckets or whenever the AWS account is re-provisioned.
+
+---
+
 # `scripts/anonymize-bill.ts`
 
 True PDF anonymization for committing real-world bill PDFs as test fixtures.

@@ -34,6 +34,14 @@ import {
   SAC_PLAN,
 } from '@/extraction/edi811/segments';
 
+// Schema caps `user_label`, `label`, and `device` at 40 chars to bound the
+// PII surface area in logs. Truncate at the EDI write sites so a long REF*EM
+// or PID free-form value doesn't fail validation downstream.
+const FREE_TEXT_MAX = 40;
+function bound(value: string): string {
+  return value.length > FREE_TEXT_MAX ? value.slice(0, FREE_TEXT_MAX) : value;
+}
+
 /**
  * Categorise a SAC service-id code into our internal feature taxonomy. Returns
  * 'other' for anything we don't recognise — the per-carrier hook can refine.
@@ -127,13 +135,13 @@ export function mapEdi811ToBill(
         const qualifier = el(seg, 1).toUpperCase();
         const name = elOrNull(seg, 2);
         if (qualifier === N1_BILL_TO && name) {
-          billToName = name;
+          billToName = bound(name);
           // If an N1*BT lands inside an open account loop (and we're not
           // already inside a subscriber sub-loop), backfill the account
           // label so it reflects the carrier's bill-to name even when the
           // segment arrived after HL*A.
           if (currentAccount && !currentAccount.currentLine) {
-            currentAccount.account.label = name;
+            currentAccount.account.label = billToName;
           }
         }
         break;
@@ -195,7 +203,7 @@ export function mapEdi811ToBill(
           if (qualifier === REF_MOBILE_NUMBER) {
             currentAccount.currentLine.line.mdn_last4 = lastFourDigits(value);
           } else if (qualifier === REF_USER_LABEL) {
-            currentAccount.currentLine.line.user_label = value;
+            currentAccount.currentLine.line.user_label = bound(value);
           }
         } else if (currentAccount) {
           if (qualifier === REF_ACCOUNT_NUMBER || qualifier === REF_BILLING_ACCOUNT) {
@@ -211,7 +219,7 @@ export function mapEdi811ToBill(
         if (itemTypeCode !== PID_FREE_FORM) break;
         const description = elOrNull(seg, 5);
         if (description) {
-          currentAccount.currentLine.devicePending = description;
+          currentAccount.currentLine.devicePending = bound(description);
         }
         break;
       }
@@ -267,10 +275,11 @@ export function mapEdi811ToBill(
         if (serviceIdCode === SAC_DEVICE_INSTALLMENT) {
           if (currentAccount?.currentLine && amountCents > 0) {
             const dpp: ExtractedDpp = {
-              device:
+              device: bound(
                 description ||
-                currentAccount.currentLine.line.device ||
-                'Device installment',
+                  currentAccount.currentLine.line.device ||
+                  'Device installment',
+              ),
               monthly_cents: amountCents,
               remaining_payments: parseIntOrNull(el(seg, 7)),
               total_payments: parsePositiveIntOrNull(el(seg, 8)),

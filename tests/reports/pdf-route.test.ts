@@ -283,6 +283,29 @@ describe('GET /api/audits/[id]/report.pdf', () => {
     expect(buf.length).toBe(4);
   });
 
+  it('sets Referrer-Policy: no-referrer so ?token=<share_token> never leaks via Referer', async () => {
+    // Cached path — same Response builder is used for the freshly-rendered
+    // path, so a single cache-hit assertion is sufficient.
+    serverMaybeSingleMock.mockResolvedValueOnce({
+      data: makeAudit(),
+      error: null,
+    });
+    const cachedBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    const fakeBlob = {
+      arrayBuffer: () => Promise.resolve(cachedBytes.buffer.slice(0)),
+      type: 'application/pdf',
+    };
+    downloadMock.mockResolvedValueOnce({
+      data: fakeBlob as unknown as Blob,
+      error: null,
+    });
+
+    const res = await GET(makeRequest(), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+  });
+
   it('renders, uploads, and returns a fresh PDF when no cache exists', async () => {
     serverMaybeSingleMock.mockResolvedValueOnce({
       data: makeAudit(),

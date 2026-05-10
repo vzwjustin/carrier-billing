@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
 import './globals.css';
 
+import { PostHogProvider } from '@/components/posthog-provider';
+
 export const metadata: Metadata = {
   title: 'CarrierAudit — Wireless Bill Audits in Minutes',
   description:
@@ -16,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen antialiased">
-        {children}
+        <PostHogProvider>{children}</PostHogProvider>
         <Toaster richColors position="top-center" closeButton />
       </body>
     </html>

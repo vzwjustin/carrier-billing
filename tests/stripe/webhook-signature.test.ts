@@ -40,9 +40,17 @@ vi.mock('@/lib/stripe/client', () => ({
   getStripe: () => realStripe,
 }));
 
-// Supabase admin: minimal shape for the webhook's idempotency check + insert.
-const insertMock = vi.fn(async (_row: unknown) => ({ data: null, error: null }));
-const maybeSingleMock = vi.fn(async () => ({ data: null, error: null }));
+// Supabase admin: minimal shape for the webhook's pre-check / insert / update
+// (processed_status bookkeeping introduced by 0008).
+const insertMock = vi.fn(async (_row: unknown) => ({
+  data: { id: 'be_signed', processed_status: null as 'success' | 'failed' | null },
+  error: null as null | { code?: string; message: string },
+}));
+const maybeSingleMock = vi.fn(async () => ({
+  data: null as { id: string; processed_status: 'success' | 'failed' | null } | null,
+  error: null,
+}));
+const updateMock = vi.fn(async (_patch: unknown) => ({ error: null }));
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
@@ -50,7 +58,14 @@ vi.mock('@/lib/supabase/admin', () => ({
       select: () => ({
         eq: () => ({ maybeSingle: () => maybeSingleMock() }),
       }),
-      insert: (row: unknown) => insertMock(row),
+      insert: (row: unknown) => ({
+        select: () => ({
+          maybeSingle: async () => insertMock(row),
+        }),
+      }),
+      update: (patch: unknown) => ({
+        eq: () => updateMock(patch),
+      }),
     }),
   }),
 }));
@@ -84,9 +99,14 @@ function buildSignedRequest(payload: Record<string, unknown>) {
 
 beforeEach(() => {
   insertMock.mockClear();
-  insertMock.mockImplementation(async () => ({ data: null, error: null }));
+  insertMock.mockImplementation(async () => ({
+    data: { id: 'be_signed', processed_status: null },
+    error: null,
+  }));
   maybeSingleMock.mockClear();
   maybeSingleMock.mockImplementation(async () => ({ data: null, error: null }));
+  updateMock.mockClear();
+  updateMock.mockImplementation(async () => ({ error: null }));
 });
 
 describe('POST /api/stripe/webhook — real Stripe signature verification (C2)', () => {

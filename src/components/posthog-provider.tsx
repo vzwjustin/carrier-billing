@@ -11,15 +11,26 @@ type PostHogProviderProps = {
   children: ReactNode;
 };
 
+// Public /share/* surface uses anonymous tokens; server-side trackServer with
+// a hashed token is the only allowed analytics path there. Skipping the client
+// provider keeps posthog-js from auto-capturing $current_url with the raw token.
+function isExcludedPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return pathname === '/share' || pathname.startsWith('/share/');
+}
+
 /**
  * Initializes PostHog once on mount and emits manual `$pageview` events on
  * App Router path / search-param changes. Renders children unwrapped because
  * posthog-js does not require a React context provider.
  *
- * No-op (just renders children) when the public PostHog key is missing.
+ * No-op (just renders children) when the public PostHog key is missing or
+ * when the current path is the public share surface.
  */
 export function PostHogProvider({ children }: PostHogProviderProps) {
-  if (!env.NEXT_PUBLIC_POSTHOG_KEY) {
+  const pathname = usePathname();
+
+  if (!env.NEXT_PUBLIC_POSTHOG_KEY || isExcludedPath(pathname)) {
     return <>{children}</>;
   }
 

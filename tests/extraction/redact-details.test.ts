@@ -104,6 +104,65 @@ describe('redactDetails', () => {
     expect(out.ok).toBe('plain');
   });
 
+  it('replaces email addresses with [email]', () => {
+    const out = redactDetails({
+      summary: 'subscriber jane.doe+billing@example.co.uk reported issue',
+    }) as { summary: string };
+    expect(out.summary).not.toMatch(/jane\.doe/);
+    expect(out.summary).not.toMatch(/example\.co\.uk/);
+    expect(out.summary).toContain('[email]');
+  });
+
+  it('replaces hyphenated phone numbers with [phone]', () => {
+    const out = redactDetails({
+      summary: 'callback at 555-123-4567 about line',
+    }) as { summary: string };
+    expect(out.summary).not.toMatch(/555-123-4567/);
+    expect(out.summary).toContain('[phone]');
+  });
+
+  it('replaces dotted/spaced phone numbers with [phone]', () => {
+    const out = redactDetails({
+      a: '555.123.4567',
+      b: '555 123 4567',
+    }) as { a: string; b: string };
+    expect(out.a).toBe('[phone]');
+    expect(out.b).toBe('[phone]');
+  });
+
+  it('redacts user_label values entirely (key blocklist)', () => {
+    // Names extracted via X12 REF*EM live in `user_label`. Treat the key as
+    // PII regardless of value shape, so an all-caps "JANE DOE" or a plain
+    // "Jane Doe" both vanish without relying on heuristic name detection.
+    const out = redactDetails({
+      issues: [
+        {
+          path: ['accounts', 0, 'lines', 0],
+          message: 'expected number',
+          input: { user_label: 'JANE DOE', mdn_last4: '4321' },
+        },
+      ],
+    }) as { issues: Array<{ input: Record<string, unknown> }> };
+    const input = out.issues[0]?.input;
+    expect(input?.user_label).toBe('[REDACTED]');
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain('JANE DOE');
+  });
+
+  it('does not over-redact benign carrier brand names like AT&T', () => {
+    // Plan/feature names like "AT&T Mobile Insurance" or "Business Unlimited"
+    // contain no PII — the scrubbers (digit-run, email, phone) must not strip
+    // them. Verify by passing them through fields that are NOT key-blocklisted.
+    const out = redactDetails({
+      plan_name: 'AT&T Business Unlimited Premium',
+      feature_name: 'Verizon Cloud',
+      device_label: 'iPhone 15 Pro Max',
+    }) as Record<string, string>;
+    expect(out.plan_name).toBe('AT&T Business Unlimited Premium');
+    expect(out.feature_name).toBe('Verizon Cloud');
+    expect(out.device_label).toBe('iPhone 15 Pro Max');
+  });
+
   it('handles a realistic ExtractionError details payload', () => {
     // Mirror what `tryParseAndValidate` produces on schema failure:
     // { issues, raw: <parsed bill object> }.

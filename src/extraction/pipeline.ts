@@ -10,7 +10,16 @@ import type { Carrier, ExtractedBill } from '@/extraction/schema';
 /** Below this length we assume the PDF is image-only and route to OCR. */
 const OCR_TEXT_THRESHOLD = 500;
 
+/**
+ * Hard cap on raw PDF size before extraction. With base64 (1.33×), pdf-parse
+ * text, and OCR buffer all live simultaneously inside the Inngest step, a
+ * 30 MB bill produces a >100 MB working set. 25 MB keeps a single audit's
+ * worst case under ~100 MB so concurrent runs do not OOM the worker. (H5)
+ */
+export const MAX_PDF_BYTES = 25 * 1024 * 1024;
+
 export type PipelineStep =
+  | 'size_check'
   | 'extract_text'
   | 'ocr_fallback'
   | 'detect_carrier'
@@ -53,6 +62,16 @@ export async function runExtractionPipeline({
 }: {
   buffer: Buffer;
 }): Promise<PipelineResult> {
+  // 0. Size cap. Reject before base64 inflation or any LLM call. The error
+  //    message intentionally mentions only the limit + observed bytes — no
+  //    PDF content — so it is safe to surface to logs / failure_reason.
+  if (buffer.byteLength > MAX_PDF_BYTES) {
+    throw new PipelineError(
+      `PDF exceeds ${MAX_PDF_BYTES} byte limit (got ${buffer.byteLength} bytes)`,
+      'size_check',
+    );
+  }
+
   // 1. Extract text + page count.
   let rawText: string;
   let pageCount: number;

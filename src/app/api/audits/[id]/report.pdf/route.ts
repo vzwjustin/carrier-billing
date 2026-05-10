@@ -57,6 +57,12 @@ function pdfResponse(bytes: Uint8Array, auditId: string): Response {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${pdfFilename(auditId)}"`,
       'Cache-Control': 'private, max-age=0, must-revalidate',
+      // The public URL for this route can carry `?token=<share_token>`.
+      // `no-referrer` keeps that token out of the Referer header on any
+      // outbound navigation triggered from the PDF (e.g. clickable links).
+      // Mirrors `next.config.ts` matcher; route headers win if they ever
+      // diverge.
+      'Referrer-Policy': 'no-referrer',
     },
   });
 }

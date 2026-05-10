@@ -13,13 +13,28 @@ vi.mock('@/lib/stripe/client', () => ({
   }),
 }));
 
-// Chainable supabase admin mock. Each test sets the resolved values for
-// the existence check (`maybeSingle`) and the insert.
-type MaybeSingleResult = { data: { id: string } | null; error: null | { code?: string; message: string } };
-type InsertResult = { data: unknown; error: null | { code?: string; message: string } };
+// Chainable supabase admin mock that models the surface the hardened webhook
+// route uses:
+//   - .from('billing_events').select('id, processed_status').eq(...).maybeSingle()
+//   - .from('billing_events').insert(row).select('id, processed_status').maybeSingle()
+//   - .from('billing_events').update(patch).eq('id', billingEventId)  → { error }
+//
+// Per-test knobs let each case set the existence-check + insert outcomes.
+
+type MaybeSingleResult = {
+  data: { id: string; processed_status: 'success' | 'failed' | null } | null;
+  error: null | { code?: string; message: string };
+};
+type InsertResult = {
+  data: { id: string; processed_status: 'success' | 'failed' | null } | null;
+  error: null | { code?: string; message: string };
+};
 
 const maybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
 const insertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
+const updateMock = vi.fn<(patch: unknown) => Promise<{ error: null }>>(
+  async () => ({ error: null }),
+);
 
 const fromMock = vi.fn((_table: string) => ({
   select: () => ({
@@ -27,11 +42,23 @@ const fromMock = vi.fn((_table: string) => ({
       maybeSingle: () => maybeSingleMock(),
     }),
   }),
-  insert: (row: unknown) => insertMock(row),
+  insert: (row: unknown) => ({
+    select: () => ({
+      maybeSingle: async () => insertMock(row),
+    }),
+  }),
+  update: (patch: unknown) => ({
+    eq: () => updateMock(patch),
+  }),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({ from: fromMock }),
+}));
+
+// Stub the handler so we don't need a full Supabase mock for downstream logic.
+vi.mock('@/lib/stripe/handlers', () => ({
+  handleStripeEvent: vi.fn(async () => undefined),
 }));
 
 // Env shim — the route imports `env.STRIPE_WEBHOOK_SECRET`.
@@ -58,6 +85,8 @@ beforeEach(() => {
   constructEventMock.mockReset();
   maybeSingleMock.mockReset();
   insertMock.mockReset();
+  updateMock.mockReset();
+  updateMock.mockImplementation(async () => ({ error: null }));
   fromMock.mockClear();
 });
 
@@ -90,7 +119,10 @@ describe('POST /api/stripe/webhook', () => {
     });
 
     maybeSingleMock.mockResolvedValue({ data: null, error: null });
-    insertMock.mockResolvedValue({ data: null, error: null });
+    insertMock.mockResolvedValue({
+      data: { id: 'be_1', processed_status: null },
+      error: null,
+    });
 
     const res = await POST(makeRequest('{}', 'sig_ok'));
     expect(res.status).toBe(200);
@@ -105,14 +137,17 @@ describe('POST /api/stripe/webhook', () => {
     expect(inserted['user_id']).toBe('user_123');
   });
 
-  it('returns 200 with { deduped: true } when the event already exists', async () => {
+  it('returns 200 with { deduped: true } when the event already exists with processed_status=success', async () => {
     constructEventMock.mockReturnValue({
       id: 'evt_test_dup',
       type: 'checkout.session.completed',
       data: { object: { client_reference_id: 'user_123' } },
     });
 
-    maybeSingleMock.mockResolvedValue({ data: { id: 'row_existing' }, error: null });
+    maybeSingleMock.mockResolvedValue({
+      data: { id: 'row_existing', processed_status: 'success' },
+      error: null,
+    });
 
     const res = await POST(makeRequest('{}', 'sig_ok'));
     expect(res.status).toBe(200);
@@ -121,15 +156,25 @@ describe('POST /api/stripe/webhook', () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('treats a unique-violation race on insert as deduped', async () => {
+  it('treats a unique-violation race on insert as deduped (when winning row is success)', async () => {
     constructEventMock.mockReturnValue({
       id: 'evt_race',
       type: 'invoice.payment_failed',
       data: { object: { customer: 'cus_x' } },
     });
 
-    maybeSingleMock.mockResolvedValue({ data: null, error: null });
-    insertMock.mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate' } });
+    // First existence check: nothing.
+    // Second (race fetch) check: a successfully-processed row.
+    maybeSingleMock
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: { id: 'row_raced', processed_status: 'success' },
+        error: null,
+      });
+    insertMock.mockResolvedValue({
+      data: null,
+      error: { code: '23505', message: 'duplicate' },
+    });
 
     const res = await POST(makeRequest('{}', 'sig_ok'));
     expect(res.status).toBe(200);
