@@ -86,6 +86,37 @@ describe('processBillFn — H6 mark-analyzing status guard', () => {
     expect(block).toMatch(/affected\s*===?\s*0|affected\s*<\s*1/);
   });
 
+  // (H7) mark-completed status guard — mirrors mark-analyzing assertions above.
+  // Without a guard, a retried run overwrites aggregate columns and resets
+  // completed_at. The update must be gated on .eq('status', 'analyzing') and
+  // must bail (not throw) when 0 rows are affected.
+  it('mark-completed UPDATE chains .eq("status", "analyzing")', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-completed');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 2000);
+    expect(block).toMatch(/\.eq\(['"]status['"]\s*,\s*['"]analyzing['"]\)/);
+  });
+
+  it('mark-completed reads back rows-affected via .select("id")', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-completed');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 2000);
+    expect(block).toMatch(/\.select\(['"]id['"]\)/);
+  });
+
+  it('mark-completed short-circuits on 0 rows affected (no throw)', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-completed');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 2000);
+    expect(block).toMatch(/status-guard/);
+    // The minified output uses the variable name from .select('id') ('rows' or
+    // 'data'), so match the length===0 bail-out pattern generically.
+    expect(block).toMatch(/\.length\s*===?\s*0/);
+  });
+
   it('audit.completed Inngest send carries a stable idempotency key', () => {
     // (H5) The send-trigger step must pass `id: \`${auditId}-completed\``
     // so a retried function cannot fire `audit.completed` twice.

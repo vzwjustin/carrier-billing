@@ -95,12 +95,16 @@ describe('assertCanRunAudit', () => {
     expect(result).toEqual({ ok: false, reason: 'no_plan' });
   });
 
-  it('returns not ok with no_plan when supabase errors', async () => {
+  it('throws when supabase errors so the caller can return 5xx (R1-3)', async () => {
+    // Pre-R1-3 this returned no_plan, masking transient infra failures as
+    // a paying user being blocked. The new contract is to surface the error
+    // so the route's outer catch turns it into a 500.
     maybeSingleMock.mockResolvedValueOnce({
       data: null,
       error: { message: 'boom' },
     });
-    const result = await assertCanRunAudit('user-1');
-    expect(result).toEqual({ ok: false, reason: 'no_plan' });
+    await expect(assertCanRunAudit('user-1')).rejects.toMatchObject({
+      message: 'boom',
+    });
   });
 });

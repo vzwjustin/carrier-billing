@@ -165,6 +165,32 @@ describe('scrubSentryEvent', () => {
     expect(tags?.callback).toBe('[phone]');
   });
 
+  it('scrubs request.data (webhook/POST body) with redactDetails', () => {
+    const event: ErrorEvent = {
+      type: undefined,
+      request: {
+        url: 'https://carrieraudit.com/api/inbound/email',
+        data: {
+          // 'raw' is a REDACTED_KEY — key-level drop.
+          raw: 'verbatim email body',
+          // 'body_text' is not a REDACTED_KEY — value-level scrub.
+          body_text: 'Attached bill for jane@example.com',
+          phone_number: '555-867-5309',
+        },
+      },
+    };
+    const out = scrubSentryEvent(event);
+    const data = out?.request?.data as Record<string, unknown> | undefined;
+    // Key-level drop for REDACTED_KEYS member.
+    expect(data?.raw).toBe('[REDACTED]');
+    // Key-level drop for phone_number.
+    expect(data?.phone_number).toBe('[REDACTED]');
+    // Value-level scrub: email address replaced in free-text field.
+    const bodyText = data?.body_text as string;
+    expect(bodyText).not.toContain('jane@example.com');
+    expect(bodyText).toContain('[email]');
+  });
+
   it('returns null if scrubber crashes (defensive)', () => {
     // Passing a getter that throws should drop the event rather than ship raw.
     const event = {} as ErrorEvent;

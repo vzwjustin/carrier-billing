@@ -13,7 +13,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 
 const LAST_ERROR_MAX = 500;
 
-type ProcessedStatus = 'success' | 'failed' | null;
+type ProcessedStatus = 'success' | 'failed' | 'in_flight' | null;
 
 type BillingEventRow = {
   id: string;
@@ -148,8 +148,14 @@ export async function POST(request: Request): Promise<Response> {
     // Stripe wouldn't retry. We now re-throw a 5xx so Stripe DOES retry. The
     // per-handler effects MUST be safe to re-run — the credit grant in
     // checkout.session.completed gates on `previousStatus` for that reason.
-
-    await markAttempt(supabase, billingEventId);
+    //
+    // M-1+M-2: set processed_status='in_flight' BEFORE invoking the handler so
+    // any concurrent attempt (replay cron or duplicate Stripe delivery) sees a
+    // non-null previousStatus and short-circuits non-idempotent ops (credit
+    // grant). The CAS is best-effort — a failure here is non-fatal because the
+    // replay cron already applies a last_attempted_at cooldown as a secondary
+    // guard. We record last_attempted_at here too for backward compatibility.
+    await markInFlight(supabase, billingEventId);
 
     try {
       await handleStripeEvent(event, supabase, { previousStatus });
@@ -190,20 +196,24 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
-async function markAttempt(
+async function markInFlight(
   supabase: SupabaseClient,
   billingEventId: string,
 ): Promise<void> {
-  // Best-effort — a missed mark just means the cron may pick the row up
-  // a touch sooner. Don't fail the webhook over a logging-table write.
+  // Best-effort — a missed mark means a concurrent attempt won't see in_flight
+  // and may run the handler in parallel, but the credit grant is still gated
+  // by previousStatus in the handler. Don't fail the webhook over this write.
   try {
     await supabase
       .from('billing_events')
-      .update({ last_attempted_at: new Date().toISOString() })
+      .update({
+        processed_status: 'in_flight',
+        last_attempted_at: new Date().toISOString(),
+      })
       .eq('id', billingEventId);
   } catch (markErr) {
     Sentry.captureException(markErr, {
-      tags: { area: 'stripe.webhook.mark_attempt' },
+      tags: { area: 'stripe.webhook.mark_in_flight' },
       extra: { billingEventId },
     });
   }

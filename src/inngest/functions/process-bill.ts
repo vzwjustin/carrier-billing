@@ -611,6 +611,14 @@ export const processBillFn = inngest.createFunction(
 
       // ─────────────────────────────────────────────────────────────────────
       // Step 7: mark-completed — aggregate totals + flip status.
+      //
+      // (H7) Status-guarded transition. Mirror mark-analyzing (L474–509):
+      // only the `analyzing → completed` transition is legal. A retried run
+      // where the step.run DB write succeeded but the step threw before
+      // returning will re-execute this block; without a guard the update
+      // overwrites aggregate columns and resets completed_at. 0 rows
+      // affected means we lost the race — bail without throwing so Inngest
+      // does not treat the retry as a failure.
       // ─────────────────────────────────────────────────────────────────────
       await step.run('mark-completed', async () => {
         const findingCount = findings.length;
@@ -625,7 +633,7 @@ export const processBillFn = inngest.createFunction(
         const now = new Date().toISOString();
 
         const supabase = getAdminClient();
-        const { error } = await supabase
+        const { data: rows, error } = await supabase
           .from('audits')
           .update({
             status: 'completed',
@@ -636,11 +644,18 @@ export const processBillFn = inngest.createFunction(
             estimated_annual_savings_cents: annualSavings,
             updated_at: now,
           })
-          .eq('id', auditId);
+          .eq('id', auditId)
+          .eq('status', 'analyzing')
+          .select('id');
         if (error) {
           throw new Error(
             `audits update (mark-completed) failed: ${error.message}`,
           );
+        }
+        if ((rows ?? []).length === 0) {
+          // Lost the status race — another runner already completed or failed
+          // this audit. Do not throw; the audit is in a terminal state.
+          return { ok: false, reason: 'status-guard' };
         }
         return { ok: true };
       });

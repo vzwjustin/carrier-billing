@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -40,7 +41,16 @@ export async function assertCanRunAudit(
     .eq('id', userId)
     .maybeSingle();
 
-  if (error || !data || !isProfileRow(data)) {
+  if (error) {
+    Sentry.captureException(error, { tags: { surface: 'access.gate' } });
+    throw error;
+  }
+
+  if (!data || !isProfileRow(data)) {
+    Sentry.captureMessage('gate.profile_missing_or_malformed', {
+      level: 'warning',
+      extra: { userId },
+    });
     return { ok: false, reason: 'no_plan' };
   }
 

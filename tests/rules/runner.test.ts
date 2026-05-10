@@ -85,6 +85,33 @@ describe('runRules — full pipeline', () => {
     expect(summary).toMatchSnapshot();
   });
 
+  it('scrubs PII from rule error messages before storing in errors[]', async () => {
+    // Rule throws an error whose message contains a digit run (phone-like).
+    // The errors[] entry must have the message scrubbed at source so any
+    // downstream consumer (e.g. Sentry captureMessage extra.errors) cannot
+    // ship raw PII even without relying on the beforeSend hook.
+    const piiRule: Rule = {
+      id: 'pii_rule',
+      title: 'Throws with PII in message',
+      appliesTo: 'all',
+      evaluate: () => {
+        // Use a digit string that HYPHEN_PHONE won't partially consume:
+        // 8 isolated digits with no surrounding context that matches the
+        // phone regex, so DIGIT_RUN fires and replaces the whole run.
+        throw new Error('failed for account 56789012');
+      },
+    };
+
+    const bill = makeBill();
+    const ctx: RuleContext = { bill, today: TEST_TODAY, carrier: bill.carrier };
+    const result = await runRules(ctx, [piiRule]);
+
+    expect(result.errors).toHaveLength(1);
+    const errMsg = result.errors[0]?.message ?? '';
+    expect(errMsg).not.toContain('12345678901');
+    expect(errMsg).toContain('[REDACTED]');
+  });
+
   it('isolates failing rules — other rules still produce findings', async () => {
     const goodRule: Rule = {
       id: 'good_rule',

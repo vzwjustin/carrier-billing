@@ -117,8 +117,19 @@ export async function POST(request: Request): Promise<Response> {
       try {
         await decrementAuditCreditAtomically(user.id);
         creditConsumed = true;
-      } catch {
-        await admin.from('audits').delete().eq('id', auditId);
+      } catch (decrementErr) {
+        Sentry.captureException(decrementErr, {
+          tags: { surface: 'audits.create.decrement', transient: 'true' },
+          extra: { userId: user.id },
+        });
+        try {
+          await admin.from('audits').delete().eq('id', auditId);
+        } catch (rollbackErr) {
+          Sentry.captureException(rollbackErr, {
+            tags: { surface: 'audits.create.rollback_orphan' },
+            extra: { auditId, userId: user.id },
+          });
+        }
         return NextResponse.json(
           {
             error: 'no_plan',

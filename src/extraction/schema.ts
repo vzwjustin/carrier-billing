@@ -21,7 +21,7 @@ export const ExtractedFeatureSchema = z.object({
   // name and prevents an oversized string from bloating logs / Sentry.
   name: z.string().min(1).max(120),
   category: FeatureCategorySchema.default('other'),
-  monthly_cents: z.number().int().nonnegative(),
+  monthly_cents: z.number().int().nonnegative().max(1_000_000),
 });
 export type ExtractedFeature = z.infer<typeof ExtractedFeatureSchema>;
 
@@ -49,7 +49,7 @@ export const ExtractedDppSchema = z.object({
   // or, via Sentry beforeSend, exfiltrate large bodies. 40 chars covers all
   // canonical SKU strings ("iPhone 15 Pro Max 256GB" is 22).
   device: z.string().min(1).max(40),
-  monthly_cents: z.number().int().nonnegative(),
+  monthly_cents: z.number().int().nonnegative().max(1_000_000),
   remaining_payments: z.number().int().nonnegative().nullable(),
   total_payments: z.number().int().positive().nullable(),
 });
@@ -65,7 +65,7 @@ export const ExtractedLineSchema = z.object({
   user_label: z.string().max(40).nullable(),
   device: z.string().max(40).nullable(),
   plan_name: z.string().max(120).nullable(),
-  plan_base_cents: z.number().int().nonnegative().nullable(),
+  plan_base_cents: z.number().int().nonnegative().max(10_000_000).nullable(),
   // (L) Cap absurd values. 10TB/month is far above any real cellular plan
   // and a 4–5 digit decimal here is almost always a parse error feeding
   // through. Clipping at the schema boundary keeps reports legible.
@@ -85,7 +85,7 @@ export const ExtractedAccountSchema = z.object({
     .regex(/^\d{4}$/)
     .nullable(),
   label: z.string().max(40).nullable(),
-  total_charges_cents: z.number().int().nonnegative(),
+  total_charges_cents: z.number().int().nonnegative().max(100_000_000),
   taxes_fees_cents: z.number().int().nonnegative().nullable(),
   account_level_credits: z.array(ExtractedCreditSchema).default([]),
   lines: z.array(ExtractedLineSchema),
@@ -103,7 +103,7 @@ export const ExtractedBillSchema = z.object({
   carrier: CarrierSchema,
   billing_period_start: z.string().date(),
   billing_period_end: z.string().date(),
-  total_charges_cents: z.number().int().nonnegative(),
+  total_charges_cents: z.number().int().nonnegative().max(1_000_000_000),
   accounts: z.array(ExtractedAccountSchema).min(1),
   // (M-E1) Bound notes both per-string (500 chars covers any legitimate NTE
   // free-form note) and per-bill (50 entries — the runner persists `notes`

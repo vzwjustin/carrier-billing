@@ -33,6 +33,8 @@ export const REQUIRED_SERVER_SECRETS = [
   'STRIPE_PRICE_ID_ONE_TIME',
   'STRIPE_PRICE_ID_SUBSCRIPTION',
   'RESEND_API_KEY',
+  'INNGEST_EVENT_KEY',
+  'INNGEST_SIGNING_KEY',
 ] as const;
 
 export function isPlaceholderSecret(value: string | undefined): boolean {

@@ -34,7 +34,11 @@ const WebhookSchema = z.object({
 });
 
 export type UpdateWebhookResult =
-  | { ok: true; secret: string | null }
+  | { ok: true }
+  | { ok: false; error: string };
+
+export type CopyWebhookSecretResult =
+  | { ok: true; secret: string }
   | { ok: false; error: string };
 
 export type RotateInboundTokenResult =
@@ -107,7 +111,7 @@ export async function updateOutboundWebhookAction(
       .eq('id', user.id);
     if (error) return { ok: false, error: 'Could not save webhook.' };
     revalidatePath('/settings');
-    return { ok: true, secret: null };
+    return { ok: true };
   }
 
   // Reject loopback / private / IMDS / CGNAT / link-local destinations at
@@ -155,6 +159,29 @@ export async function updateOutboundWebhookAction(
 
   if (error) return { ok: false, error: 'Could not save webhook.' };
   revalidatePath('/settings');
+  return { ok: true };
+}
+
+export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecretResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+
+  const admin = getAdminClient();
+  const { data, error } = await admin
+    .from('profiles')
+    .select('outbound_webhook_secret')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: 'Could not retrieve secret.' };
+  const secret = (data as { outbound_webhook_secret?: string | null } | null)
+    ?.outbound_webhook_secret;
+  if (typeof secret !== 'string' || secret.length === 0) {
+    return { ok: false, error: 'No secret configured.' };
+  }
   return { ok: true, secret };
 }
 

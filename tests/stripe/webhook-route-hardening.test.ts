@@ -291,11 +291,14 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
 
     // Handler still ran exactly once.
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
-    // Row remains with processed_status=null (the failing UPDATE didn't touch it).
+    // Post R1-4: markInFlight runs BEFORE the handler and sets processed_status
+    // to 'in_flight'. The failing markSuccess never flipped it to 'success', so
+    // the row sits in 'in_flight' until Stripe's retry (or the cron's stuck-claim
+    // recovery query at REPLAY_COOLDOWN_SECONDS+) picks it back up.
     const row = billingEvents.find(
       (r) => r.stripe_event_id === 'evt_marksuccess_fail',
     );
-    expect(row?.processed_status).toBeNull();
+    expect(row?.processed_status).toBe('in_flight');
   });
 
   it('Stripe retry of a failed event flips processed_status from failed to success', async () => {

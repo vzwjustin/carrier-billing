@@ -304,6 +304,40 @@ describe('findReplayCandidates', () => {
     expect(candidates.map((c) => c.id)).toEqual(['be_failed_never_attempted']);
   });
 
+  it('picks up stuck in_flight rows whose last_attempted_at has cooled (>60s)', async () => {
+    // Webhook crashed AFTER markInFlight but BEFORE markSuccess/markFailure.
+    // Row should still be reachable by the cron's stuck-claim recovery path.
+    const source = [
+      {
+        id: 'be_in_flight_stuck',
+        stripe_event_id: 'evt_stuck_in_flight',
+        type: 't',
+        payload: {},
+        processed_status: 'in_flight',
+        last_attempted_at: tsBefore(REPLAY_COOLDOWN_SECONDS + 30),
+        created_at: tsBefore(120),
+      },
+    ];
+    const candidates = await findReplayCandidates(makeSupabaseStub(source, []), NOW);
+    expect(candidates.map((c) => c.id)).toEqual(['be_in_flight_stuck']);
+  });
+
+  it('does NOT pick up in_flight rows still inside the cooldown (worker presumed alive)', async () => {
+    const source = [
+      {
+        id: 'be_in_flight_active',
+        stripe_event_id: 'evt_active_in_flight',
+        type: 't',
+        payload: {},
+        processed_status: 'in_flight',
+        last_attempted_at: tsBefore(20), // worker is currently running
+        created_at: tsBefore(120),
+      },
+    ];
+    const candidates = await findReplayCandidates(makeSupabaseStub(source, []), NOW);
+    expect(candidates).toEqual([]);
+  });
+
   it('does NOT pick up rows already marked processed=success', async () => {
     const source = [
       {

@@ -209,7 +209,14 @@ async function pollJob(jobId: string): Promise<string> {
         `Textract job failed: ${typed.StatusMessage ?? ''}`.trim(),
       );
     }
-    if (status === 'SUCCEEDED') {
+    if (status === 'SUCCEEDED' || status === 'PARTIAL_SUCCESS') {
+      if (status === 'PARTIAL_SUCCESS') {
+        Sentry.captureMessage('Textract PARTIAL_SUCCESS — OCR output may be incomplete', {
+          level: 'warning',
+          tags: { module: 'extraction.ocr', op: 'textract_poll' },
+          extra: { jobId },
+        });
+      }
       lines.push(...(typed.Blocks ?? []));
       let token = typed.NextToken;
       while (token) {
@@ -229,7 +236,13 @@ async function pollJob(jobId: string): Promise<string> {
       return collectLines(lines);
     }
 
-    // IN_PROGRESS / PARTIAL_SUCCESS — wait and retry, but not past deadline.
+    // Throw immediately on any status we don't recognise — do not silently
+    // drain the polling deadline and misreport as a timeout.
+    if (status && status !== 'IN_PROGRESS') {
+      throw new OcrError(`Unexpected Textract job status: ${status}`);
+    }
+
+    // IN_PROGRESS — wait and retry, but not past deadline.
     if (Date.now() + POLL_INTERVAL_MS >= deadline) break;
     await sleep(POLL_INTERVAL_MS);
   }

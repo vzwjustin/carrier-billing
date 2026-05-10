@@ -180,6 +180,40 @@ function isBlockedV6(addrIn: string): boolean {
   // ff00::/8 — multicast.
   if ((first & 0xff00) === 0xff00) return true;
 
+  // C1 fix: IPv4-mapped hex-group form (::ffff:h1:h2 where hextets 0–4 are 0
+  // and hextet 5 is 0xffff). The dot-notation regex above catches
+  // `::ffff:a.b.c.d`; this catches `::ffff:7f00:1` (= 127.0.0.1) etc.
+  if (
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0xffff
+  ) {
+    const h6 = hextets[6]!;
+    const h7 = hextets[7]!;
+    const embedded = `${(h6 >> 8) & 0xff}.${h6 & 0xff}.${(h7 >> 8) & 0xff}.${h7 & 0xff}`;
+    return isBlockedV4(embedded);
+  }
+
+  // C2 fix: NAT64 prefix (64:ff9b::/96, RFC 6052/6146). On IPv6-only or
+  // dual-stack NAT64 hosts this maps IPv4 into IPv6 space. hextets 6–7 hold
+  // the embedded IPv4 in the same layout as the v4-mapped case above.
+  if (
+    hextets[0] === 0x0064 &&
+    hextets[1] === 0xff9b &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0
+  ) {
+    const h6 = hextets[6]!;
+    const h7 = hextets[7]!;
+    const embedded = `${(h6 >> 8) & 0xff}.${h6 & 0xff}.${(h7 >> 8) & 0xff}.${h7 & 0xff}`;
+    return isBlockedV4(embedded);
+  }
+
   return false;
 }
 
