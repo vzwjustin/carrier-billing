@@ -21,8 +21,7 @@ type MaybeSingleResult =
 
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const maybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
-const updateEqMock =
-  vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
+const updateEqMock = vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
 
 const eqSelectMock = vi.fn(() => ({
   maybeSingle: () => maybeSingleMock(),
@@ -46,6 +45,12 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: {
       getUser: () => getUserMock(),
     },
+    from: fromMock,
+  }),
+}));
+
+vi.mock('@/lib/supabase/admin', () => ({
+  getAdminClient: () => ({
     from: fromMock,
   }),
 }));
@@ -125,9 +130,7 @@ describe('POST /api/audits/[id]/share', () => {
 
     const json = (await res.json()) as Record<string, unknown>;
     expect(typeof json['url']).toBe('string');
-    expect(json['url']).toBe(
-      `https://app.carrieraudit.test/share/${generatedToken as string}`,
-    );
+    expect(json['url']).toBe(`https://app.carrieraudit.test/share/${generatedToken as string}`);
   });
 
   it('returns the existing token without regenerating when one exists', async () => {
@@ -141,8 +144,6 @@ describe('POST /api/audits/[id]/share', () => {
     expect(updateMock).not.toHaveBeenCalled();
 
     const json = (await res.json()) as Record<string, unknown>;
-    expect(json['url']).toBe(
-      'https://app.carrieraudit.test/share/existing-token-123',
-    );
+    expect(json['url']).toBe('https://app.carrieraudit.test/share/existing-token-123');
   });
 });

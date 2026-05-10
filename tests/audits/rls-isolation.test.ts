@@ -141,9 +141,7 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: {
       getUser: async () => ({
         data: {
-          user: CURRENT_USER_ID
-            ? { id: CURRENT_USER_ID, email: 'x@example.com' }
-            : null,
+          user: CURRENT_USER_ID ? { id: CURRENT_USER_ID, email: 'x@example.com' } : null,
         },
         error: null,
       }),
@@ -152,10 +150,9 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-// Admin-client used only by the report.pdf route for the share-token branch.
-// In these RLS tests we never use a share token, so the admin client should
-// not be touched on the auth path. We still install a stub that will fail
-// loudly if it's called unexpectedly.
+// Admin-client is used after route-level ownership checks for trusted writes
+// and report child-row reads. Cross-tenant tests still assert the owner-scoped
+// read happens before any trusted write.
 const adminFromCalled = vi.fn();
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
@@ -169,6 +166,9 @@ vi.mock('@/lib/supabase/admin', () => ({
             }),
             maybeSingle: async () => ({ data: null, error: null }),
           }),
+        }),
+        update: (_row: Record<string, unknown>) => ({
+          eq: (_col: string, _val: string) => updateEqMock(),
         }),
       };
     },
@@ -254,12 +254,12 @@ describe('RLS multi-tenant isolation across audit routes', () => {
   });
 
   // ---- The four cross-tenant negative cases ---------------------------------
-  describe('user A querying user B\'s audit', () => {
+  describe("user A querying user B's audit", () => {
     beforeEach(() => {
       CURRENT_USER_ID = USER_A_ID;
     });
 
-    it('GET /api/audits/[id]/status returns 404 (RLS hides B\'s audit)', async () => {
+    it("GET /api/audits/[id]/status returns 404 (RLS hides B's audit)", async () => {
       const res = await GET_status(
         new Request(`http://localhost/api/audits/${AUDIT_B_ID}/status`),
         makeContext(AUDIT_B_ID),
@@ -269,7 +269,7 @@ describe('RLS multi-tenant isolation across audit routes', () => {
       expect(body.error).toBe('Audit not found.');
     });
 
-    it('POST /api/audits/[id]/share returns 404 (RLS hides B\'s audit) and never updates', async () => {
+    it("POST /api/audits/[id]/share returns 404 (RLS hides B's audit) and never updates", async () => {
       const res = await POST_share(
         new Request(`http://localhost/api/audits/${AUDIT_B_ID}/share`, {
           method: 'POST',
@@ -281,7 +281,7 @@ describe('RLS multi-tenant isolation across audit routes', () => {
       expect(updateEqMock).not.toHaveBeenCalled();
     });
 
-    it('POST /api/audits/[id]/start returns 404 (RLS hides B\'s audit) and never enqueues', async () => {
+    it("POST /api/audits/[id]/start returns 404 (RLS hides B's audit) and never enqueues", async () => {
       const res = await POST_start(
         new Request(`http://localhost/api/audits/${AUDIT_B_ID}/start`, {
           method: 'POST',
@@ -292,11 +292,9 @@ describe('RLS multi-tenant isolation across audit routes', () => {
       expect(inngestSendMock).not.toHaveBeenCalled();
     });
 
-    it('GET /api/audits/[id]/report.pdf returns 404 (RLS hides B\'s audit)', async () => {
+    it("GET /api/audits/[id]/report.pdf returns 404 (RLS hides B's audit)", async () => {
       const res = await GET_report(
-        new Request(
-          `http://localhost/api/audits/${AUDIT_B_ID}/report.pdf`,
-        ),
+        new Request(`http://localhost/api/audits/${AUDIT_B_ID}/report.pdf`),
         makeContext(AUDIT_B_ID),
       );
       expect(res.status).toBe(404);
@@ -307,12 +305,12 @@ describe('RLS multi-tenant isolation across audit routes', () => {
   });
 
   // ---- Symmetric: user B querying user A's audit ---------------------------
-  describe('symmetric isolation: user B querying user A\'s audit', () => {
+  describe("symmetric isolation: user B querying user A's audit", () => {
     beforeEach(() => {
       CURRENT_USER_ID = USER_B_ID;
     });
 
-    it('GET /api/audits/[id]/status returns 404 for user B against A\'s audit', async () => {
+    it("GET /api/audits/[id]/status returns 404 for user B against A's audit", async () => {
       const res = await GET_status(
         new Request(`http://localhost/api/audits/${AUDIT_A_ID}/status`),
         makeContext(AUDIT_A_ID),
@@ -320,7 +318,7 @@ describe('RLS multi-tenant isolation across audit routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('POST /api/audits/[id]/share returns 404 for user B against A\'s audit', async () => {
+    it("POST /api/audits/[id]/share returns 404 for user B against A's audit", async () => {
       const res = await POST_share(
         new Request(`http://localhost/api/audits/${AUDIT_A_ID}/share`, {
           method: 'POST',

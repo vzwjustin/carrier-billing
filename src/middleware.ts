@@ -3,17 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 /**
- * Build the per-request Content-Security-Policy with a fresh nonce.
- *
- * `'strict-dynamic'` lets nonced loader scripts inject child scripts; in
- * modern browsers it makes the host allowlist informational, but we keep
- * the explicit hosts for older-browser fallback. `'unsafe-inline'` is gone
- * from `script-src`. `style-src 'unsafe-inline'` stays — Next.js 15 inlines
- * style attributes for some primitives, per the documented compromise.
- *
- * Future `<Script>` consumers should read the nonce in a server component:
- *   const nonce = (await headers()).get('x-nonce') ?? undefined;
- *   <Script nonce={nonce} src="..." />
+ * Build the Content-Security-Policy. This is an allowlist CSP, not a nonce CSP:
+ * Next/PostHog/Sentry currently need inline/eval allowances in this app. Keep
+ * this comment honest so future hardening can remove those allowances in a
+ * deliberate browser-tested pass.
  */
 function buildCsp(): string {
   return [

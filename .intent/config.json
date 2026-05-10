@@ -1,0 +1,89 @@
+{
+  "name": "carrier-billing",
+  "scripts": [
+    {
+      "name": "dev",
+      "command": "pnpm dev",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "build",
+      "command": "pnpm build",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "start",
+      "command": "pnpm start",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "lint",
+      "command": "pnpm lint",
+      "mode": "command",
+      "category": "lint"
+    },
+    {
+      "name": "typecheck",
+      "command": "pnpm typecheck",
+      "mode": "command",
+      "category": "typecheck"
+    },
+    {
+      "name": "test",
+      "command": "pnpm test",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:watch",
+      "command": "pnpm test:watch",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:llm",
+      "command": "pnpm test:llm",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:e2e",
+      "command": "pnpm test:e2e",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "format",
+      "command": "pnpm format",
+      "mode": "command",
+      "category": "format"
+    },
+    {
+      "name": "format:check",
+      "command": "pnpm format:check",
+      "mode": "command",
+      "category": "format"
+    },
+    {
+      "name": "fixtures:generate",
+      "command": "pnpm fixtures:generate",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "fixtures:generate:pdfs",
+      "command": "pnpm fixtures:generate:pdfs",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "bootstrap",
+      "command": "pnpm bootstrap",
+      "mode": "command",
+      "category": "other"
+    }
+  ]
+}

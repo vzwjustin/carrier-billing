@@ -93,10 +93,7 @@ export async function GET(
       .eq('share_token', token)
       .maybeSingle<AuditFullRow>();
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     audit = data ?? null;
     if (!audit) {
@@ -116,10 +113,7 @@ export async function GET(
       .eq('id', auditId)
       .maybeSingle<AuditFullRow>();
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     audit = data ?? null;
     if (!audit) {
@@ -128,10 +122,7 @@ export async function GET(
   }
 
   if (audit.status !== 'completed') {
-    return NextResponse.json(
-      { error: 'audit_not_completed' },
-      { status: 409 },
-    );
+    return NextResponse.json({ error: 'audit_not_completed' }, { status: 409 });
   }
 
   const admin = getAdminClient();
@@ -146,35 +137,22 @@ export async function GET(
   }
 
   // ---- Otherwise render fresh, persist, and return ----------------------
-  const [accountsRes, linesRes, featuresRes, creditsRes, dppRes, findingsRes] =
-    await Promise.all([
-      admin
-        .from('bill_accounts')
-        .select('id,audit_id,label,account_number_masked,total_charges_cents')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_lines')
-        .select('id,audit_id,account_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_features')
-        .select('id,line_id,audit_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_credits')
-        .select('id,line_id,account_id,audit_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_dpp_installments')
-        .select('id,line_id,audit_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('findings')
-        .select(
-          'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
-        )
-        .eq('audit_id', auditId),
-    ]);
+  const [accountsRes, linesRes, featuresRes, creditsRes, dppRes, findingsRes] = await Promise.all([
+    admin
+      .from('bill_accounts')
+      .select('id,audit_id,account_label,account_number_masked,total_charges_cents')
+      .eq('audit_id', auditId),
+    admin.from('bill_lines').select('id,audit_id,account_id').eq('audit_id', auditId),
+    admin.from('bill_features').select('id,line_id,audit_id').eq('audit_id', auditId),
+    admin.from('bill_credits').select('id,line_id,account_id,audit_id').eq('audit_id', auditId),
+    admin.from('bill_dpp_installments').select('id,line_id,audit_id').eq('audit_id', auditId),
+    admin
+      .from('findings')
+      .select(
+        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+      )
+      .eq('audit_id', auditId),
+  ]);
 
   const queryError =
     accountsRes.error ??
@@ -184,10 +162,7 @@ export async function GET(
     dppRes.error ??
     findingsRes.error;
   if (queryError) {
-    return NextResponse.json(
-      { error: 'Failed to load audit data.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load audit data.' }, { status: 500 });
   }
 
   const reportData = buildReportData({
@@ -204,11 +179,7 @@ export async function GET(
   // is only loaded on the first cold cache miss for this route.
   const { renderReportPdf } = await import('@/reports/pdf/render');
   const pdfBuffer = await renderReportPdf(reportData);
-  const pdfBytes = new Uint8Array(
-    pdfBuffer.buffer,
-    pdfBuffer.byteOffset,
-    pdfBuffer.byteLength,
-  );
+  const pdfBytes = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
 
   // Best-effort cache write. If it fails we still return the rendered PDF.
   await admin.storage.from('reports').upload(storagePath, pdfBytes, {

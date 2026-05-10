@@ -44,3 +44,6 @@ test-results
 
 # vercel
 .vercel
+
+# Local Netlify folder
+.netlify

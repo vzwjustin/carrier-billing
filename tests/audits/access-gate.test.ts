@@ -16,8 +16,7 @@ type SignedUrlResult = {
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditsInsertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
 const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
-const createSignedUploadUrlMock =
-  vi.fn<(path: string) => Promise<SignedUrlResult>>();
+const createSignedUploadUrlMock = vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
 const fromMock = vi.fn((_table: string) => ({
   insert: (row: unknown) => auditsInsertMock(row),
@@ -35,6 +34,11 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: {
       getUser: () => getUserMock(),
     },
+  }),
+}));
+
+vi.mock('@/lib/supabase/admin', () => ({
+  getAdminClient: () => ({
     from: fromMock,
     storage: {
       from: storageFromMock,
@@ -108,9 +112,7 @@ describe('POST /api/audits — access gate', () => {
       reason: 'subscription',
     });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
     expect(res.status).toBe(200);
 
     expect(auditsInsertMock).toHaveBeenCalledTimes(1);
@@ -126,9 +128,7 @@ describe('POST /api/audits — access gate', () => {
     });
     decrementMock.mockResolvedValueOnce({ remaining: 1 });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
     expect(res.status).toBe(200);
 
     const json = (await res.json()) as {
@@ -153,9 +153,7 @@ describe('POST /api/audits — access gate', () => {
       reason: 'no_plan',
     });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
     expect(res.status).toBe(402);
 
     const json = (await res.json()) as {
@@ -175,9 +173,7 @@ describe('POST /api/audits — access gate', () => {
       reason: 'past_due',
     });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
     expect(res.status).toBe(402);
 
     const json = (await res.json()) as { error: string };
@@ -195,9 +191,7 @@ describe('POST /api/audits — access gate', () => {
     });
     decrementMock.mockRejectedValueOnce(new Error('no_credits'));
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
     expect(res.status).toBe(402);
 
     const json = (await res.json()) as { error: string };
@@ -206,7 +200,8 @@ describe('POST /api/audits — access gate', () => {
     // The audit row was inserted, then deleted as part of rollback.
     expect(auditsInsertMock).toHaveBeenCalledTimes(1);
     expect(auditsDeleteEqMock).toHaveBeenCalledTimes(1);
-    // No signed URL was issued for a rolled-back audit.
+    // The decrement runs before signed-URL creation; when it throws we roll
+    // back the audit row immediately and never sign a URL.
     expect(createSignedUploadUrlMock).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { env } from '@/env';
 import { trackServer } from '@/lib/analytics/events';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -30,10 +31,7 @@ function buildShareUrl(token: string): string {
 
 async function trackShared(auditId: string, userId: string): Promise<void> {
   try {
-    await trackServer(
-      { name: 'report_shared', properties: { auditId } },
-      userId,
-    );
+    await trackServer({ name: 'report_shared', properties: { auditId } }, userId);
   } catch {
     // analytics never breaks product flow
   }
@@ -66,10 +64,7 @@ export async function POST(
       .maybeSingle<AuditTokenRow>();
 
     if (fetchError) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!existing) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -82,24 +77,19 @@ export async function POST(
     }
 
     const token = generateToken();
-    const { error: updateError } = await supabase
+    const admin = getAdminClient();
+    const { error: updateError } = await admin
       .from('audits')
       .update({ share_token: token })
       .eq('id', existing.id);
 
     if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to save share token.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to save share token.' }, { status: 500 });
     }
 
     await trackShared(existing.id, user.id);
     return NextResponse.json({ url: buildShareUrl(token) });
   } catch {
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }
