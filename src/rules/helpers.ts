@@ -97,10 +97,14 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
     estimated_monthly_savings_cents: 1000,
     source_note: 'verizon.com/support/no-longer-supported-plans',
   },
-  // "Verizon Plan Unlimited" but NOT current "Verizon Plan Unlimited Pro/Plus/Start"
+  // "Verizon Plan Unlimited" but NOT current "Verizon Plan Unlimited Pro/Plus/Start".
+  // Anchor with \b on both ends and require either end-of-string, whitespace,
+  // or a known modifier — this prevents accidental matches against future SKUs
+  // that happen to share the prefix (e.g. "Verizon Plan Unlimited Edge").
   {
     carrier: 'verizon',
-    pattern: /Verizon\s+Plan\s+Unlimited(?!\s+(Pro|Plus|Start))/i,
+    pattern:
+      /\bVerizon\s+Plan\s+Unlimited\b(?!\s+(Pro|Plus|Start|Edge|Premium|Ultimate))/i,
     replacement_plan: 'Business Unlimited Plus 2.0',
     estimated_monthly_savings_cents: 800,
     source_note: 'verizon.com/support/verizon-plan-unlimited-faqs',
@@ -161,9 +165,13 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
     source_note: 't-mobile.com/community/grandfathered-plan-changes',
   },
   // "Magenta" but NOT current "Magenta Plus" / "Magenta Max" / "Magenta Business"
+  // and NOT future SKUs that happen to start with "Magenta" (Magenta 55+,
+  // Magenta Military, Magenta First Responder are existing carrier-modifier
+  // SKUs that should NOT be flagged as legacy).
   {
     carrier: 'tmobile',
-    pattern: /Magenta(?!\s+(Plus|Max|Business))/i,
+    pattern:
+      /\bMagenta\b(?!\s+(Plus|Max|Business|55\+|Military|First Responder))/i,
     replacement_plan: 'Business Unlimited Advanced',
     estimated_monthly_savings_cents: 700,
     source_note: 'phonearena.com/news/i-just-ditched-my-grandfathered-t-mobile-magenta-plan',

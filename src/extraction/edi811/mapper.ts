@@ -42,6 +42,22 @@ function bound(value: string): string {
   return value.length > FREE_TEXT_MAX ? value.slice(0, FREE_TEXT_MAX) : value;
 }
 
+// (M-E1) Schema caps feature/credit `name` and `plan_name` at 120 chars and
+// notes at 500 chars. Truncate at the mapper too — defense-in-depth so a
+// pathological SAC15 / NTE02 string never reaches the schema boundary as a
+// validation failure (which would fail the entire EDI bill).
+const FREE_TEXT_LONG_MAX = 120;
+function boundLong(value: string): string {
+  return value.length > FREE_TEXT_LONG_MAX
+    ? value.slice(0, FREE_TEXT_LONG_MAX)
+    : value;
+}
+
+const NOTE_MAX = 500;
+function boundNote(value: string): string {
+  return value.length > NOTE_MAX ? value.slice(0, NOTE_MAX) : value;
+}
+
 /**
  * Categorise a SAC service-id code into our internal feature taxonomy. Returns
  * 'other' for anything we don't recognise — the per-carrier hook can refine.
@@ -245,7 +261,7 @@ export function mapEdi811ToBill(
           });
         }
         if (planName) {
-          currentAccount.currentLine.line.plan_name = planName;
+          currentAccount.currentLine.line.plan_name = boundLong(planName);
         }
         const unitPriceCents = parseDollarsToCents(unitPriceRaw);
         if (unitPriceCents !== null && unitPriceCents > 0) {
@@ -300,7 +316,7 @@ export function mapEdi811ToBill(
             currentAccount.currentLine.line.plan_base_cents = amountCents;
           }
           if (!currentAccount.currentLine.line.plan_name && description) {
-            currentAccount.currentLine.line.plan_name = description;
+            currentAccount.currentLine.line.plan_name = boundLong(description);
           }
           break;
         }
@@ -318,7 +334,7 @@ export function mapEdi811ToBill(
           // We force the sign negative here to match the schema invariant.
           const signedCents = -Math.abs(amountCents);
           const credit: ExtractedCredit = {
-            name: hookOut.name,
+            name: boundLong(hookOut.name),
             monthly_cents: signedCents,
             expires_on: null,
             is_promo: hookOut.isPromo,
@@ -340,7 +356,7 @@ export function mapEdi811ToBill(
             category: defaultFeatureCategory(serviceIdCode),
           };
           const feature: ExtractedFeature = {
-            name: hookOut.name,
+            name: boundLong(hookOut.name),
             category: hookOut.category,
             monthly_cents: amountCents,
           };
@@ -380,7 +396,7 @@ export function mapEdi811ToBill(
       }
       case 'NTE': {
         const note = elOrNull(seg, 2);
-        if (note) notes.push(note);
+        if (note) notes.push(boundNote(note));
         break;
       }
       default:
@@ -405,13 +421,33 @@ export function mapEdi811ToBill(
     );
   }
 
-  // If we didn't pick up an explicit billing period from DTM, fall back to a
-  // 30-day window ending at the invoice date so the schema validation passes.
-  if (!billingPeriodStart || !billingPeriodEnd) {
+  // (M-E2) Reconcile the billing period.
+  //
+  // Three cases:
+  //   1. Both dates set — accept as-is, then guard against `start > end` by
+  //      swapping (carrier dialects occasionally invert DTM 150/151).
+  //   2. Exactly one date set — anchor the missing side off the present one
+  //      using a 30-day window so we never drop a real DTM datum on the
+  //      floor in favor of `today()`.
+  //   3. Neither date set — use the prior fallback (30-day window ending at
+  //      the invoice date or today).
+  if (billingPeriodStart && billingPeriodEnd) {
+    if (billingPeriodStart > billingPeriodEnd) {
+      const swap = billingPeriodStart;
+      billingPeriodStart = billingPeriodEnd;
+      billingPeriodEnd = swap;
+    }
+  } else if (billingPeriodStart && !billingPeriodEnd) {
+    // Anchor the end 29 days after the known start.
+    billingPeriodEnd = inferBillingPeriod(billingPeriodStart, 'after').end;
+  } else if (!billingPeriodStart && billingPeriodEnd) {
+    // Anchor the start 29 days before the known end.
+    billingPeriodStart = inferBillingPeriod(billingPeriodEnd, 'before').start;
+  } else {
     const ref = invoiceDate ?? today();
-    const fallback = inferBillingPeriod(ref);
-    if (!billingPeriodStart) billingPeriodStart = fallback.start;
-    if (!billingPeriodEnd) billingPeriodEnd = fallback.end;
+    const fallback = inferBillingPeriod(ref, 'before');
+    billingPeriodStart = fallback.start;
+    billingPeriodEnd = fallback.end;
   }
 
   return {
@@ -436,23 +472,19 @@ function lastFourDigits(value: string): string | null {
 }
 
 /**
- * X12 dates are CCYYMMDD (DTM02) or YYMMDD (DTM02 in older 4010 dialects).
+ * X12 dates on DTM02 in modern (4010+) wireless 811 are CCYYMMDD (8 digits).
+ * The legacy 6-digit YYMMDD format hasn't been used by US wireless carriers
+ * in production for 20+ years; accepting it here invites Y2K-style century
+ * pivot bugs (a "70" boundary will be wrong for SOMEONE eventually). Reject
+ * any input that isn't exactly 8 digits — let the mapper fall back to the
+ * inferred billing period.
+ *
  * Returns ISO `YYYY-MM-DD` or null if the format is unrecognised.
  */
 function parseEdiDate(value: string): string | null {
   const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  if (trimmed.length === 8) {
-    return `${trimmed.slice(0, 4)}-${trimmed.slice(4, 6)}-${trimmed.slice(6, 8)}`;
-  }
-  if (trimmed.length === 6) {
-    // 2-digit year: pivot at 70 — anything <70 is 20xx, else 19xx.
-    const yy = Number(trimmed.slice(0, 2));
-    const century = yy < 70 ? 2000 : 1900;
-    const year = String(century + yy).padStart(4, '0');
-    return `${year}-${trimmed.slice(2, 4)}-${trimmed.slice(4, 6)}`;
-  }
-  return null;
+  if (!/^\d{8}$/.test(trimmed)) return null;
+  return `${trimmed.slice(0, 4)}-${trimmed.slice(4, 6)}-${trimmed.slice(6, 8)}`;
 }
 
 /** Convert a dollars string ('60.00') to integer cents. Returns null on failure. */
@@ -530,10 +562,25 @@ function today(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function inferBillingPeriod(reference: string): { start: string; end: string } {
+/**
+ * Build a 30-day window anchored on `reference`. With direction='before' the
+ * reference is the period END (start = ref - 29d); with direction='after' the
+ * reference is the period START (end = ref + 29d). Either way we keep
+ * start ≤ end.
+ */
+function inferBillingPeriod(
+  reference: string,
+  direction: 'before' | 'after' = 'before',
+): { start: string; end: string } {
   const d = new Date(`${reference}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) {
     return { start: reference, end: reference };
+  }
+  if (direction === 'after') {
+    const start = new Date(d);
+    const end = new Date(d);
+    end.setUTCDate(end.getUTCDate() + 29);
+    return { start: toIso(start), end: toIso(end) };
   }
   const end = new Date(d);
   const start = new Date(d);

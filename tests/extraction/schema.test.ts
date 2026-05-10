@@ -216,4 +216,101 @@ describe('ExtractedBillSchema', () => {
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(false);
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // (M-E1) String length caps. The schema is the contract — bounding here
+  // protects every downstream consumer (Sentry, PDF report, persistence)
+  // from a model leak of multi-KB strings.
+  // ─────────────────────────────────────────────────────────────────────
+  it('rejects a feature name longer than 120 chars', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.features = [
+      {
+        name: 'F'.repeat(121),
+        category: 'addon',
+        monthly_cents: 100,
+      },
+    ];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a feature name at exactly 120 chars', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.features = [
+      {
+        name: 'F'.repeat(120),
+        category: 'addon',
+        monthly_cents: 100,
+      },
+    ];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a credit name longer than 120 chars', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.credits = [
+      {
+        name: 'C'.repeat(121),
+        monthly_cents: -100,
+        expires_on: null,
+        is_promo: true,
+      },
+    ];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a plan_name longer than 120 chars', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.plan_name = 'P'.repeat(121);
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a notes entry longer than 500 chars', () => {
+    const bill = minimalBill();
+    bill.notes = ['n'.repeat(501)];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a notes array with more than 50 entries', () => {
+    const bill = minimalBill();
+    bill.notes = Array.from({ length: 51 }, (_v, i) => `note ${i}`);
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a notes array with exactly 50 entries each up to 500 chars', () => {
+    const bill = minimalBill();
+    bill.notes = Array.from({ length: 50 }, () => 'n'.repeat(500));
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // (L) data_used_gb absolute upper bound. 10TB is far above any real
+  // cellular plan; values past that cap are almost always parse errors.
+  // ─────────────────────────────────────────────────────────────────────
+  it('rejects data_used_gb above 10,000', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.data_used_gb = 10_001;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts data_used_gb at exactly 10,000', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.data_used_gb = 10_000;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
 });

@@ -23,7 +23,7 @@ export interface ReportAuditRow {
 export interface ReportAccountRow {
   id: string;
   audit_id: string;
-  label: string | null;
+  account_label: string | null;
   account_number_masked: string | null;
   total_charges_cents: number | null;
 }

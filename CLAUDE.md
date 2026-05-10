@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Product spec (canonical, frozen):** [`SPEC.md`](./SPEC.md). The full build brief — phase plan, data model, extraction prompt, rule pattern, failure modes. On any conflict between this file and SPEC.md, SPEC.md wins.
 - **Operator-facing setup:** [`README.md`](./README.md).
-- **Pending work for the next session:** [`HANDOFF.md`](./HANDOFF.md). If you're picking up unfinished work, start there.
+- **Pending work for the next session:** [`HANDOFF.md`](./HANDOFF.md). If you're picking up unfinished work, start there — it includes a **snapshot table** (CSP location, billing events, migrations 0005/0006, optional inbound email vs SPEC).
 
 Phases 0–4 of SPEC.md are shipped. Phase 5 (launch polish) is partially landed — see HANDOFF.md.
 
@@ -53,6 +53,7 @@ CarrierAudit ingests a PDF wireless bill, extracts structured data with Claude S
 2. **Upload + start** — client PUTs the PDF to Supabase Storage `bills` bucket, then `POST /api/audits/[id]/start` fires `bill.uploaded` Inngest event with idempotency key `${auditId}-uploaded`.
 3. **Worker** (`src/inngest/functions/process-bill.ts`) — durable, retry-safe pipeline. Steps in order: `mark-extracting` (status guard) → `fetch-pdf` → `extract` (12-min `withTimeout`; runs `runExtractionPipeline`) → `persist-bill` → `run-rules` → `translate-line-indexes` → `persist-findings` → `mark-completed` → fires `audit.completed`.
 4. **Email** (`src/inngest/functions/send-report-email.ts`) — handles `audit.completed`; renders + caches PDF at `reports/{auditId}.pdf`; sends via Resend.
+5. **Past-due billing email** — Stripe `invoice.payment_failed` in `src/lib/stripe/handlers.ts` updates profile to `past_due` and sends Inngest `billing.payment_failed`; `src/inngest/functions/send-payment-failed-email.ts` sends via Resend.
 
 Every side effect inside `process-bill` is in `step.run` so it survives retries. Status transitions are guarded (`.eq('status','pending')` style) so concurrent runs can't double-write.
 
@@ -74,21 +75,21 @@ The same React components render web (`src/app/(app)/audits/[id]`, `src/app/shar
 
 ### Billing (`src/lib/stripe/`, `src/app/api/stripe/`)
 
-- **Checkout** (`/api/stripe/checkout`) — handles first-time `stripe_customer_id` creation with a race-safe pattern: `.update().is('stripe_customer_id', null).select('id')`; if 0 rows return, the loser deletes its orphan customer via `stripe.customers.del(...)`.
+- **Checkout** (`/api/stripe/checkout`) — handles first-time `stripe_customer_id` creation with a race-safe pattern: `.update().is('stripe_customer_id', null).select('id')`; if 0 rows return, the loser deletes its orphan customer via `stripe.customers.del(...)`. Session uses `allow_promotion_codes`, `automatic_tax`, and `customer_update` for address collection.
 - **Webhook** (`/api/stripe/webhook`) — verifies signature, dedups via `billing_events.stripe_event_id` UNIQUE constraint, then dispatches to `handlers.ts`. Every customer-keyed update asserts exactly-one row matched (`assertExactlyOneProfileMatched`); 0 or >1 rows throws + Sentry warning.
 - **Portal** (`/api/stripe/portal`) — Stripe Billing Portal redirect for `/settings/billing`.
 - **Access gate** — `assertCanRunAudit` returns ok for `subscription_status in ('active','trialing')` OR `audit_credits > 0`. The `increment_audit_credits` RPC is `security definer` and atomic.
 
 ### Auth & route protection
 
-Supabase SSR via `src/middleware.ts` → `src/lib/supabase/middleware.ts`. Protects `(app)/*`. Three Supabase client variants:
+Supabase SSR via `src/middleware.ts` → `src/lib/supabase/middleware.ts`. The same middleware sets the **Content-Security-Policy** allowlist (`buildCsp()`). `next.config.ts` adds HSTS, `X-Frame-Options`, and related headers. Protects `(app)/*`. Three Supabase client variants:
 - `src/lib/supabase/client.ts` — browser, anon key
 - `src/lib/supabase/server.ts` — RSC/route handlers, anon key + cookies
 - `src/lib/supabase/admin.ts` — service role, bypasses RLS. **Only used inside Inngest workers and webhooks.** Never import from a route handler that should respect RLS.
 
 ### Database & storage
 
-Migrations are forward-only under `supabase/migrations/`. Schema is in `0001_init.sql`; storage buckets in `0002_storage.sql` (`bills`) and `0003_reports_storage.sql` (`reports`); credit RPC in `0004_billing_helpers.sql`; CHECK constraints + atomic refund RPC in `0005_check_constraints_and_refund_rpc.sql`.
+Migrations are forward-only under `supabase/migrations/`. Schema is in `0001_init.sql`; storage buckets in `0002_storage.sql` (`bills`) and `0003_reports_storage.sql` (`reports`); credit RPC in `0004_billing_helpers.sql`; CHECK constraints + atomic refund RPC in `0005_check_constraints_and_refund_rpc.sql`; inbound token + outbound webhook columns in `0006_inbound_outbound.sql`.
 
 RLS: every user-data table has owner-read; bill_* tables join through `audits.user_id`. Service-role writes bypass RLS — only Inngest workers and Stripe webhook handlers should write.
 
@@ -124,6 +125,8 @@ When mocking `@/inngest/client`, use `vi.hoisted()` for the mock fn — `vi.mock
 ## Things to Skip (per SPEC.md §10)
 
 Don't build any of these without a discussion: carrier API integrations, auto-negotiation, email-based bill ingest, mobile app, multi-org/team accounts, white-label theming, multi-currency, non-US carriers, wireline bills, real-time chat, A/B infra, i18n.
+
+**Note:** An **optional** inbound-email webhook exists (`src/app/api/inbound/email/route.ts` when `INBOUND_EMAIL_SECRET` is set). SPEC lists “email-based bill ingest” as out of scope for the *product roadmap*; treat the code path as operator-configured, not a greenfield feature to expand without discussion.
 
 ## Marker Conventions
 

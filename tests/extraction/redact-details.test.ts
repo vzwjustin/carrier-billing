@@ -130,6 +130,56 @@ describe('redactDetails', () => {
     expect(out.b).toBe('[phone]');
   });
 
+  it('replaces all four common phone formats with [phone]', () => {
+    // Hyphenated, dotted, space-separated, and parens-wrapped should all
+    // collapse to [phone]. Parens form is the one that previously slipped
+    // through the regex.
+    const out = redactDetails({
+      hyphen: 'call 555-123-4567 today',
+      dot: 'call 555.123.4567 today',
+      space: 'call 555 123 4567 today',
+      parens: 'call (555) 123-4567 today',
+    }) as { hyphen: string; dot: string; space: string; parens: string };
+    expect(out.hyphen).toContain('[phone]');
+    expect(out.hyphen).not.toMatch(/555-123-4567/);
+    expect(out.dot).toContain('[phone]');
+    expect(out.dot).not.toMatch(/555\.123\.4567/);
+    expect(out.space).toContain('[phone]');
+    expect(out.space).not.toMatch(/555 123 4567/);
+    expect(out.parens).toContain('[phone]');
+    expect(out.parens).not.toMatch(/\(555\) 123-4567/);
+  });
+
+  it('redacts every email-envelope and device-identifier key', () => {
+    // Inbound webhook payloads, outbound email logs, Stripe invoice URLs,
+    // and device identifiers all need to vanish from logs unconditionally
+    // — the values can be anything from a plain string to a structured
+    // recipient list, so we trust the key blocklist.
+    const out = redactDetails({
+      from: 'jane.doe@example.com',
+      to: 'inbound+token@inbound.carrieraudit.com',
+      recipient: 'Jane Doe <jane@example.com>',
+      subject: 'Your March bill from Verizon',
+      customer_email: 'jane@example.com',
+      customerEmail: 'jane@example.com',
+      device_serial: 'F2LZX0AAJC6L',
+      imei: '356938035643809',
+      hosted_invoice_url:
+        'https://invoice.stripe.com/i/acct_x/test_aBcDeF1234567890?secret=foo',
+      ok: true,
+    }) as Record<string, unknown>;
+    expect(out.from).toBe('[REDACTED]');
+    expect(out.to).toBe('[REDACTED]');
+    expect(out.recipient).toBe('[REDACTED]');
+    expect(out.subject).toBe('[REDACTED]');
+    expect(out.customer_email).toBe('[REDACTED]');
+    expect(out.customerEmail).toBe('[REDACTED]');
+    expect(out.device_serial).toBe('[REDACTED]');
+    expect(out.imei).toBe('[REDACTED]');
+    expect(out.hosted_invoice_url).toBe('[REDACTED]');
+    expect(out.ok).toBe(true);
+  });
+
   it('redacts user_label values entirely (key blocklist)', () => {
     // Names extracted via X12 REF*EM live in `user_label`. Treat the key as
     // PII regardless of value shape, so an all-caps "JANE DOE" or a plain

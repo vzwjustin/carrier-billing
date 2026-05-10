@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -79,13 +80,11 @@ export interface AuditViewerProps {
   report?: ReportData;
 }
 
-export function AuditViewer({
-  auditId,
-  initial,
-  report,
-}: AuditViewerProps): React.JSX.Element {
+export function AuditViewer({ auditId, initial, report }: AuditViewerProps): React.JSX.Element {
+  const router = useRouter();
   const [data, setData] = React.useState<AuditStatusPayload>(initial);
   const [error, setError] = React.useState<string | null>(null);
+  const [refreshRequested, setRefreshRequested] = React.useState(false);
 
   React.useEffect(() => {
     if (!ACTIVE_STATUSES.has(data.status)) return;
@@ -120,6 +119,12 @@ export function AuditViewer({
       clearInterval(interval);
     };
   }, [auditId, data.status]);
+
+  React.useEffect(() => {
+    if (data.status !== 'completed' || report || refreshRequested) return;
+    setRefreshRequested(true);
+    router.refresh();
+  }, [data.status, refreshRequested, report, router]);
 
   if (data.status === 'failed') {
     return (
@@ -158,9 +163,7 @@ export function AuditViewer({
         <p className="text-sm text-neutral-500">Current step</p>
         <p className="text-lg font-medium text-neutral-900">{data.currentStep}</p>
         {data.status === 'pending' ? (
-          <p className="mt-2 text-xs text-neutral-500">
-            Waiting for upload to finish.
-          </p>
+          <p className="mt-2 text-xs text-neutral-500">Waiting for upload to finish.</p>
         ) : null}
         <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
           <div
@@ -168,9 +171,7 @@ export function AuditViewer({
             style={{ width: `${Math.min(100, Math.max(0, data.progress))}%` }}
           />
         </div>
-        {error ? (
-          <p className="mt-3 text-xs text-red-600">{error}</p>
-        ) : null}
+        {error ? <p className="mt-3 text-xs text-red-600">{error}</p> : null}
       </div>
 
       {inFlight ? (
@@ -192,18 +193,11 @@ export function AuditViewer({
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <SummaryCard
             label="Carrier"
-            value={
-              data.carrier
-                ? CARRIER_LABELS[data.carrier] ?? data.carrier
-                : '—'
-            }
+            value={data.carrier ? (CARRIER_LABELS[data.carrier] ?? data.carrier) : '—'}
           />
           <SummaryCard
             label="Billing period"
-            value={formatPeriod(
-              data.billing_period_start,
-              data.billing_period_end,
-            )}
+            value={formatPeriod(data.billing_period_start, data.billing_period_end)}
           />
           <SummaryCard
             label="Accounts"
@@ -215,11 +209,7 @@ export function AuditViewer({
           />
           <SummaryCard
             label="Total charges"
-            value={
-              data.total_charges_cents !== null
-                ? formatCents(data.total_charges_cents)
-                : '—'
-            }
+            value={data.total_charges_cents !== null ? formatCents(data.total_charges_cents) : '—'}
           />
         </div>
       ) : null}
@@ -229,11 +219,7 @@ export function AuditViewer({
   );
 }
 
-function SavingsSummary({
-  data,
-}: {
-  data: AuditStatusPayload;
-}): React.JSX.Element {
+function SavingsSummary({ data }: { data: AuditStatusPayload }): React.JSX.Element {
   const monthly = data.estimated_monthly_savings_cents ?? 0;
   const annual = data.estimated_annual_savings_cents ?? monthly * 12;
   const findingCount = data.finding_count ?? 0;
@@ -242,24 +228,18 @@ function SavingsSummary({
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6">
-        <p className="text-xs uppercase tracking-wide text-emerald-700">
-          Estimated savings
-        </p>
+        <p className="text-xs tracking-wide text-emerald-700 uppercase">Estimated savings</p>
         <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <p className="text-3xl font-semibold text-emerald-900">
               {formatCents(monthly)}
-              <span className="ml-1 text-sm font-normal text-emerald-800">
-                / month
-              </span>
+              <span className="ml-1 text-sm font-normal text-emerald-800">/ month</span>
             </p>
           </div>
           <div>
             <p className="text-3xl font-semibold text-emerald-900">
               {formatCents(annual)}
-              <span className="ml-1 text-sm font-normal text-emerald-800">
-                / year
-              </span>
+              <span className="ml-1 text-sm font-normal text-emerald-800">/ year</span>
             </p>
           </div>
         </div>
@@ -267,10 +247,7 @@ function SavingsSummary({
 
       <div className="grid grid-cols-2 gap-4">
         <SummaryCard label="Findings" value={String(findingCount)} />
-        <SummaryCard
-          label="High severity"
-          value={String(highSeverityCount)}
-        />
+        <SummaryCard label="High severity" value={String(highSeverityCount)} />
       </div>
     </div>
   );
@@ -311,10 +288,7 @@ function Stepper({ status }: { status: string }): React.JSX.Element {
             </span>
             {idx < STEPS.length - 1 ? (
               <span
-                className={cn(
-                  'h-px flex-1',
-                  completed ? 'bg-neutral-900' : 'bg-neutral-200',
-                )}
+                className={cn('h-px flex-1', completed ? 'bg-neutral-900' : 'bg-neutral-200')}
                 aria-hidden
               />
             ) : null}
@@ -325,16 +299,10 @@ function Stepper({ status }: { status: string }): React.JSX.Element {
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
+function SummaryCard({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-neutral-500">{label}</p>
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">{label}</p>
       <p className="mt-1 text-base font-medium text-neutral-900">{value}</p>
     </div>
   );
@@ -346,11 +314,7 @@ interface FailedViewProps {
   onRetry: () => void;
 }
 
-function FailedView({
-  auditId,
-  failureReason,
-  onRetry,
-}: FailedViewProps): React.JSX.Element {
+function FailedView({ auditId, failureReason, onRetry }: FailedViewProps): React.JSX.Element {
   const [retrying, setRetrying] = React.useState(false);
 
   const handleRetry = React.useCallback(async () => {
@@ -362,7 +326,9 @@ function FailedView({
       if (!res.ok) {
         const body: unknown = await res.json().catch(() => ({}));
         const message =
-          typeof body === 'object' && body !== null && 'error' in body &&
+          typeof body === 'object' &&
+          body !== null &&
+          'error' in body &&
           typeof (body as { error: unknown }).error === 'string'
             ? (body as { error: string }).error
             : 'Could not retry audit.';
@@ -382,9 +348,7 @@ function FailedView({
     <div className="space-y-6">
       <Stepper status="failed" />
       <div className="rounded-lg border border-red-200 bg-red-50 p-6">
-        <h2 className="text-base font-medium text-red-900">
-          We couldn&apos;t finish this audit
-        </h2>
+        <h2 className="text-base font-medium text-red-900">We couldn&apos;t finish this audit</h2>
         <p className="mt-1 text-sm text-red-800">
           {failureReason ?? 'Something went wrong while processing the bill.'}
         </p>

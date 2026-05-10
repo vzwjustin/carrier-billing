@@ -1,9 +1,9 @@
 # CarrierAudit — Handoff for next Claude session
 
-> **You are picking up work on a Next.js 15 SaaS** (`CarrierAudit`) that audits business wireless bills.
-> The canonical product spec is [`SPEC.md`](./SPEC.md). The README is [`README.md`](./README.md). This file is a **work-tonight TODO** — everything below is a real, scoped task with file paths.
+> **Next.js 15 SaaS** (`CarrierAudit`) — business wireless bill PDF → extraction → rules → savings report.
+> **Canonical product spec:** [`SPEC.md`](./SPEC.md). **Operator setup:** [`README.md`](./README.md). **Agent context:** [`CLAUDE.md`](./CLAUDE.md) (or [`AGENTS.md`](./AGENTS.md) for Codex).
 >
-> Phases 0–4 of the build plan are shipped. Phase 5 (launch prep) is partially done as of the last commit on this branch.
+> Phases 0–4 are shipped. Phase 5 (launch polish) is **partially** done — use the sections below; do not rely on older chat summaries if they conflict with this file.
 
 ---
 
@@ -34,7 +34,7 @@ Stripe webhook hardening landed:
 > columns the route will throw `column does not exist` on every Stripe event
 > and the cron will fail every 15 minutes.
 
-## What was just done (so you don't redo it)
+## Snapshot (pass this file + `CLAUDE.md` to a fresh session)
 
 A multi-stream review found bugs and gaps; fixes landed across 7 streams. Highlights:
 
@@ -48,178 +48,162 @@ A multi-stream review found bugs and gaps; fixes landed across 7 streams. Highli
 
 **Status:** typecheck clean, lint clean (`next lint`), 51 test files / 383 passed / 6 todo, `next build` succeeds.
 
+### Where things live
+
+| Topic | Where it lives | Notes |
+|--------|----------------|--------|
+| CSP **policy string** | `src/middleware.ts` → `buildCsp()` | Applied to **non-API** routes (matcher excludes `/api/*`). Tuning `frame-src` / `script-src` happens here. |
+| Other security headers | `next.config.ts` | HSTS, `X-Frame-Options`, `X-Content-Type-Options`, Referrer-Policy, Permissions-Policy. |
+| Stripe checkout (promo + tax) | `src/app/api/stripe/checkout/route.ts` | `allow_promotion_codes`, `automatic_tax`, `customer_update` already on `sessions.create`. |
+| Past-due payment email | `src/lib/stripe/handlers.ts` → `inngest.send({ name: 'billing.payment_failed', ... })` | Handler: `src/inngest/functions/send-payment-failed-email.ts`. Event schema: `src/inngest/client.ts`. Tests: `tests/stripe/handlers.test.ts`, `tests/inngest/send-payment-failed-email.test.ts`, `tests/email/payment-failed-text.test.ts`. |
+| Inbound email (optional) | `src/app/api/inbound/email/route.ts` | Requires `INBOUND_EMAIL_SECRET` (+ domain env). **Differs from SPEC “skip email ingest”** as a product line — code is an opt-in operator path; do not remove without discussion. |
+| Outbound webhooks | `src/inngest/functions/dispatch-outbound-webhook.ts`, settings UI | Needs DB columns from **0006** (below). |
+| Landing sample screenshot | `src/app/page.tsx` | `SAMPLE_REPORT_IMAGE_AVAILABLE` + `public/report-sample.png` — still **false** until asset exists. |
+
 ---
 
-## What's left — work this tonight
+## Recently shipped (do not redo)
 
-Tasks are independent unless noted. Each has acceptance criteria. Mark a TaskCreate at the start; verify with the noted commands.
+Multi-stream hardening already landed, including: Inngest idempotency + line-index translation + guarded status transitions; Stripe webhook row-match assertions + race-safe `stripe_customer_id`; DB **0005** in repo (CHECKs + `refund_orphan_audit` + findings index); rules/registry fixes; UI pagination / retry / forgot-password / toasts; **payment-failed** Inngest + Resend path; **checkout** promo + automatic tax; CSP allowlist in **middleware** (not only `next.config.ts`).
 
-### 1. Apply migration 0005 to Supabase — DEPLOY-ORDER BLOCKER
+**Static verify:** `pnpm typecheck` clean. `pnpm test` — expect some `it.todo` in gated LLM / encrypted-PDF tests. `pnpm lint` should ignore `.next/**` (see **Lint** below).
 
-> ⚠️ **Critical deploy-order rule:** apply migration 0005 to Supabase **BEFORE** deploying any commit that contains the rewired `cleanup-orphan-audits` function. That function now calls `supabase.rpc('refund_orphan_audit', ...)`. If the cron fires before the RPC exists, every cleanup invocation will throw `function does not exist`, the orphan audits will sit `pending` forever (and the cron will keep retrying and failing) until the migration lands.
->
-> **Safe sequence:** apply 0005 → verify (acceptance check below) → only then deploy `main`.
+---
 
-The new RPC and CHECK constraints aren't live until applied.
+## Database / operations (blockers for prod parity)
 
-- File: `supabase/migrations/0005_check_constraints_and_refund_rpc.sql`
-- **Pre-apply: run these SELECTs against the live DB to confirm no row will trip the new CHECKs.** Each must return `0`. If any returns `>0`, FIX THE DATA before applying, otherwise the `ALTER TABLE` will fail mid-migration and leave the schema half-done:
+### A. Migration 0005 — deploy-order blocker
 
-  ```sql
-  -- audits.status: only the 5 documented statuses
-  select count(*) from public.audits
-   where status not in ('pending','extracting','analyzing','completed','failed');
+> Apply **`supabase/migrations/0005_check_constraints_and_refund_rpc.sql`** to Supabase **before** deploying app code where `cleanup-orphan-audits` calls `refund_orphan_audit`. Otherwise the cron throws `function does not exist` and orphan `pending` audits never clear.
 
-  -- audits.carrier: nullable + 4 documented values
-  select count(*) from public.audits
-   where carrier is not null
-     and carrier not in ('verizon','att','tmobile','unknown');
+**Pre-apply:** run these against the **live** DB; each `count(*)` must be `0`. Fix data before `ALTER` or the migration can fail mid-flight:
 
-  -- findings.severity: 4 documented values
-  select count(*) from public.findings
-   where severity not in ('high','medium','low','info');
+```sql
+-- audits.status: only the 5 documented statuses
+select count(*) from public.audits
+ where status not in ('pending','extracting','analyzing','completed','failed');
 
-  -- findings.confidence: must be in [0, 1]
-  select count(*) from public.findings
-   where confidence < 0 or confidence > 1;
+-- audits.carrier: nullable + 4 documented values
+select count(*) from public.audits
+ where carrier is not null
+   and carrier not in ('verizon','att','tmobile','unknown');
 
-  -- profiles.subscription_status: nullable + 8 Stripe statuses
-  -- (covers: 'active','trialing','past_due','canceled','incomplete',
-  --  'incomplete_expired','unpaid','paused')
-  select count(*) from public.profiles
-   where subscription_status is not null
-     and subscription_status not in (
-       'active','trialing','past_due','canceled',
-       'incomplete','incomplete_expired','unpaid','paused'
-     );
-  ```
-- Steps:
-  1. Run all 5 SELECTs above. Each must return 0. Fix data first if not.
-  2. Apply via `supabase db push` or paste the migration into the Supabase SQL editor.
-  3. Smoke test: trigger `cleanup-orphan-audits` via Inngest dev UI; confirm an orphaned `pending` audit gets `status='failed'` and the credit is refunded atomically (single transactional unit; verify by re-running and seeing it no-op the second time).
-- **Acceptance:** `select pg_get_functiondef('public.refund_orphan_audit'::regproc);` returns the function definition; the 5 new constraints are visible in `\d+ public.audits` / `\d+ public.findings` / `\d+ public.profiles`.
+-- findings.severity: 4 documented values
+select count(*) from public.findings
+ where severity not in ('high','medium','low','info');
 
-### 2. Wire payment_failed email (Stream B left a marker)
+-- findings.confidence: must be in [0, 1]
+select count(*) from public.findings
+ where confidence < 0 or confidence > 1;
 
-`src/lib/stripe/handlers.ts:onInvoicePaymentFailed` currently emits a structured log line but no email. Hook up Resend.
-
-- Add `src/lib/email/payment-failed.tsx` (mirror `audit-completed.tsx` shape) + `payment-failed-text.ts`.
-- Add `src/inngest/functions/send-payment-failed-email.ts` triggered by `audit.subscription_payment_failed`.
-- Have `onInvoicePaymentFailed` send that Inngest event after the past_due update (it already has `userId` and `customerEmail` available).
-- Tests: `tests/email/payment-failed-text.test.ts` and `tests/inngest/send-payment-failed-email.test.ts` (mirror existing patterns).
-- **Acceptance:** `pnpm test` still green; new function registered in `src/inngest/functions/index.ts`.
-
-### 3. Replace landing-page placeholder (`src/app/page.tsx`)
-
-There's a "Sample report — coming soon" placeholder card (search for `TODO(launch): replace with real anonymized report screenshot`).
-
-- Pick one of the anonymized fixtures under `tests/fixtures/bills/` (e.g., `verizon-business-medium.pdf`), run a real audit locally, screenshot the rendered web report, store under `public/report-sample.png` (Next.js statics).
-- Replace the placeholder card with a `<Image>` of that screenshot, with proper `width`/`height`/`alt` and `priority` (above-the-fold).
-- **Acceptance:** Lighthouse on landing page still ≥90 (`./node_modules/.bin/next start` then run `.lighthouserc.json` thresholds via `lhci`).
-
-### 4. Replace legal "DRAFT" notice when reviewed (or remove entirely)
-
-`src/app/privacy/page.tsx` and `src/app/terms/page.tsx` ship with a "DRAFT" banner — placeholder until counsel reviews.
-
-- If you have reviewed text, replace the body content and remove the `DraftBanner` component.
-- Update `LAST_UPDATED` constants.
-- **Acceptance:** banner gone from both pages; pages render at `/privacy` and `/terms`.
-
-### 5. Smoke-test the new CSP (recommended before next deploy)
-
-The CSP shipped in `next.config.ts` is restrictive — it carves out the vendor hosts that the app needs (Stripe, Supabase, PostHog, Sentry) but the **only way to verify it doesn't break anything is at runtime**. There is no automated test for CSP violations.
-
-- Run `pnpm dev` (or `next start` after `next build`) and open the browser devtools console.
-- Visit, in order: `/`, `/login`, `/signup`, `/reset-password`, `/dashboard`, `/audits`, `/audits/new`, an actual `/audits/<id>` (in any state), `/pricing`, `/settings/billing` (which redirects to Stripe portal — verify no console errors during redirect), and a `/share/<token>` link.
-- Trigger a sonner toast (e.g. share a report → click "Copy link") and confirm it renders without CSP violations.
-- Click through to Stripe Checkout from `/pricing`; verify the redirect lands cleanly. If Stripe Checkout iframes anything from `m.stripe.network`, you'll see a `frame-src` violation — relax that directive in `next.config.ts` if so.
-- Trigger a Sentry test error (browser console: `throw new Error('csp-test')`) and verify the error reaches Sentry's tunneled `/monitoring` endpoint.
-- **Acceptance:** zero CSP violations across the routes above.
-
-### 5a. Tighten CSP further (optional)
-
-`script-src 'self' 'unsafe-inline' 'unsafe-eval'` is needed for Next 15's inline boot scripts. To eliminate `'unsafe-inline'`/`'unsafe-eval'`, switch to nonce-based CSP via Next.js middleware:
-
-- See https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
-- **Acceptance:** browser console shows zero violations on the same surfaces; CSP `script-src` no longer needs the unsafe-* directives.
-
-### 6. Tune Stripe checkout: allow promo codes + tax collection
-
-Out of scope of the original review but standard Phase 5 polish.
-
-- `src/app/api/stripe/checkout/route.ts`: add `allow_promotion_codes: true`, `automatic_tax: { enabled: true }`, `customer_update: { address: 'auto' }` to the `sessions.create` call.
-- **Acceptance:** test checkout in Stripe test mode shows promo-code input field.
-
-### 7. Confirm Inngest cron for cleanup-orphan-audits is registered
-
-`src/inngest/functions/cleanup-orphan-audits.ts` should be on a `cron: '*/15 * * * *'` schedule. Verify it's in `src/inngest/functions/index.ts` exports and shows in the Inngest dashboard once deployed.
-
-- **Acceptance:** Inngest dashboard shows the function with a cron trigger after `pnpm dlx inngest-cli@latest dev` is run locally.
-
-### 8. E2E suite refresh
-
-Run `pnpm test:e2e` against a dev server. Expect updates needed because:
-
-- `/audits` now has pagination controls (Next button)
-- The header has a credit/sub badge near the user email
-- Failed-audit page now has a "Retry" button
-- Login page has "Forgot password?" link
-- Audits/new shows a gate banner above the dropzone
-
-Update `tests/e2e/happy-path.spec.ts` and `tests/e2e/landing.spec.ts` if any selector broke.
-
-- **Acceptance:** `pnpm test:e2e` green locally.
-
-### 9. Open follow-ups in code (search for `TODO(`)
-
-Run:
+-- profiles.subscription_status: nullable + 8 Stripe statuses
+select count(*) from public.profiles
+ where subscription_status is not null
+   and subscription_status not in (
+     'active','trialing','past_due','canceled',
+     'incomplete','incomplete_expired','unpaid','paused'
+   );
 ```
+
+Apply via `supabase db push` or Supabase SQL editor. Smoke: run `cleanup-orphan-audits` in Inngest dev — orphaned `pending` → `failed` + credit refunded; second run no-ops.
+
+**Acceptance:** `select pg_get_functiondef('public.refund_orphan_audit'::regproc);` returns a body; new constraints visible in `\d+ public.audits` / `\d+ public.findings` / `\d+ public.profiles`.
+
+### B. Migration 0006 — integrations + inbound
+
+Apply **`supabase/migrations/0006_inbound_outbound.sql`** after 0005 (or whenever you enable integrations):
+
+- Adds `profiles.inbound_email_token`, `outbound_webhook_url`, `outbound_webhook_secret` (+ HTTPS URL check, unique partial index on token).
+
+Without **0006**, `/settings/integrations`, outbound webhook dispatch, and inbound email resolution against `profiles.inbound_email_token` will fail at runtime.
+
+---
+
+## Phase 5 — remaining work (prioritized)
+
+### 1. Landing: real sample report image
+
+- **File:** `src/app/page.tsx` — set `SAMPLE_REPORT_IMAGE_AVAILABLE` to `true` only after `public/report-sample.png` exists.
+- **Steps:** Run a real audit on an anonymized fixture (`tests/fixtures/bills/`), capture the web report, save as `public/report-sample.png`, tune `<Image>` dimensions / `alt` / `priority`.
+- **Acceptance:** No “coming soon” card when the flag is true; Lighthouse threshold if you use `lhci` + `.lighthouserc.json`.
+
+### 2. Legal pages
+
+- **Files:** `src/app/privacy/page.tsx`, `src/app/terms/page.tsx` — `TODO(launch)` / draft banners until counsel review.
+- **Acceptance:** Remove `DraftBanner` when copy is final; update `LAST_UPDATED`.
+
+### 3. CSP — browser smoke (runtime)
+
+No automated CSP tests. Before release, manually hit `/`, auth routes, `/audits`, `/audits/new`, `/audits/[id]`, `/pricing`, Stripe Checkout redirect, `/share/[token]`, toasts, Sentry tunnel — **edit `src/middleware.ts` `buildCsp()`** if a vendor host is blocked (e.g. Stripe iframe domains).
+
+### 3a. CSP hardening (optional)
+
+Nonce-based CSP per [Next.js CSP docs](https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy) to drop `'unsafe-inline'` / `'unsafe-eval'` from `script-src` once validated in browser.
+
+### 4. Inngest: cleanup cron visibility
+
+- **File:** `src/inngest/functions/cleanup-orphan-audits.ts` — confirm `cron: '*/15 * * * *'` and export in `src/inngest/functions/index.ts`.
+- **Acceptance:** Function appears with schedule in Inngest dashboard after deploy / local `inngest dev`.
+
+### 5. E2E refresh
+
+Run `pnpm test:e2e` with dev server. Selectors may need updates for: `/audits` pagination, header credit badge, failed-audit **Retry**, forgot password link, `/audits/new` gate banner.
+
+### 6. Code markers
+
+```sh
 grep -rn "TODO(" src/ supabase/
 ```
 
-You'll find:
-- `TODO(domain)` — Justin will fill in domain logic (don't touch).
-- `TODO(launch)` — pre-launch tasks. Tackle these.
-- Any `TODO(blocker)` — there shouldn't be any; if found, fix immediately.
+- `TODO(domain)` — Justin-owned; do not invent business logic.
+- `TODO(launch)` — Phase 5 polish.
+- `TODO(blocker)` — must be zero before merge.
 
 ---
 
-## How to verify before committing
+## Static gaps (documented; not blockers unless you say so)
+
+- **API rate limiting** — not implemented in-repo; rely on platform/WAF for auth abuse if needed.
+- **Vitest** — `tests/extraction/llm.test.ts` has `it.todo` placeholders; `tests/extraction/encrypted-pdf.test.ts` awaits a real encrypted fixture.
+- **Lint** — If `pnpm lint` scans `.next/**/*.js`, put global `ignores: ['.next/**', ...]` **first** in `eslint.config.mjs` (flat-config ordering).
+- **Global `app/error.tsx`** — not present; Next defaults apply.
+
+---
+
+## Verify before committing
 
 ```sh
-./node_modules/.bin/tsc --noEmit          # typecheck
-./node_modules/.bin/next lint             # lint (the actual repo command)
-./node_modules/.bin/vitest run            # unit + integration
-SKIP_ENV_VALIDATION=1 ./node_modules/.bin/next build   # prod build
+pnpm typecheck
+pnpm lint
+pnpm test
+SKIP_ENV_VALIDATION=1 pnpm build
 ```
 
 E2E:
+
 ```sh
-./node_modules/.bin/playwright test
+pnpm test:e2e
 ```
 
-LLM-extraction tests (gated, burns API credit — only run intentionally):
+Gated LLM (costs API credit):
+
 ```sh
-RUN_LLM_TESTS=1 ./node_modules/.bin/vitest run tests/extraction/llm.test.ts
+RUN_LLM_TESTS=1 pnpm test:llm
 ```
 
 ---
 
 ## Files not to touch without asking
 
-- `SPEC.md` — canonical spec, frozen.
-- `supabase/migrations/0001_init.sql` through `0004_billing_helpers.sql` — already applied to prod; only add new migrations.
-- `tests/fixtures/bills/*.pdf` — anonymized real bills; don't regenerate without consulting Justin.
+- `SPEC.md` — frozen canonical spec.
+- **`supabase/migrations/0001`–`0004`** — historically applied; only **add** new migrations forward.
+- **`0005` / `0006`** — apply to the target Supabase project in order; do not rewrite history on prod.
+- `tests/fixtures/bills/*.pdf` — anonymized real bills; do not regenerate without Justin.
 
 ---
 
-## Coding conventions (cribbed from SPEC.md operating principles)
+## Conventions (short)
 
-- TypeScript strict (`noUncheckedIndexedAccess`); no `any`.
-- Zod everywhere there's a boundary (API routes, Inngest functions, LLM outputs, env vars, form inputs).
-- No `any`. No premature abstraction. Three call sites before extracting a util.
-- Idempotent Inngest jobs — every side effect inside `step.run`.
-- Don't log PII (phone numbers, employee names, account numbers).
-- Test the rules engine seriously; report side can lean on snapshots.
+TypeScript strict + `noUncheckedIndexedAccess`; Zod at boundaries; idempotent Inngest (`step.run`, idempotency keys); no PII in logs. Full list in `CLAUDE.md` / `SPEC.md`.
 
-Good luck. Start with **Task 1 (apply migration 0005)** because subsequent code assumes it's live.
+**Suggested ops order:** apply **0005** → verify RPC/constraints → apply **0006** if using integrations/inbound → deploy app → CSP smoke → E2E.

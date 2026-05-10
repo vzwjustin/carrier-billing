@@ -142,6 +142,59 @@ describe('orphan_insurance rule', () => {
     expect(evidence.triggerReasons).not.toContain('suspended_byod');
   });
 
+  it('does NOT fire on a BYOD line with insurance and $0 plan base (intentional choice)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              device: 'BYOD - customer-owned phone',
+              is_suspended: false,
+              plan_base_cents: 0,
+              features: [
+                makeFeature({
+                  name: 'Mobile Protect',
+                  category: 'insurance',
+                  monthly_cents: 1700,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await orphanInsuranceRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT fire on a BYOD line with insurance and no DPP (intentional choice)', async () => {
+    // BYOD lines have device !== null but no carrier-financed device. The
+    // owner deliberately added the protection plan to their own hardware.
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              device: 'Bring Your Own Device — iPhone 14',
+              is_suspended: false,
+              dpp_installments: [],
+              plan_base_cents: 4500,
+              features: [
+                makeFeature({
+                  name: 'Total Mobile Protection',
+                  category: 'insurance',
+                  monthly_cents: 1500,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await orphanInsuranceRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
+
   it('records triggerReasons array in evidence', async () => {
     const c = ctx({
       accounts: [

@@ -29,13 +29,22 @@ export const orphanInsuranceRule: Rule = {
         // reasons in the evidence array.
         const triggerReasons: string[] = [];
         const isSuspended = line.is_suspended;
-        const noDevice =
-          line.device === null && line.dpp_installments.length === 0;
-        const isFeatureOnlyZombie =
-          !isSuspended &&
-          line.plan_base_cents === 0 &&
-          insuranceFeatures.length > 0;
         const isByod = line.device !== null && BYOD_RE.test(line.device);
+        // BYOD lines with insurance are an intentional consumer choice — the
+        // customer brought their own device and elected to insure it (often
+        // through carrier protection on a $0-base plan). Gate the
+        // "no device" and "feature-only zombie" heuristics on !isByod so the
+        // rule doesn't flag a legitimate BYOD policy as waste. Suspended BYOD
+        // lines still fire via `line_suspended` (the policy is dead weight on
+        // a suspended line regardless of who owns the device).
+        const noDevice =
+          !isByod &&
+          line.device === null &&
+          line.dpp_installments.length === 0;
+        // The early return at the top of the loop already guarantees
+        // insuranceFeatures.length > 0 — drop the dead-code re-check.
+        const isFeatureOnlyZombie =
+          !isSuspended && !isByod && line.plan_base_cents === 0;
 
         if (isSuspended) triggerReasons.push('line_suspended');
         if (noDevice) triggerReasons.push('no_device_no_dpp');

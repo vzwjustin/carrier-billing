@@ -84,6 +84,12 @@ function deriveFailureReason(err: unknown): string {
     return truncate(`edi811:${stepLabel}: ${err.message}`, FAILURE_REASON_MAX);
   }
   if (err instanceof PipelineError) {
+    // (M-E3) Encrypted PDFs get a distinct, user-actionable failure reason
+    // so the UI can prompt for an unencrypted upload instead of showing
+    // the generic "extraction failed" label.
+    if (err.step === 'encrypted_pdf') {
+      return truncate('encrypted-pdf', FAILURE_REASON_MAX);
+    }
     // The pipeline wraps an inner ExtractionError as `.cause`; redact its
     // details before formatting in case the LLM bounced raw bill text into
     // a validation issue.
@@ -167,6 +173,13 @@ function withTimeout<T>(
 }
 
 function isNotAWirelessBill(err: unknown): boolean {
+  // (M-E4) The EDI 811 path raises an Edi811PipelineError whose message
+  // includes "not a wireless bill" when the transaction set isn't 811. Treat
+  // it identically to the LLM `not_a_wireless_bill` sentinel so users see the
+  // same friendly failure regardless of upload format.
+  if (err instanceof Edi811PipelineError) {
+    return /not[_ ]a[_ ]wireless[_ ]bill/i.test(err.message);
+  }
   if (!(err instanceof PipelineError)) return false;
   // The extraction layer surfaces this either via a `code` field or by wrapping
   // the LLM's `{error:'not_a_wireless_bill'}` sentinel into the message.
@@ -431,31 +444,74 @@ export const processBillFn = inngest.createFunction(
 
       // ─────────────────────────────────────────────────────────────────────
       // Step 3: mark-analyzing — persist audit-level summary
+      //
+      // (H6) Status-guarded transition. Mirror `mark-extracting` (L321):
+      // the only legal source state here is `extracting`. If a delayed retry
+      // observes the row already in `analyzing` or `completed` (because an
+      // earlier run won the race), short-circuit and return — do NOT throw.
+      // A throw would put Inngest into the catch-block which would, in turn,
+      // try to mark the audit `failed` and clobber a successful terminal
+      // state. A 0-rows-affected outcome means "lost the race", not "broken".
       // ─────────────────────────────────────────────────────────────────────
-      await step.run('mark-analyzing', async () => {
-        const supabase = getAdminClient();
-        const { error } = await supabase
-          .from('audits')
-          .update({
-            status: 'analyzing',
-            carrier: bill.carrier,
-            billing_period_start: bill.billing_period_start,
-            billing_period_end: bill.billing_period_end,
-            total_charges_cents: bill.total_charges_cents,
-            account_count: bill.accounts.length,
-            line_count: lineCount,
-            page_count: pageCount,
-            file_size_bytes: sizeBytes,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', auditId);
-        if (error) {
-          throw new Error(
-            `audits update (mark-analyzing) failed: ${error.message}`,
-          );
-        }
-        return { ok: true };
-      });
+      type MarkAnalyzingResult =
+        | { ok: true }
+        | { ok: false; reason: 'status-guard' };
+      const analyzingResult = (await step.run(
+        'mark-analyzing',
+        async (): Promise<MarkAnalyzingResult> => {
+          const supabase = getAdminClient();
+          const { data: rows, error } = await supabase
+            .from('audits')
+            .update({
+              status: 'analyzing',
+              carrier: bill.carrier,
+              billing_period_start: bill.billing_period_start,
+              billing_period_end: bill.billing_period_end,
+              total_charges_cents: bill.total_charges_cents,
+              account_count: bill.accounts.length,
+              line_count: lineCount,
+              page_count: pageCount,
+              file_size_bytes: sizeBytes,
+              source_format: source === 'edi811' ? 'edi_811' : 'pdf',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', auditId)
+            .eq('status', 'extracting')
+            .select('id');
+          if (error) {
+            throw new Error(
+              `audits update (mark-analyzing) failed: ${error.message}`,
+            );
+          }
+          const affected = (rows ?? []).length;
+          if (affected === 0) {
+            // Lost the status race. Drop a Sentry breadcrumb so the divergence
+            // is visible during triage but never throw — a stale retry losing
+            // the race is not an error condition.
+            try {
+              const Sentry = await import('@sentry/nextjs');
+              Sentry.addBreadcrumb({
+                category: 'process-bill',
+                level: 'info',
+                message: 'mark-analyzing status guard fired',
+                data: { auditId },
+              });
+            } catch {
+              // Sentry is optional in some environments.
+            }
+            return { ok: false, reason: 'status-guard' };
+          }
+          return { ok: true };
+        },
+      )) as MarkAnalyzingResult;
+
+      if (!analyzingResult.ok) {
+        logger.info('processBill: mark-analyzing bailed (status guard)', {
+          auditId,
+          reason: analyzingResult.reason,
+        });
+        return { auditId, skipped: true, reason: analyzingResult.reason };
+      }
 
       // ─────────────────────────────────────────────────────────────────────
       // Step 4: persist-bill — delete-then-insert all child rows.
@@ -637,7 +693,13 @@ export const processBillFn = inngest.createFunction(
       // ─────────────────────────────────────────────────────────────────────
       try {
         await step.run('send-trigger', async () => {
+          // (H5) Stable idempotency key — Inngest dedupes events by `id`, so
+          // a retried `send-trigger` step (or a retried outer function that
+          // re-enters this block) cannot fire `audit.completed` twice and
+          // double-send the report email. The same pattern is used at the
+          // upload site (`${auditId}-uploaded`) — keep the convention.
           await inngest.send({
+            id: `${auditId}-completed`,
             name: 'audit.completed',
             data: { auditId, userId },
           });

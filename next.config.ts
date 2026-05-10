@@ -70,11 +70,7 @@ export const nextConfig: NextConfig = {
 // Production deploys flip SENTRY_UPLOAD=1 in their build env.
 const sentryUploadEnabled =
   process.env.SENTRY_UPLOAD === '1' &&
-  Boolean(
-    process.env.SENTRY_AUTH_TOKEN &&
-      process.env.SENTRY_ORG &&
-      process.env.SENTRY_PROJECT,
-  );
+  Boolean(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT);
 
 export default withSentryConfig(nextConfig, {
   org: sentryUploadEnabled ? process.env.SENTRY_ORG : undefined,

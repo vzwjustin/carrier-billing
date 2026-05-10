@@ -16,7 +16,11 @@ export const unusedMifiLineRule: Rule = {
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
         if (!isHotspotDevice(line.device)) return;
-        const used = line.data_used_gb ?? 0;
+        // Missing usage data is NOT a confident-zero signal — some carriers
+        // simply don't report per-line usage on every bill, and treating
+        // null as 0 would flag any line on those carriers as "unused".
+        if (line.data_used_gb === null) return;
+        const used = line.data_used_gb;
         if (used >= LIGHT_USE_THRESHOLD_GB) return;
 
         const planBase = line.plan_base_cents ?? 0;

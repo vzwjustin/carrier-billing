@@ -32,12 +32,25 @@ export const dynamic = 'force-dynamic';
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
 const AUDIT_COLUMNS =
-  'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token';
+  'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token,share_token_expires_at';
 
 interface AuditFullRow extends ReportAuditRow {
   user_id: string;
   status: string;
   share_token: string | null;
+  share_token_expires_at: string | null;
+}
+
+function isShareTokenExpired(expiresAt: string | null): boolean {
+  // NULL on a row that already has a share_token means the token is
+  // grandfathered (created before the expiry column existed). We treat that
+  // as "still valid" so we don't break working public links on deploy.
+  // For freshly-revoked rows, share_token is null already, which the caller
+  // checks first.
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  if (Number.isNaN(ts)) return false;
+  return ts <= Date.now();
 }
 
 function pdfFilename(auditId: string): string {
@@ -92,15 +105,20 @@ export async function GET(
       .eq('id', auditId)
       .eq('share_token', token)
       .maybeSingle<AuditFullRow>();
-    if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+    // Public token surface — collapse all lookup failures (no row, transient
+    // DB error) into a uniform 404. This matches `notFound()` shape used by
+    // the share page and prevents differential leaks (e.g. "this audit id
+    // exists, but the token is wrong" vs "lookup failed").
+    if (error || !data) {
+      return new NextResponse('Not found.', { status: 404 });
     }
-    audit = data ?? null;
-    if (!audit) {
-      return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
+    audit = data;
+    // H11 — reject expired or revoked tokens. share_token already matched in
+    // the query, but if it's been nulled out between SELECT planning and
+    // execution we'd never get here; the expiry check catches the lifecycle
+    // case where the row still has the token but the window has elapsed.
+    if (isShareTokenExpired(audit.share_token_expires_at)) {
+      return new NextResponse('Not found.', { status: 404 });
     }
   } else {
     const supabase = await createClient();
@@ -116,10 +134,7 @@ export async function GET(
       .eq('id', auditId)
       .maybeSingle<AuditFullRow>();
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     audit = data ?? null;
     if (!audit) {
@@ -128,10 +143,7 @@ export async function GET(
   }
 
   if (audit.status !== 'completed') {
-    return NextResponse.json(
-      { error: 'audit_not_completed' },
-      { status: 409 },
-    );
+    return NextResponse.json({ error: 'audit_not_completed' }, { status: 409 });
   }
 
   const admin = getAdminClient();
@@ -146,35 +158,22 @@ export async function GET(
   }
 
   // ---- Otherwise render fresh, persist, and return ----------------------
-  const [accountsRes, linesRes, featuresRes, creditsRes, dppRes, findingsRes] =
-    await Promise.all([
-      admin
-        .from('bill_accounts')
-        .select('id,audit_id,label,account_number_masked,total_charges_cents')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_lines')
-        .select('id,audit_id,account_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_features')
-        .select('id,line_id,audit_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_credits')
-        .select('id,line_id,account_id,audit_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_dpp_installments')
-        .select('id,line_id,audit_id')
-        .eq('audit_id', auditId),
-      admin
-        .from('findings')
-        .select(
-          'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
-        )
-        .eq('audit_id', auditId),
-    ]);
+  const [accountsRes, linesRes, featuresRes, creditsRes, dppRes, findingsRes] = await Promise.all([
+    admin
+      .from('bill_accounts')
+      .select('id,audit_id,account_label,account_number_masked,total_charges_cents')
+      .eq('audit_id', auditId),
+    admin.from('bill_lines').select('id,audit_id,account_id').eq('audit_id', auditId),
+    admin.from('bill_features').select('id,line_id,audit_id').eq('audit_id', auditId),
+    admin.from('bill_credits').select('id,line_id,account_id,audit_id').eq('audit_id', auditId),
+    admin.from('bill_dpp_installments').select('id,line_id,audit_id').eq('audit_id', auditId),
+    admin
+      .from('findings')
+      .select(
+        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+      )
+      .eq('audit_id', auditId),
+  ]);
 
   const queryError =
     accountsRes.error ??
@@ -184,10 +183,7 @@ export async function GET(
     dppRes.error ??
     findingsRes.error;
   if (queryError) {
-    return NextResponse.json(
-      { error: 'Failed to load audit data.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load audit data.' }, { status: 500 });
   }
 
   const reportData = buildReportData({
@@ -204,11 +200,7 @@ export async function GET(
   // is only loaded on the first cold cache miss for this route.
   const { renderReportPdf } = await import('@/reports/pdf/render');
   const pdfBuffer = await renderReportPdf(reportData);
-  const pdfBytes = new Uint8Array(
-    pdfBuffer.buffer,
-    pdfBuffer.byteOffset,
-    pdfBuffer.byteLength,
-  );
+  const pdfBytes = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
 
   // Best-effort cache write. If it fails we still return the rendered PDF.
   await admin.storage.from('reports').upload(storagePath, pdfBytes, {

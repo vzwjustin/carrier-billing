@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { env } from '@/env';
+import { scrubString } from '@/lib/observability/redact';
 import { getStripe } from '@/lib/stripe/client';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -114,10 +115,16 @@ export async function POST(request: Request): Promise<Response> {
         try {
           await stripe.customers.del(customer.id);
         } catch (cleanupErr) {
-          Sentry.captureException(cleanupErr, {
-            tags: { area: 'stripe.checkout.cleanup' },
-            extra: { customerId: customer.id, userId: user.id },
-          });
+          // M-S2: Stripe error messages can echo customer email/address.
+          // Scrub the message string before handing it to Sentry's serializer
+          // (extra is id-only and safe).
+          Sentry.captureException(
+            new Error(scrubString(String(cleanupErr))),
+            {
+              tags: { area: 'stripe.checkout.cleanup' },
+              extra: { customerId: customer.id, userId: user.id },
+            },
+          );
         }
         throw new Error(
           `persist stripe_customer_id failed: ${updateResult.error.message}`,
@@ -166,10 +173,15 @@ export async function POST(request: Request): Promise<Response> {
         try {
           await stripe.customers.del(customer.id);
         } catch (delErr) {
-          Sentry.captureException(delErr, {
-            tags: { area: 'stripe.checkout.orphan_cleanup' },
-            extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
-          });
+          // M-S2: scrub the message before Sentry serialization (the
+          // exception text can echo customer email/address).
+          Sentry.captureException(
+            new Error(scrubString(String(delErr))),
+            {
+              tags: { area: 'stripe.checkout.orphan_cleanup' },
+              extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
+            },
+          );
         }
         stripeCustomerId = winner;
       }

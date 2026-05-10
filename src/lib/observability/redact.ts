@@ -34,11 +34,31 @@ const REDACTED_KEYS = new Set([
   'phone_number',
   'account_number',
   'email',
+  // Inbound/outbound email envelope fields — these arrive on
+  // inbound-webhook payloads and outbound-email logs and routinely contain
+  // raw subscriber addresses, names embedded in display strings, and
+  // bill subject lines.
+  'from',
+  'to',
+  'recipient',
+  'subject',
+  'customer_email',
+  'customerEmail',
+  // Device identifiers — IMEIs and serial numbers are PII per FCC rules
+  // and let an observer correlate a leaked log with a specific handset.
+  'device_serial',
+  'imei',
+  // Stripe hosted-invoice URLs embed a long signed token that grants
+  // anonymous read access to the invoice (recipient name, amount, line
+  // items). Treat the URL itself as PII.
+  'hosted_invoice_url',
 ]);
 
 // Order matters: phones first (preserves digit run for matching), then emails,
-// then residual long digit runs.
-const HYPHEN_PHONE = /\d{3}[-.\s]\d{3}[-.\s]\d{4}/g;
+// then residual long digit runs. The phone pattern accepts both bare 3-digit
+// area codes (`555-123-4567`) and parens-wrapped (`(555) 123-4567`), with
+// hyphens, dots, spaces, or no separator between the trailing groups.
+const HYPHEN_PHONE = /(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}/g;
 const EMAIL = /[\w.+-]+@[\w.-]+\.\w+/g;
 const DIGIT_RUN = /\d{4,}/g;
 

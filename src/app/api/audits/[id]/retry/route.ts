@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
@@ -17,6 +18,7 @@ interface AuditRow {
   user_id: string;
   status: string;
   storage_path: string;
+  retry_count: number;
 }
 
 function isAuditRow(value: unknown): value is AuditRow {
@@ -26,8 +28,19 @@ function isAuditRow(value: unknown): value is AuditRow {
     typeof v.id === 'string' &&
     typeof v.user_id === 'string' &&
     typeof v.status === 'string' &&
-    typeof v.storage_path === 'string'
+    typeof v.storage_path === 'string' &&
+    typeof v.retry_count === 'number'
   );
+}
+
+interface RetryCountRow {
+  retry_count: number;
+}
+
+function isRetryCountRow(value: unknown): value is RetryCountRow {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.retry_count === 'number';
 }
 
 export async function POST(
@@ -53,7 +66,7 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('audits')
-      .select('id,user_id,status,storage_path')
+      .select('id,user_id,status,storage_path,retry_count')
       .eq('id', auditId)
       .maybeSingle();
 
@@ -76,18 +89,37 @@ export async function POST(
       );
     }
 
-    // Reset the audit row using the service-role client so we don't have to
-    // write a separate RLS update policy for failure_reason. The user's
-    // ownership has already been verified above.
+    // M-A3 — invalidate the cached PDF for this audit (if any) before resetting
+    // state. A never-completed audit may not have a cached PDF; ignore the
+    // result. A storage outage shouldn't block retry — capture and continue.
     const admin = getAdminClient();
-    const { error: updateError } = await admin
+    try {
+      await admin.storage.from('reports').remove([`${auditId}.pdf`]);
+    } catch (storageErr) {
+      Sentry.captureException(storageErr, {
+        tags: { surface: 'audits.retry.storage_invalidate' },
+        extra: { auditId },
+      });
+    }
+
+    // H7 — CAS-increment retry_count atomically. Concurrent retry attempts
+    // can't both win this update because we filter on the previous count.
+    // The new retry_count value anchors the Inngest idempotency key so
+    // distinct retries get distinct keys, while a duplicated POST within the
+    // same retry collapses onto one Inngest run.
+    const nextRetryCount = data.retry_count + 1;
+    const { data: updated, error: updateError } = await admin
       .from('audits')
       .update({
         status: 'pending',
         failure_reason: null,
+        retry_count: nextRetryCount,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', auditId);
+      .eq('id', auditId)
+      .eq('status', 'failed')
+      .eq('retry_count', data.retry_count)
+      .select('retry_count');
 
     if (updateError) {
       return NextResponse.json(
@@ -96,8 +128,22 @@ export async function POST(
       );
     }
 
+    // CAS lost — a concurrent retry already won. Don't double-enqueue.
+    if (!updated || updated.length === 0) {
+      return NextResponse.json(
+        {
+          error: 'retry_in_progress',
+          message: 'Another retry attempt is already in progress for this audit.',
+        },
+        { status: 409 },
+      );
+    }
+
+    const winningRow = updated[0];
+    const retryCount = isRetryCountRow(winningRow) ? winningRow.retry_count : nextRetryCount;
+
     await inngest.send({
-      id: `${auditId}-uploaded-retry-${Date.now()}`,
+      id: `${auditId}-uploaded-retry-${retryCount}`,
       name: 'bill.uploaded',
       data: {
         auditId: data.id,

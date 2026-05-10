@@ -16,14 +16,17 @@ export const FeatureCategorySchema = z.enum([
 export type FeatureCategory = z.infer<typeof FeatureCategorySchema>;
 
 export const ExtractedFeatureSchema = z.object({
-  name: z.string().min(1),
+  // (M-E1) Bound free-text length: SAC15 descriptions in some carrier 811s
+  // can include multi-line marketing copy. 120 chars is plenty for a feature
+  // name and prevents an oversized string from bloating logs / Sentry.
+  name: z.string().min(1).max(120),
   category: FeatureCategorySchema.default('other'),
   monthly_cents: z.number().int().nonnegative(),
 });
 export type ExtractedFeature = z.infer<typeof ExtractedFeatureSchema>;
 
 export const ExtractedCreditSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).max(120),
   // Credits as printed on the bill are non-positive: a $10/mo discount shows
   // as -1000, and the rare zero-value placeholder shows as 0. A positive
   // value here means the LLM (or carrier normalizer) flipped the sign and
@@ -61,9 +64,12 @@ export const ExtractedLineSchema = z.object({
   // Bound length so an oversized payload can't be persisted or echoed in logs.
   user_label: z.string().max(40).nullable(),
   device: z.string().max(40).nullable(),
-  plan_name: z.string().nullable(),
+  plan_name: z.string().max(120).nullable(),
   plan_base_cents: z.number().int().nonnegative().nullable(),
-  data_used_gb: z.number().nonnegative().nullable(),
+  // (L) Cap absurd values. 10TB/month is far above any real cellular plan
+  // and a 4–5 digit decimal here is almost always a parse error feeding
+  // through. Clipping at the schema boundary keeps reports legible.
+  data_used_gb: z.number().nonnegative().max(10_000).nullable(),
   voice_used_min: z.number().int().nonnegative().nullable(),
   sms_used_count: z.number().int().nonnegative().nullable(),
   is_suspended: z.boolean().default(false),
@@ -99,7 +105,11 @@ export const ExtractedBillSchema = z.object({
   billing_period_end: z.string().date(),
   total_charges_cents: z.number().int().nonnegative(),
   accounts: z.array(ExtractedAccountSchema).min(1),
-  notes: z.array(z.string()).default([]),
+  // (M-E1) Bound notes both per-string (500 chars covers any legitimate NTE
+  // free-form note) and per-bill (50 entries — the runner persists `notes`
+  // verbatim and any more is a smell that the LLM/EDI mapper went off the
+  // rails). Defense-in-depth against log/storage bloat.
+  notes: z.array(z.string().max(500)).max(50).default([]),
   confidence: BillConfidenceSchema.optional(),
 });
 export type ExtractedBill = z.infer<typeof ExtractedBillSchema>;

@@ -45,6 +45,18 @@ interface AuditRow {
   finding_count: number | null;
   high_severity_count: number | null;
   completed_at: string | null;
+  share_token_expires_at: string | null;
+}
+
+// Tokens are `randomBytes(24).toString('base64url')`, which is exactly 32 chars.
+// Anything else is a probe and we 404 before touching the DB.
+const SHARE_TOKEN_LENGTH = 32;
+
+function isExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  if (Number.isNaN(ts)) return false;
+  return ts <= Date.now();
 }
 
 export default async function ShareReportPage({
@@ -54,9 +66,9 @@ export default async function ShareReportPage({
 }): Promise<React.JSX.Element> {
   const { token } = await params;
 
-  // Token sanity. We accept base64url which is at most 40 chars for 24 bytes,
-  // but be permissive and just enforce a minimum to avoid trivial probing.
-  if (typeof token !== 'string' || token.length < 16 || token.length > 128) {
+  // Token sanity. The generator emits exactly 32 chars (randomBytes(24)
+  // base64url). Reject anything else before issuing a DB query.
+  if (typeof token !== 'string' || token.length !== SHARE_TOKEN_LENGTH) {
     notFound();
   }
 
@@ -66,7 +78,7 @@ export default async function ShareReportPage({
   const { data: audit, error } = await supabase
     .from('audits')
     .select(
-      'id,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,completed_at',
+      'id,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,completed_at,share_token_expires_at',
     )
     .eq('share_token', token)
     .maybeSingle<AuditRow>();
@@ -79,36 +91,40 @@ export default async function ShareReportPage({
     notFound();
   }
 
+  // H11 — expired tokens behave exactly like unknown tokens. NULL means a
+  // grandfathered (pre-migration) share, which we keep alive.
+  if (isExpired(audit.share_token_expires_at)) {
+    notFound();
+  }
+
   const auditId = audit.id;
-  const [findingsRes, accountsRes, linesRes, featuresRes, creditsRes, dppRes] =
-    await Promise.all([
-      supabase
-        .from('findings')
-        .select(
-          'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
-        )
-        .eq('audit_id', auditId),
-      supabase
-        .from('bill_accounts')
-        .select('id,audit_id,label,account_number_masked,total_charges_cents')
-        .eq('audit_id', auditId),
-      supabase
-        .from('bill_lines')
-        .select('id,audit_id,account_id')
-        .eq('audit_id', auditId),
-      supabase
-        .from('bill_features')
-        .select('id,line_id,audit_id')
-        .eq('audit_id', auditId),
-      supabase
-        .from('bill_credits')
-        .select('id,line_id,account_id,audit_id')
-        .eq('audit_id', auditId),
-      supabase
-        .from('bill_dpp_installments')
-        .select('id,line_id,audit_id')
-        .eq('audit_id', auditId),
-    ]);
+  const [findingsRes, accountsRes, linesRes, featuresRes, creditsRes, dppRes] = await Promise.all([
+    supabase
+      .from('findings')
+      .select(
+        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+      )
+      .eq('audit_id', auditId),
+    supabase
+      .from('bill_accounts')
+      .select('id,audit_id,account_label,account_number_masked,total_charges_cents')
+      .eq('audit_id', auditId),
+    supabase.from('bill_lines').select('id,audit_id,account_id').eq('audit_id', auditId),
+    supabase.from('bill_features').select('id,line_id,audit_id').eq('audit_id', auditId),
+    supabase.from('bill_credits').select('id,line_id,account_id,audit_id').eq('audit_id', auditId),
+    supabase.from('bill_dpp_installments').select('id,line_id,audit_id').eq('audit_id', auditId),
+  ]);
+
+  const queryError =
+    findingsRes.error ??
+    accountsRes.error ??
+    linesRes.error ??
+    featuresRes.error ??
+    creditsRes.error ??
+    dppRes.error;
+  if (queryError) {
+    throw new Error('Failed to load shared audit report data.');
+  }
 
   const findings = (findingsRes.data ?? []) as ReportFindingRow[];
   findings.sort((a, b) => {
@@ -163,9 +179,7 @@ export default async function ShareReportPage({
         <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
           Wireless bill audit
         </h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Read-only shared report.
-        </p>
+        <p className="mt-1 text-sm text-neutral-600">Read-only shared report.</p>
       </div>
       <ReportView report={report} isPublic />
     </div>

@@ -158,14 +158,14 @@ describe('buildReportData', () => {
       {
         id: 'acc-1',
         audit_id: 'audit-1',
-        label: 'Main',
+        account_label: 'Main',
         account_number_masked: '1234',
         total_charges_cents: 100_000,
       },
       {
         id: 'acc-2',
         audit_id: 'audit-1',
-        label: 'Branch',
+        account_label: 'Branch',
         account_number_masked: '5678',
         total_charges_cents: 50_000,
       },

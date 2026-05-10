@@ -27,6 +27,14 @@ export class Edi811PipelineError extends Error {
   }
 }
 
+/**
+ * (C6) Hard cap on raw EDI 811 size before decode/parse. A real wireless 811
+ * for a multi-thousand-line enterprise account tops out around 1–2 MB; 5 MB
+ * leaves comfortable headroom while preventing a maliciously-crafted file
+ * from forcing the worker to allocate an unbounded segment array.
+ */
+export const MAX_EDI_BYTES = 5 * 1024 * 1024;
+
 export type Edi811PipelineResult = {
   bill: ExtractedBill;
   detectedCarrier: Carrier;
@@ -44,6 +52,18 @@ export async function runEdi811Pipeline({
 }: {
   buffer: Buffer;
 }): Promise<Edi811PipelineResult> {
+  // 0. (C6) Size cap. Reject before decode so a large adversarial file does
+  //    not get materialized as a JS string (which doubles peak memory) or
+  //    parsed into a segment array. The error message references only the
+  //    limit + observed bytes — no EDI content — so it's safe to surface
+  //    into `audits.failure_reason`.
+  if (buffer.byteLength > MAX_EDI_BYTES) {
+    throw new Edi811PipelineError(
+      `EDI exceeds ${MAX_EDI_BYTES} byte limit (got ${buffer.byteLength})`,
+      'decode',
+    );
+  }
+
   // 1. Decode bytes → text. EDI files are 7-bit ASCII per spec; UTF-8 is a
   //    safe superset and tolerates the BOM some Windows-shipped files carry.
   let text: string;

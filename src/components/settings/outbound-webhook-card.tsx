@@ -62,12 +62,21 @@ export function OutboundWebhookCard({
         <p className="text-sm text-neutral-600">
           When an audit completes, we POST the report payload to this URL so
           your own automation can act on findings (open carrier tickets, file
-          internal change requests, etc.). Each request is signed with HMAC-SHA256
-          of the body using the secret below; the signature is sent in the
+          internal change requests, etc.). Each request is signed with a
+          timestamp + HMAC-SHA256 of
           <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
-            X-CarrierAudit-Signature
+            {'`${timestamp}.${body}`'}
           </code>
-          header.
+          using the secret below. The signature is sent as
+          <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
+            X-CarrierAudit-Signature: t=&lt;ts&gt;,v1=&lt;hex&gt;
+          </code>
+          alongside
+          <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
+            X-CarrierAudit-Timestamp
+          </code>
+          . Reject requests whose timestamp is more than 5 minutes old to
+          prevent replays.
         </p>
       </header>
 
@@ -124,13 +133,55 @@ export function OutboundWebhookCard({
             </div>
           </div>
           <p className="text-xs text-neutral-500">
-            Verify by computing
+            Parse the
             <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
-              hmac_sha256(body, secret)
+              X-CarrierAudit-Signature
             </code>
-            and comparing to the header. The secret never appears in webhook
-            payloads.
+            header into
+            <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
+              t=&lt;ts&gt;,v1=&lt;hex&gt;
+            </code>
+            , confirm
+            <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
+              ts
+            </code>
+            is within 5 minutes, then compute
+            <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
+              {'hmac_sha256(`${ts}.${body}`, secret)'}
+            </code>
+            and compare with a constant-time check. The secret never appears
+            in webhook payloads.
           </p>
+          <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
+            <summary className="cursor-pointer font-medium text-neutral-900">
+              Verification snippets
+            </summary>
+            <div className="mt-2 space-y-3">
+              <div>
+                <p className="mb-1 font-medium">Node</p>
+                <pre className="overflow-x-auto rounded bg-white p-2 font-mono text-[11px] leading-relaxed">{`const [tPart, vPart] = req.headers['x-carrieraudit-signature'].split(',');
+const ts = tPart.split('=')[1];
+const sig = vPart.split('=')[1];
+if (Math.abs(Date.now()/1000 - Number(ts)) > 300) throw new Error('stale');
+const expected = require('crypto')
+  .createHmac('sha256', SECRET)
+  .update(\`\${ts}.\${rawBody}\`)
+  .digest('hex');
+if (!require('crypto').timingSafeEqual(
+  Buffer.from(expected, 'hex'), Buffer.from(sig, 'hex')
+)) throw new Error('bad sig');`}</pre>
+              </div>
+              <div>
+                <p className="mb-1 font-medium">Python</p>
+                <pre className="overflow-x-auto rounded bg-white p-2 font-mono text-[11px] leading-relaxed">{`import hmac, hashlib, time
+parts = dict(p.split('=', 1) for p in request.headers['X-CarrierAudit-Signature'].split(','))
+ts, sig = parts['t'], parts['v1']
+if abs(time.time() - int(ts)) > 300: raise Exception('stale')
+expected = hmac.new(SECRET.encode(), f"{ts}.{raw_body}".encode(), hashlib.sha256).hexdigest()
+if not hmac.compare_digest(expected, sig): raise Exception('bad sig')`}</pre>
+              </div>
+            </div>
+          </details>
         </div>
       ) : null}
     </section>

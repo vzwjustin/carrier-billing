@@ -2,10 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
 
-import {
-  AuditViewer,
-  type AuditStatusPayload,
-} from '@/components/audits/audit-viewer';
+import { AuditViewer, type AuditStatusPayload } from '@/components/audits/audit-viewer';
 import { trackServer } from '@/lib/analytics/events';
 import { createClient } from '@/lib/supabase/server';
 import { buildReportData } from '@/reports/builder';
@@ -116,8 +113,8 @@ export default async function AuditDetailPage({
   let report: ReportData | undefined;
   if (data.status === 'completed') {
     const auditId = parsed.data.id;
-    const [findingsRes, accountsRes, linesRes, featuresRes, creditsRes, dppRes] =
-      await Promise.all([
+    const [findingsRes, accountsRes, linesRes, featuresRes, creditsRes, dppRes] = await Promise.all(
+      [
         supabase
           .from('findings')
           .select(
@@ -126,16 +123,10 @@ export default async function AuditDetailPage({
           .eq('audit_id', auditId),
         supabase
           .from('bill_accounts')
-          .select('id,audit_id,label,account_number_masked,total_charges_cents')
+          .select('id,audit_id,account_label,account_number_masked,total_charges_cents')
           .eq('audit_id', auditId),
-        supabase
-          .from('bill_lines')
-          .select('id,audit_id,account_id')
-          .eq('audit_id', auditId),
-        supabase
-          .from('bill_features')
-          .select('id,line_id,audit_id')
-          .eq('audit_id', auditId),
+        supabase.from('bill_lines').select('id,audit_id,account_id').eq('audit_id', auditId),
+        supabase.from('bill_features').select('id,line_id,audit_id').eq('audit_id', auditId),
         supabase
           .from('bill_credits')
           .select('id,line_id,account_id,audit_id')
@@ -144,7 +135,19 @@ export default async function AuditDetailPage({
           .from('bill_dpp_installments')
           .select('id,line_id,audit_id')
           .eq('audit_id', auditId),
-      ]);
+      ],
+    );
+
+    const queryError =
+      findingsRes.error ??
+      accountsRes.error ??
+      linesRes.error ??
+      featuresRes.error ??
+      creditsRes.error ??
+      dppRes.error;
+    if (queryError) {
+      throw new Error('Failed to load audit report data.');
+    }
 
     const findings = (findingsRes.data ?? []) as ReportFindingRow[];
     // Pre-sort: severity asc rank, then savings desc. The builder also
@@ -154,9 +157,7 @@ export default async function AuditDetailPage({
       const ra = SEVERITY_RANK[a.severity] ?? 99;
       const rb = SEVERITY_RANK[b.severity] ?? 99;
       if (ra !== rb) return ra - rb;
-      return (
-        b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents
-      );
+      return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
     });
 
     const auditRow: ReportAuditRow = {
@@ -209,10 +210,7 @@ export default async function AuditDetailPage({
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <Link
-            href="/audits"
-            className="text-xs text-neutral-500 hover:text-neutral-900"
-          >
+          <Link href="/audits" className="text-xs text-neutral-500 hover:text-neutral-900">
             ← All audits
           </Link>
           <h1 className="mt-2 max-w-xl truncate text-2xl font-semibold tracking-tight text-neutral-900">
