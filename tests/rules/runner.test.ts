@@ -74,6 +74,11 @@ describe('runRules — full pipeline', () => {
         rule_id: f.rule_id,
         severity: f.severity,
         savings: f.estimated_monthly_savings_cents,
+        title: f.title,
+        confidence: f.confidence,
+        evidence: f.evidence,
+        affected_account_indexes: f.affected_account_indexes,
+        affected_line_indexes: f.affected_line_indexes,
       }))
       .sort((a, b) => a.rule_id.localeCompare(b.rule_id));
 

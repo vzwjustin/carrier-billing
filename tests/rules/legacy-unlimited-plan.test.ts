@@ -87,10 +87,29 @@ describe('legacy_unlimited_plan rule — T-Mobile patterns', () => {
     ['Magenta Plus'],
     ['Magenta Max'],
     ['Magenta Business'],
+    ['Magenta 55+'],
+    ['Magenta Military'],
+    ['Magenta First Responder'],
     ['T-Mobile ONE Business'],
     ['Business Unlimited Ultimate'],
   ])('does NOT flag current T-Mobile plan: %s', async (plan) => {
     const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe('legacy_unlimited_plan rule — anchored regex (no false-positives on future SKUs)', () => {
+  it('does NOT flag a hypothetical future "Verizon Plan Unlimited Edge" SKU', async () => {
+    // Anchor + whitelist guards prevent the prefix match from catching new
+    // SKUs that share the "Verizon Plan Unlimited" stem.
+    const findings = await legacyUnlimitedPlanRule.evaluate(
+      ctx('verizon', 'Verizon Plan Unlimited Edge'),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag "Magenta Plus" via the bare Magenta pattern', async () => {
+    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', 'Magenta Plus'));
     expect(findings).toHaveLength(0);
   });
 });

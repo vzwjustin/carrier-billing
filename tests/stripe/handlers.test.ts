@@ -18,17 +18,24 @@ import { handleStripeEvent } from '@/lib/stripe/handlers';
 //   - `.from(table).update(patch).eq(col, value)`           → `{ error }`
 //   - `.from(table).update(patch).eq(col, value).select(c)` → `{ data, error }`
 //     (B7 fix: payment-failed handler verifies exactly one row.)
+//   - `.from(table).update(patch).eq(col, value).or(expr).select(c)` →
+//     `{ data, error }`
+//     (H4 fix: subscription handlers + invoice.payment_failed use a CAS
+//     UPDATE whose WHERE clause re-checks the ordering guard.)
 //   - `.rpc(name, args)`                                    → `{ error }`
 //
-// `__nextUpdateRows` controls what `.update().eq().select(...)` returns.
+// `__nextUpdateRows` controls what `.update().eq()(.or)?.select(...)` returns.
 // `__nextSelectRows` controls what `.select(cols).eq(col, val)` returns.
 // Both default to a single matching row so happy-path tests stay terse.
+// Each `.or(...)` invocation is recorded on the matching UpdateCall so tests
+// can assert the CAS guard expression text was passed through.
 
 type UpdateCall = {
   table: string;
   patch: Record<string, unknown>;
   eq: [string, unknown];
   select?: string;
+  or?: string;
 };
 type SelectCall = {
   table: string;
@@ -97,8 +104,12 @@ function makeClient(): MockClient {
           };
         },
         update(patch: Record<string, unknown>) {
-          const recordCall = (eq: [string, unknown], select?: string) => {
-            state.__updates.push({ table, patch, eq, select });
+          const recordCall = (
+            eq: [string, unknown],
+            select?: string,
+            or?: string,
+          ) => {
+            state.__updates.push({ table, patch, eq, select, or });
           };
           const consumeRows = (): Array<Record<string, unknown>> => {
             const next = state.__nextUpdateRows;
@@ -133,6 +144,30 @@ function makeClient(): MockClient {
                       const error = consumeError();
                       const data = error ? [] : consumeRows();
                       resolve({ data, error });
+                    },
+                  };
+                },
+                // H4 CAS chain: `.or(expr).select(cols)` lets the database
+                // arbitrate the ordering guard. The mock records the `or`
+                // expression text so tests can assert it; behaviorally the
+                // returned rows come from `__nextUpdateRows` so a test can
+                // simulate "fresher event won" by setting it to `[]`.
+                or(orExpr: string) {
+                  return {
+                    select(cols: string) {
+                      return {
+                        then(
+                          resolve: (v: {
+                            data: Array<Record<string, unknown>>;
+                            error: typeof state.__nextUpdateError;
+                          }) => void,
+                        ) {
+                          recordCall(eqArgs, cols, orExpr);
+                          const error = consumeError();
+                          const data = error ? [] : consumeRows();
+                          resolve({ data, error });
+                        },
+                      };
                     },
                   };
                 },
@@ -365,8 +400,32 @@ describe('handleStripeEvent', () => {
     expect(update?.patch['subscription_event_at']).toEqual(expect.any(String));
   });
 
-  it('invoice.payment_failed marks the profile past_due', async () => {
-    client.__nextUpdateRows = [{ id: 'profile_x', email: 'x@example.com' }];
+  /**
+   * Helper: stage the SELECT queue used by the H2 invoice.payment_failed flow.
+   *   1. SELECT id, subscription_event_at (ordering guard read)
+   *   2. SELECT id, email                  (post-CAS email lookup)
+   *
+   * The mock's `__nextSelectRows` slot is consumed on each invocation, so we
+   * use a `from(...)` proxy to intercept every subsequent select on the
+   * profiles table and pop from a queue. We keep the existing behavior for
+   * other tables/calls by re-staging __nextSelectRows from the queue before
+   * each invocation.
+   */
+  function stageInvoiceSelects(
+    profileId: string,
+    email: string | null,
+    subscriptionEventAt: string | null = null,
+  ) {
+    // Production now does ONE select (the H9 guard) and the email comes back
+    // from the UPDATE's .select('id, email') clause — no second SELECT.
+    client.__nextSelectRows = [
+      { id: profileId, subscription_event_at: subscriptionEventAt },
+    ];
+    client.__nextUpdateRows = [{ id: profileId, email }];
+  }
+
+  it('invoice.payment_failed marks the profile past_due (H2 routes through CAS guard)', async () => {
+    stageInvoiceSelects('profile_x', 'x@example.com');
     const event = makeEvent('invoice.payment_failed', {
       id: 'in_fail',
       customer: 'cus_fail',
@@ -374,17 +433,46 @@ describe('handleStripeEvent', () => {
 
     await handleStripeEvent(event, client as unknown as never);
 
+    // H2: the past_due UPDATE is keyed by profile id (not customer id) and
+    // includes the CAS `.or()` ordering guard so a stale invoice arriving
+    // after a recovery cannot resurrect past_due.
     expect(client.__updates).toHaveLength(1);
     const update = client.__updates[0];
-    expect(update?.eq).toEqual(['stripe_customer_id', 'cus_fail']);
+    expect(update?.eq).toEqual(['id', 'profile_x']);
     expect(update?.patch['subscription_status']).toBe('past_due');
+    expect(update?.patch['subscription_event_at']).toEqual(expect.any(String));
+    expect(update?.or).toMatch(/subscription_event_at\.is\.null/);
+    expect(update?.or).toMatch(/subscription_event_at\.lt\./);
+    // One SELECT — the H9 guard. The email comes back from the UPDATE's
+    // own `.select('id, email')` clause, eliminating the post-CAS re-fetch.
+    expect(client.__selects).toHaveLength(1);
+    expect(client.__selects[0]?.cols).toBe('id, subscription_event_at');
     expect(update?.select).toBe('id, email');
   });
 
-  it('invoice.payment_failed dispatches billing.payment_failed Inngest event', async () => {
-    client.__nextUpdateRows = [
-      { id: 'profile_pay', email: 'paying@example.com' },
+  it('invoice.payment_failed skips past_due flip when fresher subscription event already landed (H2)', async () => {
+    // Profile already has a fresher subscription_event_at than this invoice.
+    const fresherTs = new Date(
+      Date.UTC(2026, 4, 9, 13, 0, 0),
+    ).toISOString();
+    client.__nextSelectRows = [
+      { id: 'profile_fresh', subscription_event_at: fresherTs },
     ];
+    const staleEvent = makeEvent(
+      'invoice.payment_failed',
+      { id: 'in_stale', customer: 'cus_stale' },
+      Math.floor(Date.UTC(2026, 4, 9, 12, 0, 0) / 1000), // 1h older
+    );
+
+    await handleStripeEvent(staleEvent, client as unknown as never);
+
+    // No UPDATE, no Inngest dispatch — the stale event is dropped.
+    expect(client.__updates).toHaveLength(0);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('invoice.payment_failed dispatches billing.payment_failed Inngest event WITHOUT customerEmail (C2)', async () => {
+    stageInvoiceSelects('profile_pay', 'paying@example.com');
     const event = makeEvent('invoice.payment_failed', {
       id: 'in_marker',
       customer: 'cus_marker',
@@ -394,20 +482,29 @@ describe('handleStripeEvent', () => {
     await handleStripeEvent(event, client as unknown as never);
 
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    // C2: the consumer re-fetches the profile by userId; customerEmail is
+    // intentionally omitted so PII does not live in Inngest event history.
     expect(inngestSendMock).toHaveBeenCalledWith({
       name: 'billing.payment_failed',
       data: {
         userId: 'profile_pay',
-        customerEmail: 'paying@example.com',
         stripeCustomerId: 'cus_marker',
         invoiceId: 'in_marker',
         amountDueCents: 4900,
       },
     });
+    const firstCall = inngestSendMock.mock.calls[0] as unknown as
+      | [{ data?: Record<string, unknown> }]
+      | undefined;
+    const dispatchedData = (firstCall?.[0]?.data ?? {}) as Record<
+      string,
+      unknown
+    >;
+    expect(dispatchedData).not.toHaveProperty('customerEmail');
   });
 
   it('invoice.payment_failed without profile email skips dispatch and warns', async () => {
-    client.__nextUpdateRows = [{ id: 'profile_no_email', email: null }];
+    stageInvoiceSelects('profile_no_email', null);
     const event = makeEvent('invoice.payment_failed', {
       id: 'in_no_email',
       customer: 'cus_no_email',
@@ -423,9 +520,7 @@ describe('handleStripeEvent', () => {
   });
 
   it('invoice.payment_failed swallows inngest.send errors so past_due update sticks', async () => {
-    client.__nextUpdateRows = [
-      { id: 'profile_send_err', email: 'send-err@example.com' },
-    ];
+    stageInvoiceSelects('profile_send_err', 'send-err@example.com');
     inngestSendMock.mockRejectedValueOnce(new Error('inngest down'));
     const event = makeEvent('invoice.payment_failed', {
       id: 'in_send_err',
@@ -581,6 +676,58 @@ describe('handleStripeEvent', () => {
     });
   });
 
+  // --- H4: CAS guard on the UPDATE itself ---------------------------------
+
+  describe('H4 — CAS guard on subscription UPDATE', () => {
+    const ACTIVE_TS = Math.floor(Date.UTC(2026, 4, 9, 12, 0, 0) / 1000);
+
+    it('subscription update sends `.or(...)` ordering predicate to the database', async () => {
+      client.__nextSelectRows = [
+        { id: 'profile_h4', subscription_event_at: null },
+      ];
+
+      const event = makeEvent(
+        'customer.subscription.updated',
+        { id: 'sub_h4', customer: 'cus_h4', status: 'active' },
+        ACTIVE_TS,
+      );
+
+      await handleStripeEvent(event, client as unknown as never);
+
+      const update = client.__updates[0];
+      expect(update?.or).toBeDefined();
+      // The CAS expression must accept rows that are still null OR strictly
+      // older than this event's timestamp.
+      expect(update?.or).toMatch(/subscription_event_at\.is\.null/);
+      expect(update?.or).toMatch(/subscription_event_at\.lt\./);
+      // It also performs a `.select('id')` so the helper can read the row count.
+      expect(update?.select).toBe('id');
+    });
+
+    it('CAS UPDATE returning 0 rows is treated as silent skip (fresher event won)', async () => {
+      // Pre-check passes (snapshot says null), but the CAS UPDATE returns 0
+      // rows because a concurrent fresher writer landed between SELECT and
+      // UPDATE. The handler must not throw — it logs a breadcrumb and returns.
+      client.__nextSelectRows = [
+        { id: 'profile_h4_race', subscription_event_at: null },
+      ];
+      client.__nextUpdateRows = [];
+
+      const event = makeEvent(
+        'customer.subscription.updated',
+        { id: 'sub_h4r', customer: 'cus_h4r', status: 'active' },
+        ACTIVE_TS,
+      );
+
+      await expect(
+        handleStripeEvent(event, client as unknown as never),
+      ).resolves.toBeUndefined();
+
+      // The UPDATE was attempted (recorded), but no exception thrown.
+      expect(client.__updates).toHaveLength(1);
+    });
+  });
+
   // --- B7: row-count verification on every customer-id-keyed handler -------
 
   // For subscription events, row-count verification happens on the SELECT
@@ -622,12 +769,16 @@ describe('handleStripeEvent', () => {
       multiThrow: /matched 2 rows .*customer\.subscription\.deleted/,
     },
     {
+      // H2: invoice.payment_failed now SELECTs the profile (id +
+      // subscription_event_at) before the CAS UPDATE, so row-count
+      // verification happens on the select surface like the subscription
+      // handlers.
       label: 'invoice.payment_failed',
       event: makeEvent('invoice.payment_failed', {
         id: 'in_b7',
         customer: 'cus_b7p',
       }),
-      countSurface: 'update' as const,
+      countSurface: 'select' as const,
       expectedThrow: /matched 0 rows .*invoice\.payment_failed/,
       multiThrow: /matched 2 rows .*invoice\.payment_failed/,
     },

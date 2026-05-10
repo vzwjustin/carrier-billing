@@ -37,6 +37,54 @@ export function scrubSentryEvent(
     if (event.contexts && typeof event.contexts === 'object') {
       event.contexts = redactDetails(event.contexts) as typeof event.contexts;
     }
+    if (event.request) {
+      // `request.url` carries query strings — most importantly the share
+      // surface's `?token=…`. scrubString redacts long digit runs and
+      // emails; share tokens collapse under DIGIT_RUN. We also walk
+      // request headers (Cookie, Authorization, Referer all leak).
+      if (typeof event.request.url === 'string') {
+        event.request.url = scrubString(event.request.url);
+      }
+      if (event.request.headers && typeof event.request.headers === 'object') {
+        const headers = event.request.headers as Record<string, unknown>;
+        for (const key of Object.keys(headers)) {
+          const value = headers[key];
+          if (typeof value === 'string') {
+            // Drop the highest-risk credential-bearing headers entirely;
+            // scrub everything else.
+            const lower = key.toLowerCase();
+            if (
+              lower === 'cookie' ||
+              lower === 'authorization' ||
+              lower === 'referer' ||
+              lower === 'referrer'
+            ) {
+              headers[key] = '[REDACTED]';
+            } else {
+              headers[key] = scrubString(value);
+            }
+          }
+        }
+      }
+    }
+    if (event.user && typeof event.user === 'object') {
+      const user = event.user as Record<string, unknown>;
+      for (const key of ['email', 'id', 'username', 'ip_address']) {
+        const value = user[key];
+        if (typeof value === 'string') {
+          user[key] = scrubString(value);
+        }
+      }
+    }
+    if (event.tags && typeof event.tags === 'object') {
+      const tags = event.tags as Record<string, unknown>;
+      for (const key of Object.keys(tags)) {
+        const value = tags[key];
+        if (typeof value === 'string') {
+          tags[key] = scrubString(value);
+        }
+      }
+    }
     if (event.breadcrumbs) {
       for (const crumb of event.breadcrumbs) {
         if (typeof crumb.message === 'string') {

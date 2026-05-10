@@ -6,6 +6,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { generateInboundToken } from '@/lib/inbound/token';
+import {
+  assertPublicHttpsTarget,
+  SsrfBlockedError,
+} from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -106,6 +110,24 @@ export async function updateOutboundWebhookAction(
     return { ok: true, secret: null };
   }
 
+  // Reject loopback / private / IMDS / CGNAT / link-local destinations at
+  // submit time so the user gets immediate feedback. The dispatcher
+  // re-validates at delivery time to defeat DNS rebinding.
+  try {
+    await assertPublicHttpsTarget(url);
+  } catch (err) {
+    if (err instanceof SsrfBlockedError) {
+      return {
+        ok: false,
+        error:
+          err.code === 'not_https'
+            ? 'URL must start with https://'
+            : 'URL must point to a public, internet-reachable host.',
+      };
+    }
+    return { ok: false, error: 'Could not validate webhook URL.' };
+  }
+
   // Generate a fresh signing secret only on first set OR if explicitly
   // rotated. Otherwise leave the existing one alone so the user's existing
   // verifier doesn't break when they edit the URL.
@@ -144,16 +166,28 @@ export async function rotateInboundTokenAction(): Promise<RotateInboundTokenResu
   if (!user) return { ok: false, error: 'Not signed in.' };
 
   const admin = getAdminClient();
-  const fresh = generateInboundToken();
-  const { error } = await admin
-    .from('profiles')
-    .update({
-      inbound_email_token: fresh,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', user.id);
+  // Retry on Postgres unique-constraint violation (23505): with a 16-char
+  // base32 token (~80 bits of entropy) collisions are astronomically rare,
+  // but we'd rather fail loud + retry than corrupt the user's token.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const fresh = generateInboundToken();
+    const { error } = await admin
+      .from('profiles')
+      .update({
+        inbound_email_token: fresh,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
 
-  if (error) return { ok: false, error: 'Could not rotate token.' };
-  revalidatePath('/settings');
-  return { ok: true, token: fresh };
+    if (!error) {
+      revalidatePath('/settings');
+      return { ok: true, token: fresh };
+    }
+
+    if ((error as { code?: string }).code !== '23505') {
+      return { ok: false, error: 'Could not rotate token.' };
+    }
+    // 23505 → token collision; loop for another attempt.
+  }
+  return { ok: false, error: 'Could not rotate token. Please try again.' };
 }

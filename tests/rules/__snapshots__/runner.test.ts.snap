@@ -3,24 +3,87 @@
 exports[`runRules — full pipeline > produces findings from a multi-rule fixture (snapshot) 1`] = `
 [
   {
+    "affected_account_indexes": [
+      0,
+    ],
+    "affected_line_indexes": [
+      1,
+    ],
+    "confidence": 0.9,
+    "evidence": {
+      "device": "iPhone 13",
+      "monthly_cents": 2799,
+      "remaining_payments": 0,
+      "total_payments": 36,
+    },
     "rule_id": "completed_device_payment_still_billed",
     "savings": 2799,
     "severity": "high",
+    "title": "Device payment for "iPhone 13" is complete but still billing",
   },
   {
+    "affected_account_indexes": [
+      0,
+    ],
+    "affected_line_indexes": [],
+    "confidence": 0.98,
+    "evidence": {
+      "credit_name": "Loyalty Bonus",
+      "expires_on": "2026-04-01",
+      "monthly_cents": -2500,
+      "scope": "account",
+    },
     "rule_id": "expired_promo_credit",
     "savings": 2500,
     "severity": "high",
+    "title": "Account credit "Loyalty Bonus" has expired ($25.00/mo lost)",
   },
   {
+    "affected_account_indexes": [
+      0,
+    ],
+    "affected_line_indexes": [
+      0,
+    ],
+    "confidence": 0.85,
+    "evidence": {
+      "dpp_count": 0,
+      "has_device": true,
+      "insurance_features": [
+        {
+          "monthly_cents": 1700,
+          "name": "Mobile Protect",
+        },
+      ],
+      "is_byod": false,
+      "is_suspended": true,
+      "plan_base_cents": 4500,
+      "triggerReasons": [
+        "line_suspended",
+      ],
+    },
     "rule_id": "orphan_insurance",
     "savings": 1700,
     "severity": "high",
+    "title": "Insurance billed on a line with no active device",
   },
   {
+    "affected_account_indexes": [
+      0,
+    ],
+    "affected_line_indexes": [
+      0,
+    ],
+    "confidence": 0.97,
+    "evidence": {
+      "is_suspended": true,
+      "plan_base_cents": 4500,
+      "plan_name": "Business Unlimited Pro 2.0",
+    },
     "rule_id": "suspended_line_billed",
     "savings": 4500,
     "severity": "high",
+    "title": "Suspended line still has a plan charge",
   },
 ]
 `;

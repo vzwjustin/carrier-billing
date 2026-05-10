@@ -90,6 +90,49 @@ describe('account_level_promo_about_to_expire rule', () => {
     expect(evidence.days_until_expiry).toBe(31);
   });
 
+  it('FIRES at exactly day 60 (end of this rule\'s window, inclusive)', async () => {
+    // TEST_TODAY = 2026-05-08; day 60 = 2026-07-07.
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          account_level_credits: [
+            makeCredit({
+              name: 'Day-60 boundary credit',
+              monthly_cents: -2200,
+              expires_on: '2026-07-07',
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await accountPromoExpiringSoonRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    expect(f.severity).toBe('medium');
+    const evidence = f.evidence as { days_until_expiry: number };
+    expect(evidence.days_until_expiry).toBe(60);
+  });
+
+  it('does NOT fire at exactly day 61 (one day past the rule\'s window)', async () => {
+    // TEST_TODAY = 2026-05-08; day 61 = 2026-07-08.
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          account_level_credits: [
+            makeCredit({
+              name: 'Day-61 boundary credit',
+              monthly_cents: -2200,
+              expires_on: '2026-07-08',
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await accountPromoExpiringSoonRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
+
   it('does not fire when account credit expires more than 60 days out', async () => {
     const c = ctx({
       accounts: [

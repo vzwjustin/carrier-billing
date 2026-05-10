@@ -32,12 +32,25 @@ export const dynamic = 'force-dynamic';
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
 const AUDIT_COLUMNS =
-  'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token';
+  'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token,share_token_expires_at';
 
 interface AuditFullRow extends ReportAuditRow {
   user_id: string;
   status: string;
   share_token: string | null;
+  share_token_expires_at: string | null;
+}
+
+function isShareTokenExpired(expiresAt: string | null): boolean {
+  // NULL on a row that already has a share_token means the token is
+  // grandfathered (created before the expiry column existed). We treat that
+  // as "still valid" so we don't break working public links on deploy.
+  // For freshly-revoked rows, share_token is null already, which the caller
+  // checks first.
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  if (Number.isNaN(ts)) return false;
+  return ts <= Date.now();
 }
 
 function pdfFilename(auditId: string): string {
@@ -92,12 +105,20 @@ export async function GET(
       .eq('id', auditId)
       .eq('share_token', token)
       .maybeSingle<AuditFullRow>();
-    if (error) {
-      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
+    // Public token surface — collapse all lookup failures (no row, transient
+    // DB error) into a uniform 404. This matches `notFound()` shape used by
+    // the share page and prevents differential leaks (e.g. "this audit id
+    // exists, but the token is wrong" vs "lookup failed").
+    if (error || !data) {
+      return new NextResponse('Not found.', { status: 404 });
     }
-    audit = data ?? null;
-    if (!audit) {
-      return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
+    audit = data;
+    // H11 — reject expired or revoked tokens. share_token already matched in
+    // the query, but if it's been nulled out between SELECT planning and
+    // execution we'd never get here; the expiry check catches the lifecycle
+    // case where the row still has the token but the window has elapsed.
+    if (isShareTokenExpired(audit.share_token_expires_at)) {
+      return new NextResponse('Not found.', { status: 404 });
     }
   } else {
     const supabase = await createClient();

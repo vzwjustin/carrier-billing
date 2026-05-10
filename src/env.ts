@@ -27,9 +27,12 @@ export const env = createEnv({
     STRIPE_PRICE_ID_ONE_TIME: z.string().min(1),
     STRIPE_PRICE_ID_SUBSCRIPTION: z.string().min(1),
 
-    // Inngest
-    INNGEST_EVENT_KEY: z.string().min(1).optional(),
-    INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+    // Inngest. Required in every deployed environment — without these the
+    // worker can't authenticate event sends or verify incoming webhooks.
+    // For local dev, use the SKIP_ENV_VALIDATION escape hatch (the Inngest
+    // dev server doesn't require either key).
+    INNGEST_EVENT_KEY: z.string().min(1),
+    INNGEST_SIGNING_KEY: z.string().min(1),
 
     // Resend
     RESEND_API_KEY: z.string().min(1),

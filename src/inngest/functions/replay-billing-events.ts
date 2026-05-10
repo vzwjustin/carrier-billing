@@ -122,7 +122,7 @@ export async function findReplayCandidates(
   return Array.from(merged.values()).slice(0, REPLAY_BATCH_LIMIT);
 }
 
-export type ReplayOutcome = 'success' | 'failed' | 'invalid_payload';
+export type ReplayOutcome = 'success' | 'failed' | 'invalid_payload' | 'skipped';
 
 /**
  * Replay a single billing_events row. Exported for testing.
@@ -136,12 +136,32 @@ export async function replayBillingEvent(
   row: ReplayCandidate,
   now: Date,
 ): Promise<ReplayOutcome> {
-  // Mark attempt FIRST so a hard crash mid-handler still observes the
-  // cooldown on the next tick.
-  await supabase
+  // H3 — atomic claim (compare-and-swap on `last_attempted_at`).
+  //
+  // Two cron ticks (or a tick racing with a Stripe redelivery in flight)
+  // can both pick the same row with `findReplayCandidates`. Without a CAS
+  // claim, both would call the handler concurrently. We make the
+  // `last_attempted_at` UPDATE conditional on the value we observed during
+  // the candidate select: if another worker already moved the timestamp,
+  // our UPDATE matches 0 rows and we skip without invoking the handler.
+  // `.select('id')` lets us read the row count.
+  const claim = await supabase
     .from('billing_events')
     .update({ last_attempted_at: now.toISOString() })
-    .eq('id', row.id);
+    .eq('id', row.id)
+    .is('last_attempted_at', row.last_attempted_at)
+    .select('id');
+
+  const claimedRows = (claim.data ?? []) as Array<{ id: string }>;
+  if (claimedRows.length === 0) {
+    Sentry.addBreadcrumb({
+      category: 'inngest',
+      message: 'replay-billing-events: row claim lost (concurrent worker)',
+      level: 'info',
+      data: { billingEventId: row.id, stripe_event_id: row.stripe_event_id },
+    });
+    return 'skipped';
+  }
 
   // Reconstitute the Stripe.Event from the persisted payload. The webhook
   // route stored the verified event verbatim, so it's safe to trust here.
@@ -191,6 +211,59 @@ export async function replayBillingEvent(
   return 'success';
 }
 
+/**
+ * Counters returned by `processReplayBatch`.
+ */
+export type ReplayBatchTally = {
+  processed: number;
+  successes: number;
+  failures: number;
+  invalid: number;
+  skipped: number;
+};
+
+/**
+ * Process a batch of replay candidates.
+ *
+ * `runOne` is the per-row invocation wrapper — in production this is a
+ * `step.run(name, fn)` call so the Inngest framework persists each row's
+ * outcome durably. In tests we pass a plain async function so the loop's
+ * sibling-row continuation behavior can be exercised without booting Inngest.
+ *
+ * M-S3: per-row try/catch ensures one bad row does not cancel siblings (a
+ * thrown step.run would otherwise abort the whole batch). The loop is
+ * sequential because Stripe deliveries for the same customer are
+ * order-sensitive — concurrency would risk applying patches out of order.
+ */
+export async function processReplayBatch(
+  candidates: ReplayCandidate[],
+  runOne: (row: ReplayCandidate) => Promise<ReplayOutcome>,
+): Promise<ReplayBatchTally> {
+  let successes = 0;
+  let failures = 0;
+  let invalid = 0;
+  let skipped = 0;
+
+  for (const row of candidates) {
+    try {
+      const outcome = await runOne(row);
+      if (outcome === 'success') successes += 1;
+      else if (outcome === 'invalid_payload') invalid += 1;
+      else if (outcome === 'skipped') skipped += 1;
+      else failures += 1;
+    } catch (rowErr) {
+      // Per-row failure must not abort the batch.
+      Sentry.captureException(rowErr, {
+        tags: { area: 'inngest.replay-billing-events.batch' },
+        extra: { eventId: row.id },
+      });
+      failures += 1;
+    }
+  }
+
+  return { processed: candidates.length, successes, failures, invalid, skipped };
+}
+
 export const replayBillingEventsFn = inngest.createFunction(
   { id: 'replay-billing-events', retries: 1 },
   { cron: '*/15 * * * *' },
@@ -205,28 +278,15 @@ export const replayBillingEventsFn = inngest.createFunction(
       count: candidates.length,
     });
 
-    let successes = 0;
-    let failures = 0;
-    let invalid = 0;
-
-    for (const row of candidates) {
-      const outcome = (await step.run(`replay-${row.id}`, async () => {
+    const tally = await processReplayBatch(candidates, async (row) => {
+      return (await step.run(`replay-${row.id}`, async () => {
         const supabase = getAdminClient();
         return replayBillingEvent(supabase, row, new Date());
       })) as ReplayOutcome;
-
-      if (outcome === 'success') successes += 1;
-      else if (outcome === 'invalid_payload') invalid += 1;
-      else failures += 1;
-    }
-
-    logger.info('replay-billing-events: done', {
-      processed: candidates.length,
-      successes,
-      failures,
-      invalid,
     });
 
-    return { processed: candidates.length, successes, failures, invalid };
+    logger.info('replay-billing-events: done', tally);
+
+    return tally;
   },
 );

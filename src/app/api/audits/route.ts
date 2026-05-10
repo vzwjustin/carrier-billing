@@ -130,9 +130,19 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
+    // M-A2 — pin a 15-minute upload window. Long enough to absorb retries,
+    // slow networks, and 25 MB uploads on consumer connections; short enough
+    // that orphan rows from abandoned uploads don't pile up indefinitely.
+    // The storage-js typings only expose `{ upsert }`, but the underlying
+    // Storage REST endpoint accepts `expiresIn` (seconds) on the body — we
+    // pass it via a typed cast so the explicit TTL travels to the server.
+    const SIGNED_UPLOAD_TTL_SECONDS = 60 * 15;
+    const signedUploadOptions = { expiresIn: SIGNED_UPLOAD_TTL_SECONDS } as unknown as {
+      upsert: boolean;
+    };
     const { data: signed, error: signError } = await admin.storage
       .from('bills')
-      .createSignedUploadUrl(storagePath);
+      .createSignedUploadUrl(storagePath, signedUploadOptions);
 
     if (signError || !signed) {
       // Clean up the orphaned audit row so the user can retry cleanly.
@@ -169,7 +179,10 @@ export async function POST(request: Request): Promise<Response> {
       storagePath,
       token: signed.token,
     });
-  } catch {
+  } catch (err) {
+    // L — surface unhandled errors instead of swallowing. Tag the surface so
+    // /api/audits noise is filterable from the rest of the audits namespace.
+    Sentry.captureException(err, { tags: { surface: 'audits.create' } });
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

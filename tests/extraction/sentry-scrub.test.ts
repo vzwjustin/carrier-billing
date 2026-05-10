@@ -90,6 +90,81 @@ describe('scrubSentryEvent', () => {
     expect(out?.message).toContain('[REDACTED]');
   });
 
+  it('scrubs request.url query strings (e.g. share tokens, embedded emails)', () => {
+    // Share-route URLs leak the anonymous bearer token in the query string,
+    // and crash-report URLs sometimes embed a contact email. scrubString
+    // collapses both via the email regex and the phone/digit-run regex.
+    const event: ErrorEvent = {
+      type: undefined,
+      request: {
+        url: 'https://carrieraudit.com/share/abc?token=share-987654321&contact=jane@example.com',
+      },
+    };
+    const out = scrubSentryEvent(event);
+    expect(out?.request?.url).not.toContain('jane@example.com');
+    expect(out?.request?.url).toContain('[email]');
+    // 9-digit run within the share token gets caught by DIGIT_RUN.
+    expect(out?.request?.url).not.toContain('987654321');
+  });
+
+  it('drops Cookie / Authorization / Referer request headers', () => {
+    const event: ErrorEvent = {
+      type: undefined,
+      request: {
+        headers: {
+          Cookie: 'sb-access-token=eyJhbGciOiJIUzI1NiJ9.payload.sig',
+          Authorization: 'Bearer secret-token-1234567890',
+          Referer: 'https://carrieraudit.com/share/secret-token',
+          'User-Agent': 'Mozilla/5.0',
+          'X-Trace-Id': 'callback at jane@example.com',
+        },
+      },
+    };
+    const out = scrubSentryEvent(event);
+    const headers = out?.request?.headers as Record<string, string> | undefined;
+    expect(headers?.Cookie).toBe('[REDACTED]');
+    expect(headers?.Authorization).toBe('[REDACTED]');
+    expect(headers?.Referer).toBe('[REDACTED]');
+    // Non-credential headers stay but are scrubbed for embedded PII.
+    expect(headers?.['User-Agent']).toBe('Mozilla/5.0');
+    expect(headers?.['X-Trace-Id']).toContain('[email]');
+  });
+
+  it('scrubs event.user fields', () => {
+    const event: ErrorEvent = {
+      type: undefined,
+      user: {
+        email: 'jane@example.com',
+        id: 'user-1234567',
+        username: 'callback 555-123-4567',
+        ip_address: '192.168.0.1',
+      },
+    };
+    const out = scrubSentryEvent(event);
+    const user = out?.user as Record<string, string> | undefined;
+    expect(user?.email).toBe('[email]');
+    expect(user?.id).toContain('[REDACTED]');
+    expect(user?.username).toContain('[phone]');
+  });
+
+  it('scrubs event.tags values', () => {
+    const event: ErrorEvent = {
+      type: undefined,
+      tags: {
+        carrier: 'verizon',
+        rule_id: 'expired-promo-credit',
+        contact: 'jane@example.com',
+        callback: '555-123-4567',
+      },
+    };
+    const out = scrubSentryEvent(event);
+    const tags = out?.tags as Record<string, string> | undefined;
+    expect(tags?.carrier).toBe('verizon');
+    expect(tags?.rule_id).toBe('expired-promo-credit');
+    expect(tags?.contact).toBe('[email]');
+    expect(tags?.callback).toBe('[phone]');
+  });
+
   it('returns null if scrubber crashes (defensive)', () => {
     // Passing a getter that throws should drop the event rather than ship raw.
     const event = {} as ErrorEvent;

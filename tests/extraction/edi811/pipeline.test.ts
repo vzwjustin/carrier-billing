@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   runEdi811Pipeline,
   Edi811PipelineError,
+  MAX_EDI_BYTES,
 } from '@/extraction/edi811/pipeline';
+import { MAX_EDI_SEGMENTS } from '@/extraction/edi811/parser';
 import { ExtractedBillSchema } from '@/extraction/schema';
 import { buildIsa, buildGs, buildInterchange, buildSac } from './fixtures/build';
 
@@ -199,6 +201,179 @@ describe('runEdi811Pipeline — failure modes', () => {
     await expect(
       runEdi811Pipeline({ buffer: Buffer.from('ISA*missing rest of header') }),
     ).rejects.toThrow(Edi811PipelineError);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (C6) Size cap and segment cap. Both bounds are intended to fail the
+  // ingest cleanly before the worker burns memory on a hostile payload.
+  // ───────────────────────────────────────────────────────────────────────
+  it('exposes the byte cap as a 5 MB constant', () => {
+    expect(MAX_EDI_BYTES).toBe(5 * 1024 * 1024);
+  });
+
+  it('exposes the segment cap as 50,000', () => {
+    expect(MAX_EDI_SEGMENTS).toBe(50_000);
+  });
+
+  it('rejects buffers larger than MAX_EDI_BYTES at the decode step', async () => {
+    const oversized = Buffer.alloc(MAX_EDI_BYTES + 1);
+    let caught: unknown = null;
+    try {
+      await runEdi811Pipeline({ buffer: oversized });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Edi811PipelineError);
+    const e = caught as Edi811PipelineError;
+    expect(e.step).toBe('decode');
+    expect(e.message).toMatch(/byte limit/i);
+    expect(e.message).toContain(String(oversized.byteLength));
+  });
+
+  it('rejects an interchange whose segment count exceeds MAX_EDI_SEGMENTS', async () => {
+    // Build an envelope with too many cheap N1 segments. Each segment is
+    // ~9 bytes ("N1*RE*X~"), and we need >50k. Total payload is bounded
+    // (~480 KB) so the byte cap won't fire first.
+    const isa = buildIsa({ senderId: 'VZW', receiverId: 'ACME' });
+    const gs = buildGs('VZWBILLING');
+    const stuffer = Array.from(
+      { length: MAX_EDI_SEGMENTS + 5 },
+      () => 'N1*RE*X~',
+    ).join('');
+    const body = `ST*811*0001~${stuffer}SE*${MAX_EDI_SEGMENTS + 7}*0001~`;
+    const interchange = buildInterchange({ isa, gs, body });
+
+    let caught: unknown = null;
+    try {
+      await runEdi811Pipeline({ buffer: Buffer.from(interchange, 'utf8') });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Edi811PipelineError);
+    const e = caught as Edi811PipelineError;
+    expect(e.step).toBe('parse');
+    expect(e.message).toMatch(/segments|segment limit|exceeds/);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (M-E4) Non-811 transaction sets must surface as "not a wireless bill"
+  // so the downstream isNotAWirelessBill helper can collapse the failure
+  // reason into the same friendly label as the LLM path.
+  // ───────────────────────────────────────────────────────────────────────
+  it('rejects a non-811 transaction set with a "not a wireless bill" message', async () => {
+    // ST*810 (invoice) instead of ST*811. Otherwise valid envelope.
+    const body = [
+      'ST*810*0001~',
+      'BIG*20260401*INV-X~',
+      'N1*RE*ACME Mobile Co~',
+      'CTT*0~',
+      'SE*4*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'VZW', receiverId: 'ACME' }),
+      gs: buildGs('VZWBILLING'),
+      body,
+    });
+    let caught: unknown = null;
+    try {
+      await runEdi811Pipeline({ buffer: Buffer.from(interchange, 'utf8') });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Edi811PipelineError);
+    const e = caught as Edi811PipelineError;
+    expect(e.step).toBe('parse');
+    expect(e.message).toMatch(/not a wireless bill/i);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (M-E2) Single-DTM billing-period reconciliation: when only one of
+  // start/end is present, anchor the other side off the known one rather
+  // than falling back to the invoice date / today and dropping the real
+  // datum.
+  // ───────────────────────────────────────────────────────────────────────
+  it('anchors the missing billing-period side off the present DTM', async () => {
+    // Only DTM*150 (period start) is present.
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-Y~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*150*20260301~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      'TDS*4000~',
+      'SE*10*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const { bill } = await runEdi811Pipeline({
+      buffer: Buffer.from(interchange, 'utf8'),
+    });
+    expect(bill.billing_period_start).toBe('2026-03-01');
+    // End anchored 29 days after the known start — never before it.
+    expect(bill.billing_period_end >= bill.billing_period_start).toBe(true);
+    expect(bill.billing_period_end).toBe('2026-03-30');
+  });
+
+  it('anchors the start off a present DTM*151 (period end) when start is missing', async () => {
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-Z~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*151*20260331~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      'TDS*4000~',
+      'SE*10*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const { bill } = await runEdi811Pipeline({
+      buffer: Buffer.from(interchange, 'utf8'),
+    });
+    expect(bill.billing_period_end).toBe('2026-03-31');
+    expect(bill.billing_period_start <= bill.billing_period_end).toBe(true);
+    expect(bill.billing_period_start).toBe('2026-03-02');
+  });
+
+  it('swaps inverted DTM*150/151 so start <= end', async () => {
+    // Carrier emits start AFTER end (a real-world dialect quirk).
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-INV~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*150*20260331~',
+      'DTM*151*20260301~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      'TDS*4000~',
+      'SE*11*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const { bill } = await runEdi811Pipeline({
+      buffer: Buffer.from(interchange, 'utf8'),
+    });
+    expect(bill.billing_period_start).toBe('2026-03-01');
+    expect(bill.billing_period_end).toBe('2026-03-31');
   });
 
   it('accepts an unknown carrier and emits notes through the validated bill', async () => {

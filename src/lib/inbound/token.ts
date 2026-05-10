@@ -15,7 +15,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * generating a fresh one (this implicitly invalidates the old address).
  */
 
-const TOKEN_BYTES = 10; // 10 bytes → 16 base32 chars (no padding)
+const TOKEN_BYTES = 10; // 10 bytes → 16 base32 chars (~80 bits entropy)
+const TOKEN_LENGTH = 16;
 
 const BASE32 = 'abcdefghijklmnopqrstuvwxyz234567';
 
@@ -56,62 +57,78 @@ export async function getOrCreateInboundToken(
     return existing;
   }
 
-  // Generate + persist atomically. If another caller wrote one between the
-  // read and the update we accept the loser-wrote-token via the unique index;
-  // re-fetch to return whichever value won.
-  const fresh = generateInboundToken();
-  const { error: updateErr } = await admin
-    .from('profiles')
-    .update({
-      inbound_email_token: fresh,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId)
-    .is('inbound_email_token', null);
+  // CAS-style write: only set the column if it's still NULL. We retry on the
+  // unique-index violation (23505) — collision is astronomically unlikely with
+  // 80 bits of entropy but not impossible, and silently dropping back to a
+  // re-read would give the *other* user our token. Fail loud, regenerate.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const fresh = generateInboundToken();
+    const { data: updated, error: updateErr } = await admin
+      .from('profiles')
+      .update({
+        inbound_email_token: fresh,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId)
+      .is('inbound_email_token', null)
+      .select('inbound_email_token');
 
-  if (updateErr) {
-    // Most likely a unique-index collision (we generated the same token as
-    // another user — astronomically unlikely with 10 bytes of entropy, but
-    // not impossible). Re-read and try again once.
+    if (updateErr) {
+      const code = (updateErr as { code?: string }).code;
+      if (code === '23505') {
+        // Unique-index collision: another row already holds this token.
+        // Try again with a fresh value.
+        continue;
+      }
+      throw new Error(`inbound token write failed: ${updateErr.message}`);
+    }
+
+    const rows = (updated ?? []) as Array<{ inbound_email_token?: string | null }>;
+    if (rows.length === 1) {
+      // We won the CAS — `fresh` is now persisted.
+      return fresh;
+    }
+
+    // 0 rows: another caller wrote a token between our read and the CAS.
+    // Re-read and return whatever value won the race.
     const reread = await admin
       .from('profiles')
       .select('inbound_email_token')
       .eq('id', userId)
       .maybeSingle();
-    const nowExisting = (
+    const persisted = (
       reread.data as { inbound_email_token?: string | null } | null
     )?.inbound_email_token;
-    if (typeof nowExisting === 'string' && nowExisting.length > 0) {
-      return nowExisting;
+    if (typeof persisted === 'string' && persisted.length > 0) {
+      return persisted;
     }
-    throw new Error(`inbound token write failed: ${updateErr.message}`);
+    // Profile vanished or still NULL (the row exists but the CAS matched 0
+    // because of an unrelated update; loop to try again).
   }
-
-  // Re-read in case a concurrent update beat us to it.
-  const reread = await admin
-    .from('profiles')
-    .select('inbound_email_token')
-    .eq('id', userId)
-    .maybeSingle();
-  const persisted = (
-    reread.data as { inbound_email_token?: string | null } | null
-  )?.inbound_email_token;
-  return persisted ?? fresh;
+  throw new Error('inbound token write failed: too many collisions');
 }
+
+const HEX64_RE = /^(sha256=)?[0-9a-fA-F]{64}$/;
 
 /**
  * Constant-time HMAC-SHA256 comparison so the verifier doesn't leak signature
- * mismatches via timing.
+ * mismatches via timing. Accepts either bare hex or `sha256=<hex>` (the
+ * GitHub/Postmark convention) and is case-insensitive.
  */
 export function verifyHmac(
   body: string,
   signatureHex: string,
   secret: string,
 ): boolean {
+  if (typeof signatureHex !== 'string') return false;
+  if (!HEX64_RE.test(signatureHex)) return false;
+  const stripped = signatureHex.replace(/^sha256=/, '').toLowerCase();
   const expected = createHmac('sha256', secret).update(body).digest('hex');
-  if (expected.length !== signatureHex.length) return false;
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const receivedBuf = Buffer.from(stripped, 'hex');
+  if (expectedBuf.length !== 32 || receivedBuf.length !== 32) return false;
   try {
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHex));
+    return timingSafeEqual(expectedBuf, receivedBuf);
   } catch {
     return false;
   }
@@ -120,9 +137,14 @@ export function verifyHmac(
 /**
  * Parse a `bills+<token>@<domain>` recipient and return the token. Accepts
  * angle-bracket-wrapped addresses (`Foo Bar <bills+abc@example.com>`).
+ *
+ * Token must be exactly TOKEN_LENGTH base32 chars — `generateInboundToken`
+ * always emits that, so anything else is malformed.
  */
-const RECIPIENT_RE =
-  /(?:^|<)\s*bills\+([a-z2-7]{6,32})@([a-z0-9.-]+)\s*>?/i;
+const RECIPIENT_RE = new RegExp(
+  `(?:^|<)\\s*bills\\+([a-z2-7]{${TOKEN_LENGTH}})@([a-z0-9.-]+)\\s*>?`,
+  'i',
+);
 
 export function parseInboundRecipient(
   to: string,

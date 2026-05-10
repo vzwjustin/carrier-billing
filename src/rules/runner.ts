@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/nextjs';
+import { scrubString } from '@/lib/observability/redact';
 import type { Finding, Rule, RuleContext } from './types';
 import { ALL_RULES } from './registry';
 
@@ -55,7 +56,12 @@ export async function runRules(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       errors.push({ rule_id: rule.id, message });
-      Sentry.captureException(err, {
+      // The original `err` may carry raw bill text in its message or in
+      // any captured context — ship a sanitized clone to Sentry instead.
+      const safeMessage = scrubString(err instanceof Error ? err.message : String(err));
+      const sanitized = new Error(safeMessage);
+      sanitized.name = err instanceof Error ? err.name : 'RuleError';
+      Sentry.captureException(sanitized, {
         tags: { rule_id: rule.id, carrier: ctx.carrier },
       });
     }

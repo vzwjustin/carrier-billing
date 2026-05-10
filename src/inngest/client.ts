@@ -23,9 +23,12 @@ export type Events = {
     };
   };
   'billing.payment_failed': {
+    // C2 — PII discipline: do NOT include `customerEmail` in this payload.
+    // The consumer (`send-payment-failed-email`) re-fetches the profile by
+    // `userId` and reads `email` from the profile row, which is the source
+    // of truth and avoids persisting the email in Inngest event history.
     data: {
       userId: string;
-      customerEmail: string;
       stripeCustomerId: string;
       invoiceId: string | null;
       amountDueCents: number | null;

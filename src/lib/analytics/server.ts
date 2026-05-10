@@ -23,7 +23,7 @@ export async function trackServer(
     client.capture({
       distinctId,
       event: event.name,
-      properties: event.properties as Record<string, unknown>,
+      properties: event.properties,
     });
     await client.shutdown();
   } catch {

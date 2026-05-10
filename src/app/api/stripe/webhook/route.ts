@@ -168,7 +168,20 @@ export async function POST(request: Request): Promise<Response> {
       return new Response('Handler failed', { status: 500 });
     }
 
-    await markSuccess(supabase, billingEventId);
+    // M-S1: if the bookkeeping update fails after the handler succeeded, we
+    // must NOT return 200 — that leaves the row with `processed_status=null`
+    // and the replay cron would re-invoke the handler with previousStatus=null,
+    // which would re-grant credits / re-flip status. Returning 5xx makes
+    // Stripe retry; on the retry the existing row is found, previousStatus
+    // is read from the row (still null OR whatever the next bookkeeping
+    // attempt sets) and the handler short-circuits non-idempotent ops via
+    // the existing previousStatus gate (the credit grant already requires
+    // previousStatus === null, so a retry of an already-credited row will
+    // skip the RPC because the row is now visible to the next request).
+    const markErr = await markSuccess(supabase, billingEventId);
+    if (markErr) {
+      return new Response('Bookkeeping failed', { status: 500 });
+    }
     return Response.json({ received: true });
   } catch (err) {
     console.error('[stripe.webhook] unexpected error', err);
@@ -199,7 +212,7 @@ async function markAttempt(
 async function markSuccess(
   supabase: SupabaseClient,
   billingEventId: string,
-): Promise<void> {
+): Promise<unknown | null> {
   const { error } = await supabase
     .from('billing_events')
     .update({
@@ -209,12 +222,16 @@ async function markSuccess(
     })
     .eq('id', billingEventId);
   if (error) {
-    // Surface the bookkeeping failure but don't 5xx — the side effects landed.
+    // M-S1: surface to Sentry AND return the error so the caller can 5xx and
+    // let Stripe retry. Returning 200 would leave the row stuck at null and
+    // the replay cron would re-process the handler.
     Sentry.captureException(error, {
       tags: { area: 'stripe.webhook.mark_success' },
       extra: { billingEventId },
     });
+    return error;
   }
+  return null;
 }
 
 async function markFailure(

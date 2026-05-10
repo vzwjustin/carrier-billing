@@ -23,6 +23,7 @@ vi.mock('@/lib/stripe/handlers', () => ({
 
 import {
   findReplayCandidates,
+  processReplayBatch,
   REPLAY_COOLDOWN_SECONDS,
   REPLAY_LOOKBACK_HOURS,
   replayBillingEvent,
@@ -121,6 +122,22 @@ function makeFilterableSelect(
 function makeSupabaseStub(
   source: Array<Record<string, unknown>>,
   updateLog: Array<{ patch: Record<string, unknown>; eq: [string, unknown] }>,
+  options: {
+    /**
+     * H3 — model the atomic CAS claim: a row is "stolen" if its current
+     * `last_attempted_at` no longer matches the value the worker observed
+     * during candidate selection. When `stolen` includes a row id, the
+     * `.update().eq().is('last_attempted_at', X).select('id')` call on that
+     * id returns 0 rows so the worker skips.
+     */
+    stolen?: Set<string>;
+    /**
+     * Throw when invoking the corresponding row id in step.run — used to
+     * exercise the M-S3 sibling-row continuation guard. Throwing happens
+     * inside `replayBillingEvent` (mocked via the handler) so we surface it
+     * via the per-row try/catch in the cron loop.
+     */
+  } = {},
 ): SupabaseClient {
   const client = {
     from() {
@@ -129,17 +146,48 @@ function makeSupabaseStub(
           return makeFilterableSelect(source, []);
         },
         update(patch: Record<string, unknown>) {
-          return {
-            eq(col: string, val: unknown) {
-              updateLog.push({ patch, eq: [col, val] });
+          // Direct `.update().eq().is(col, val).select(cols)` chain — used
+          // by the H3 atomic claim. Falls back to the non-CAS path for the
+          // success/failure bookkeeping updates that don't include `.is()`.
+          const eqHandler = (col: string, val: unknown) => {
+            const applyPatch = () => {
               const r = source.find((row) => row['id'] === val);
               if (r) {
                 for (const [k, v] of Object.entries(patch)) {
                   r[k] = v;
                 }
               }
-              return Promise.resolve({ error: null });
-            },
+            };
+            const directThenable: {
+              then: (resolve: (v: { error: null }) => void) => void;
+              is: (col2: string, val2: unknown) => unknown;
+            } = {
+              then(resolve) {
+                updateLog.push({ patch, eq: [col, val] });
+                applyPatch();
+                resolve({ error: null });
+              },
+              is(col2: string, _val2: unknown) {
+                // Returns a chain ending in `.select()` — H3 CAS claim.
+                return {
+                  select(_cols: string) {
+                    return Promise.resolve(
+                      options.stolen && options.stolen.has(String(val))
+                        ? { data: [], error: null }
+                        : (() => {
+                            updateLog.push({ patch, eq: [col, val] });
+                            applyPatch();
+                            return { data: [{ id: val }], error: null };
+                          })(),
+                    );
+                  },
+                };
+              },
+            };
+            return directThenable;
+          };
+          return {
+            eq: eqHandler,
           };
         },
       };
@@ -366,5 +414,80 @@ describe('replayBillingEvent', () => {
     expect(handleStripeEventMock).not.toHaveBeenCalled();
     expect(updates[1]?.patch.processed_status).toBe('failed');
     expect(updates[1]?.patch.last_error).toContain('invalid payload');
+  });
+
+  // --- M-S3: sibling-row continuation on per-row error ---------------------
+
+  it('M-S3: a thrown row does NOT cancel sibling rows in the batch', async () => {
+    const rows: ReplayCandidate[] = [
+      { id: 'row_a', stripe_event_id: 'evt_a', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      { id: 'row_bad', stripe_event_id: 'evt_bad', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      { id: 'row_c', stripe_event_id: 'evt_c', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+    ];
+
+    const seen: string[] = [];
+    const tally = await processReplayBatch(rows, async (row) => {
+      seen.push(row.id);
+      if (row.id === 'row_bad') {
+        throw new Error('boom mid-step');
+      }
+      return 'success';
+    });
+
+    // All three rows were attempted — the thrown row did not abort the loop.
+    expect(seen).toEqual(['row_a', 'row_bad', 'row_c']);
+    expect(tally.processed).toBe(3);
+    expect(tally.successes).toBe(2);
+    expect(tally.failures).toBe(1);
+  });
+
+  it('M-S3: outcome counters tally all four ReplayOutcome values', async () => {
+    const rows: ReplayCandidate[] = [
+      { id: 'r_ok', stripe_event_id: 'e1', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      { id: 'r_fail', stripe_event_id: 'e2', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      { id: 'r_inv', stripe_event_id: 'e3', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      { id: 'r_skip', stripe_event_id: 'e4', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+    ];
+    const outcomes: Record<string, 'success' | 'failed' | 'invalid_payload' | 'skipped'> = {
+      r_ok: 'success',
+      r_fail: 'failed',
+      r_inv: 'invalid_payload',
+      r_skip: 'skipped',
+    };
+    const tally = await processReplayBatch(rows, async (row) =>
+      outcomes[row.id] ?? 'failed',
+    );
+
+    expect(tally).toEqual({
+      processed: 4,
+      successes: 1,
+      failures: 1,
+      invalid: 1,
+      skipped: 1,
+    });
+  });
+
+  // --- H3: atomic per-row claim --------------------------------------------
+
+  it('H3: atomic claim returns 0 rows ⇒ skipped, handler is NOT invoked', async () => {
+    // Simulate "another worker already moved last_attempted_at": the CAS
+    // UPDATE on this row id matches 0 rows, so the worker bails out without
+    // calling the Stripe handler.
+    const updates: Array<{ patch: Record<string, unknown>; eq: [string, unknown] }> = [];
+    const supabase = makeSupabaseStub([], updates, {
+      stolen: new Set(['be_target']),
+    });
+
+    const outcome = await replayBillingEvent(
+      supabase,
+      makeRow(VALID_PAYLOAD),
+      NOW,
+    );
+
+    expect(outcome).toBe('skipped');
+    // Handler was NOT invoked — that's the whole point of the claim.
+    expect(handleStripeEventMock).not.toHaveBeenCalled();
+    // No bookkeeping update happened either (we never claimed the row).
+    expect(updates).toHaveLength(0);
   });
 });

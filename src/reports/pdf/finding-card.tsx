@@ -183,8 +183,12 @@ export function FindingCard({
   const savingsStyle = small ? styles.savingsSmall : styles.savings;
 
   return (
-    <View style={cardStyle} wrap={false}>
-      <View style={styles.findingHeaderRow}>
+    // Outer card MUST be allowed to wrap across pages — long descriptions
+    // get clipped when the whole card is forced onto a single page. We
+    // only keep the header (severity badge + title + savings) together,
+    // which is the part users skim.
+    <View style={cardStyle}>
+      <View style={styles.findingHeaderRow} wrap={false}>
         <View style={styles.findingHeaderLeft}>
           <SeverityBadge severity={vm.severity} label={vm.severityLabel} />
           <Text style={titleStyle}>{vm.title}</Text>

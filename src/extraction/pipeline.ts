@@ -1,6 +1,6 @@
 import { detectCarrier } from '@/extraction/detect';
 import { extractBill } from '@/extraction/llm';
-import { extractText } from '@/extraction/pdf';
+import { extractText, PdfParseError } from '@/extraction/pdf';
 import { extractTextWithOCR, hasAwsCredentials } from '@/extraction/ocr';
 import { normalize as normalizeVerizon } from '@/extraction/carriers/verizon';
 import { normalize as normalizeAtt } from '@/extraction/carriers/att';
@@ -21,6 +21,7 @@ export const MAX_PDF_BYTES = 25 * 1024 * 1024;
 export type PipelineStep =
   | 'size_check'
   | 'extract_text'
+  | 'encrypted_pdf'
   | 'ocr_fallback'
   | 'detect_carrier'
   | 'llm_extract'
@@ -80,6 +81,18 @@ export async function runExtractionPipeline({
     rawText = out.text;
     pageCount = out.pageCount;
   } catch (err) {
+    // (M-E3) Encrypted / password-protected PDFs surface as a `PdfParseError`
+    // wrapping pdfjs's `PasswordException`. Translate that into a distinct
+    // pipeline step so the failure_reason mapper in process-bill can
+    // collapse it into a user-friendly `encrypted-pdf` reason instead of
+    // the generic `extraction:extract_text:` label.
+    if (isEncryptedPdfError(err)) {
+      throw new PipelineError(
+        'Encrypted PDF — cannot extract text',
+        'encrypted_pdf',
+        err,
+      );
+    }
     throw new PipelineError('Failed to read PDF text', 'extract_text', err);
   }
 
@@ -135,6 +148,21 @@ export async function runExtractionPipeline({
     neededOcr,
     detectedCarrier,
   };
+}
+
+/**
+ * (M-E3) Decide whether a thrown extract-text error is the
+ * "PDF is encrypted / password-protected" case. pdf-parse forwards pdfjs's
+ * `PasswordException` verbatim through our `PdfParseError.cause`. We sniff
+ * by `name` rather than `instanceof` because pdfjs's exception types are not
+ * easily importable here and the name field is its public contract.
+ */
+function isEncryptedPdfError(err: unknown): boolean {
+  if (!(err instanceof PdfParseError)) return false;
+  const cause: unknown = err.cause;
+  if (!cause || typeof cause !== 'object') return false;
+  const name = (cause as { name?: unknown }).name;
+  return typeof name === 'string' && name === 'PasswordException';
 }
 
 function applyCarrierNormalization(bill: ExtractedBill): ExtractedBill {

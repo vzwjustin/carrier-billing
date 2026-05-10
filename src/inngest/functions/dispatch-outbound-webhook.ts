@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 
 import { inngest } from '../client';
+import { assertPublicHttpsTarget } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -13,11 +14,15 @@ import { getAdminClient } from '@/lib/supabase/admin';
  *
  * Skipped silently if the user has no `outbound_webhook_url` configured.
  *
- * Signature contract (documented in
+ * Signature contract — v2 (timestamped, Stripe-style; documented in
  * `src/components/settings/outbound-webhook-card.tsx`):
- *   X-CarrierAudit-Signature: hex(hmac_sha256(body, secret))
+ *   X-CarrierAudit-Timestamp: <unix-seconds>
+ *   X-CarrierAudit-Signature: t=<unix-seconds>,v1=hex(hmac_sha256(`${t}.${body}`, secret))
  *   X-CarrierAudit-Event: audit.completed
  *   X-CarrierAudit-Audit-Id: <auditId>
+ *
+ * v2 signature scheme; receivers should reject timestamps older than 5 min to
+ * prevent replay.
  */
 
 interface ProfileRow {
@@ -161,20 +166,46 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
       };
 
       const body = JSON.stringify(payload);
-      const signature = createHmac('sha256', ctx.secret)
-        .update(body)
+      const timestamp = Math.floor(Date.now() / 1000);
+      // v2 signature: HMAC over `${timestamp}.${body}` so a captured request
+      // can't be replayed indefinitely. Receivers should reject timestamps
+      // older than 5 min.
+      const signedPayload = `${timestamp}.${body}`;
+      const sigHex = createHmac('sha256', ctx.secret)
+        .update(signedPayload)
         .digest('hex');
+      const signatureHeader = `t=${timestamp},v1=${sigHex}`;
+
+      // Re-validate the URL at dispatch time — checking only at submit-time
+      // would let an attacker register a public DNS name now and rebind it to
+      // 127.0.0.1 / 169.254.169.254 before the worker fires. Resolve fresh
+      // here, then `fetch` the literal IP with the original Host header
+      // preserved so TLS/SNI still terminates correctly.
+      const target = await assertPublicHttpsTarget(ctx.url);
+
+      const original = new URL(ctx.url);
+      const host =
+        original.port.length > 0
+          ? `${original.hostname}:${original.port}`
+          : original.hostname;
+      // Wrap IPv6 literal in brackets for URL syntax.
+      const ipForUrl =
+        target.family === 6 ? `[${target.resolvedIp}]` : target.resolvedIp;
+      const portSuffix = original.port.length > 0 ? `:${original.port}` : '';
+      const pinnedUrl = `https://${ipForUrl}${portSuffix}${original.pathname}${original.search}`;
 
       // Bound the round-trip so a slow consumer doesn't park a worker.
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15_000);
 
       try {
-        const response = await fetch(ctx.url, {
+        const response = await fetch(pinnedUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-CarrierAudit-Signature': signature,
+            Host: host,
+            'X-CarrierAudit-Timestamp': String(timestamp),
+            'X-CarrierAudit-Signature': signatureHeader,
             'X-CarrierAudit-Event': 'audit.completed',
             'X-CarrierAudit-Audit-Id': ctx.audit.id,
             'User-Agent': 'CarrierAudit-Webhook/1.0',
