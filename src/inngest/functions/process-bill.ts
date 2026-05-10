@@ -446,6 +446,7 @@ export const processBillFn = inngest.createFunction(
             line_count: lineCount,
             page_count: pageCount,
             file_size_bytes: sizeBytes,
+            source_format: source === 'edi811' ? 'edi_811' : 'pdf',
             updated_at: new Date().toISOString(),
           })
           .eq('id', auditId);
