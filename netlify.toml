@@ -1,32 +1,33 @@
+# Netlify is the production host for this app. All server-only secrets
+# (SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, AWS_*, STRIPE_*,
+# RESEND_API_KEY, INNGEST_*, INBOUND_EMAIL_*, SENTRY_AUTH_TOKEN, etc.) MUST
+# be configured in the Netlify dashboard under Site settings → Environment
+# variables, scoped to the `production` and `deploy-preview` contexts.
+#
+# This file deliberately does NOT default those secrets to placeholder
+# strings — `src/env.ts` rejects placeholder values at startup, and a
+# misconfigured dashboard should fail loudly at build/runtime instead of
+# silently shipping broken SDK clients to production. See `assertNoPlaceholderSecrets`.
+#
+# `SKIP_ENV_VALIDATION=1` only takes effect on Netlify for non-production
+# contexts (deploy-preview, branch-deploy). Production builds always run
+# the full `@t3-oss/env-nextjs` schema. Local builds outside Netlify still
+# honor the flag for inspection workflows.
+
 [build]
   command = "pnpm run build"
   publish = ".next"
 
 [build.environment]
-  # Build- and preview-time fallbacks. Real values come from the Netlify
-  # dashboard (which overrides these) for production. Placeholders below
-  # let the build + runtime env validator pass on deploy previews when the
-  # dashboard isn't fully populated. They must be non-empty strings; the
-  # actual values never exercise the network at build/preview time.
   SKIP_ENV_VALIDATION = "1"
 
-  # Public (also bundled into the client) — not secrets, safe to commit
+  # Public client-side values — these are bundled into the browser bundle
+  # at build time and are NOT secrets. They live here so deploy-preview
+  # builds work without dashboard config.
   NEXT_PUBLIC_SUPABASE_URL = "https://sdtfkyrpsigqtsjgovxe.supabase.co"
   NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkdGZreXJwc2lncXRzamdvdnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMjg2ODIsImV4cCI6MjA5MzkwNDY4Mn0.tuB6H0HhVRJIAQqyDFZS_ed7wURYTiok5GKfUMd_qCc"
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_dXfulOKlbz2OsU6Jua46YSu5"
   NEXT_PUBLIC_APP_URL = "https://carrierbilling.netlify.app"
-
-  # Server-only — required by `src/env.ts`, must be non-empty so t3-env's
-  # runtime validator passes inside Netlify Functions.
-  SUPABASE_SERVICE_ROLE_KEY = "placeholder"
-  ANTHROPIC_API_KEY = "placeholder"
-  AWS_ACCESS_KEY_ID = "placeholder"
-  AWS_SECRET_ACCESS_KEY = "placeholder"
-  STRIPE_SECRET_KEY = "sk_placeholder"
-  STRIPE_WEBHOOK_SECRET = "whsec_placeholder"
-  STRIPE_PRICE_ID_ONE_TIME = "price_placeholder"
-  STRIPE_PRICE_ID_SUBSCRIPTION = "price_placeholder"
-  RESEND_API_KEY = "placeholder"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

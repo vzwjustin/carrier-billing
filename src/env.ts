@@ -1,6 +1,83 @@
 import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';
 
+// ---------------------------------------------------------------------------
+// Placeholder rejection (H17)
+// ---------------------------------------------------------------------------
+// Even when `SKIP_ENV_VALIDATION=1` lets the Zod schema be bypassed at build
+// time, the dashboard config could ship literal `"placeholder"` strings to
+// production runtime if it's misconfigured. Such values pass `min(1)` but
+// blow up the moment an SDK tries to use them. Reject them loudly here so
+// the failure surfaces at startup with a clear message instead of as an
+// opaque 500 from Stripe/Anthropic/Supabase later.
+
+const PLACEHOLDER_SECRET_VALUES = new Set<string>([
+  'placeholder',
+  'sk_placeholder',
+  'whsec_placeholder',
+  'price_placeholder',
+  'changeme',
+  'change-me',
+  'replace-me',
+  'replaceme',
+  '__missing_at_build_time__',
+]);
+
+export const REQUIRED_SERVER_SECRETS = [
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'ANTHROPIC_API_KEY',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_PRICE_ID_ONE_TIME',
+  'STRIPE_PRICE_ID_SUBSCRIPTION',
+  'RESEND_API_KEY',
+] as const;
+
+export function isPlaceholderSecret(value: string | undefined): boolean {
+  if (!value) return false;
+  return PLACEHOLDER_SECRET_VALUES.has(value.toLowerCase());
+}
+
+export function assertNoPlaceholderSecrets(
+  source: NodeJS.ProcessEnv = process.env,
+): void {
+  const offenders: string[] = [];
+  for (const key of REQUIRED_SERVER_SECRETS) {
+    if (isPlaceholderSecret(source[key])) offenders.push(key);
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      `Refusing to start: placeholder values detected for required server secrets [${offenders.join(', ')}]. ` +
+        'Set real values in your deployment environment (Netlify dashboard for production).',
+    );
+  }
+}
+
+// Skip the runtime placeholder check inside the Vitest harness — `tests/setup.ts`
+// intentionally fills client-only NEXT_PUBLIC_* vars with placeholder strings,
+// and required server secrets are simply absent under tests.
+if (process.env.NODE_ENV !== 'test') {
+  assertNoPlaceholderSecrets();
+}
+
+// ---------------------------------------------------------------------------
+// SKIP_ENV_VALIDATION gating (H17)
+// ---------------------------------------------------------------------------
+// Honored everywhere EXCEPT a Netlify production build/runtime, where we
+// always want the full Zod schema to run. Netlify exposes `NETLIFY=true` and
+// `CONTEXT` ∈ {production, deploy-preview, branch-deploy, dev}. Outside
+// Netlify (local builds, CI inspection, tests) the flag still works as before.
+function shouldSkipValidation(): boolean {
+  if (process.env.NODE_ENV === 'test') return true;
+  if (!process.env.SKIP_ENV_VALIDATION) return false;
+  if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
+    return false;
+  }
+  return true;
+}
+
 export const env = createEnv({
   server: {
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -94,6 +171,6 @@ export const env = createEnv({
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   },
-  skipValidation: !!process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === 'test',
+  skipValidation: shouldSkipValidation(),
   emptyStringAsUndefined: true,
 });

@@ -3,10 +3,22 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 /**
- * Build the Content-Security-Policy. This is an allowlist CSP, not a nonce CSP:
- * Next/PostHog/Sentry currently need inline allowances in this app. Keep
- * this comment honest so future hardening can remove those allowances in a
- * deliberate browser-tested pass.
+ * Build the Content-Security-Policy header for every matched request.
+ *
+ * Shipped policy (intentionally permissive for now):
+ *   - `script-src 'self' 'unsafe-inline' 'unsafe-eval'` plus an explicit
+ *     vendor-host allowlist (Stripe, PostHog). Required by Next.js 15's
+ *     inline boot scripts and the Stripe.js / PostHog browser SDKs.
+ *   - `style-src 'self' 'unsafe-inline'` — Next.js 15 inlines style
+ *     attributes for several primitives.
+ *   - No nonce, no `'strict-dynamic'`. The middleware does NOT generate a
+ *     per-request nonce or set an `x-nonce` header, so any
+ *     `<Script nonce={...}>` reading from `headers()` would receive
+ *     `undefined` today.
+ *
+ * P2 follow-up: switch to a nonce-based policy that drops `'unsafe-inline'`
+ * and `'unsafe-eval'` from `script-src` in favor of `'strict-dynamic'` plus
+ * a per-request nonce. See HANDOFF.md §5a.
  */
 export function buildCsp(): string {
   // unsafe-eval is required by Next dev mode HMR; not needed in production.

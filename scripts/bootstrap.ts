@@ -36,6 +36,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
 import { loadDotEnvLocal, type EnvMap } from './lib/env-loader';
+import { listMigrationFiles } from './lib/migrations-list';
 import { findOrCreateProduct, findOrCreatePrice } from './lib/stripe-helpers';
 import { ensureBucket } from './lib/supabase-helpers';
 
@@ -330,19 +331,32 @@ async function setupStripe(
 // (c) Supabase migrations — informational only
 // ---------------------------------------------------------------------------
 
-const MIGRATIONS = [
-  '0001_init.sql',
-  '0002_storage.sql',
-  '0003_reports_storage.sql',
-  '0004_billing_helpers.sql',
-];
-
-function setupSupabaseMigrationsInfo(): SubtaskReport {
+async function setupSupabaseMigrationsInfo(): Promise<SubtaskReport> {
   const report = makeReport('Supabase migrations (info)');
   heading('Supabase — database migrations');
   info('This script does not run SQL migrations directly.');
+
+  const migrationsDir = path.join(process.cwd(), 'supabase', 'migrations');
+  let migrations: string[];
+  try {
+    migrations = await listMigrationFiles(migrationsDir);
+  } catch (err) {
+    report.status = 'failed';
+    const msg = err instanceof Error ? err.message : String(err);
+    report.notes.push(`Could not read ${migrationsDir}: ${msg}`);
+    fail(`Supabase: failed to list migrations at ${migrationsDir}: ${msg}`);
+    return report;
+  }
+
+  if (migrations.length === 0) {
+    report.status = 'failed';
+    report.notes.push(`No .sql files found in ${migrationsDir}.`);
+    fail(`Supabase: no migrations found in ${migrationsDir}.`);
+    return report;
+  }
+
   info('Apply the following SQL files in order from supabase/migrations/:');
-  for (const m of MIGRATIONS) {
+  for (const m of migrations) {
     console.log(`    - ${m}`);
   }
   console.log('');
@@ -350,7 +364,7 @@ function setupSupabaseMigrationsInfo(): SubtaskReport {
   console.log('    A) Supabase CLI:   supabase db push');
   console.log('    B) Manual:         paste each file into Dashboard → SQL Editor in order.');
   report.status = 'done';
-  report.notes.push('Run the 4 migrations manually before using the app.');
+  report.notes.push(`Run the ${migrations.length} migrations manually before using the app.`);
   return report;
 }
 
@@ -516,7 +530,7 @@ async function main(): Promise<number> {
 
   // Each sub-task runs independently so partial provisioning is possible.
   reports.push(await setupStripe(env, opts));
-  reports.push(setupSupabaseMigrationsInfo());
+  reports.push(await setupSupabaseMigrationsInfo());
   reports.push(await setupSupabaseStorage(env, opts));
   reports.push(await setupResend(env, opts));
 

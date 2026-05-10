@@ -36,6 +36,20 @@ Stripe webhook hardening landed:
 
 ## Snapshot (pass this file + `CLAUDE.md` to a fresh session)
 
+A multi-stream review found bugs and gaps; fixes landed across 7 streams. Highlights:
+
+- **Inngest core**: line-index translation between rules and persistence (multi-account audits now correct), idempotency key on `bill.uploaded`, status guards on `mark-extracting`/`mark-failed`, ownership re-check, OCR 12-min timeout, PII redaction in `ExtractionError.details`, sanitized Resend errors.
+- **Stripe**: atomic stripe_customer_id race-fix (orphan deletion on loss), row-match assertions on every customer-keyed update (throws on 0 or >1), trialing-status test, real-crypto webhook signature test, payment_failed structured marker, event-type breadcrumb.
+- **DB migration 0005**: CHECK constraints (status/carrier/severity/confidence/subscription_status), `findings(rule_id)` index, atomic `refund_orphan_audit` RPC; cleanup function rewired.
+- **Rules**: `ExtractedCreditSchema.monthly_cents <= 0` enforced; `account_promo_expiring_soon` narrowed to 31–60d (no overlap); `data_overage_pattern` 50–100GB hole closed; `stale_international_feature` → severity `info`; `orphan_insurance` redundant trigger dropped; registry self-validation; dead `sumLineCharges` removed; cryptic math simplified.
+- **UI**: sonner toasts, `/audits` cursor pagination, header credit badge, retry button + `POST /api/audits/[id]/retry`, forgot-password (`/reset-password` + `/auth/update-password`), resend-confirmation with cooldown, killed Phase-3 placeholder, "Queued" stepper label, pre-upload gate banner, draft notice on legal pages.
+- **Security**: CSP/HSTS/XFO/Referrer/Permissions-Policy emitted via `next.config.ts` (static headers) and `src/middleware.ts` (CSP). **Production host: Netlify.** `netlify.toml` is the live deploy config; server-only secrets are configured in the Netlify dashboard (production + deploy-preview scopes) and `src/env.ts` rejects placeholder values at startup.
+- **Tests**: RLS isolation, share-token edges, PDF cache hit/miss, encrypted PDF, unknown-carrier e2e, concurrent-decrement underflow.
+
+**Status:** typecheck clean, lint clean (`next lint`), 51 test files / 383 passed / 6 todo, `next build` succeeds.
+
+### Where things live
+
 | Topic | Where it lives | Notes |
 |--------|----------------|--------|
 | CSP **policy string** | `src/middleware.ts` → `buildCsp()` | Applied to **non-API** routes (matcher excludes `/api/*`). Tuning `frame-src` / `script-src` happens here. |
