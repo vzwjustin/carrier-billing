@@ -43,7 +43,7 @@ A multi-stream review found bugs and gaps; fixes landed across 7 streams. Highli
 - **DB migration 0005**: CHECK constraints (status/carrier/severity/confidence/subscription_status), `findings(rule_id)` index, atomic `refund_orphan_audit` RPC; cleanup function rewired.
 - **Rules**: `ExtractedCreditSchema.monthly_cents <= 0` enforced; `account_promo_expiring_soon` narrowed to 31–60d (no overlap); `data_overage_pattern` 50–100GB hole closed; `stale_international_feature` → severity `info`; `orphan_insurance` redundant trigger dropped; registry self-validation; dead `sumLineCharges` removed; cryptic math simplified.
 - **UI**: sonner toasts, `/audits` cursor pagination, header credit badge, retry button + `POST /api/audits/[id]/retry`, forgot-password (`/reset-password` + `/auth/update-password`), resend-confirmation with cooldown, killed Phase-3 placeholder, "Queued" stepper label, pre-upload gate banner, draft notice on legal pages.
-- **Security**: CSP/HSTS/XFO/Referrer/Permissions-Policy in `next.config.ts`. `netlify.toml` removed (Vercel only).
+- **Security**: CSP/HSTS/XFO/Referrer/Permissions-Policy emitted via `next.config.ts` (static headers) and `src/middleware.ts` (CSP). **Production host: Netlify.** `netlify.toml` is the live deploy config; server-only secrets are configured in the Netlify dashboard (production + deploy-preview scopes) and `src/env.ts` rejects placeholder values at startup.
 - **Tests**: RLS isolation, share-token edges, PDF cache hit/miss, encrypted PDF, unknown-carrier e2e, concurrent-decrement underflow.
 
 **Status:** typecheck clean, lint clean (`next lint`), 51 test files / 383 passed / 6 todo, `next build` succeeds.

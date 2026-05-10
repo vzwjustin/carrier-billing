@@ -1,9 +1,12 @@
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
-// Content-Security-Policy is set per-request in `src/middleware.ts` so each
-// response carries a fresh nonce. The other security headers are static and
-// set here.
+// Content-Security-Policy is emitted by `src/middleware.ts` (the policy is
+// the same on every request — there is no per-request nonce or
+// `'strict-dynamic'` today). The other security headers below are static
+// and applied via `next.config.ts` `headers()` because middleware is
+// scoped to non-asset routes. See `buildCsp()` for the shipped policy and
+// the P2 nonce follow-up note.
 const SECURITY_HEADERS = [
   {
     key: 'Strict-Transport-Security',

@@ -3,17 +3,22 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 /**
- * Build the per-request Content-Security-Policy with a fresh nonce.
+ * Build the Content-Security-Policy header for every matched request.
  *
- * `'strict-dynamic'` lets nonced loader scripts inject child scripts; in
- * modern browsers it makes the host allowlist informational, but we keep
- * the explicit hosts for older-browser fallback. `'unsafe-inline'` is gone
- * from `script-src`. `style-src 'unsafe-inline'` stays — Next.js 15 inlines
- * style attributes for some primitives, per the documented compromise.
+ * Shipped policy (intentionally permissive for now):
+ *   - `script-src 'self' 'unsafe-inline' 'unsafe-eval'` plus an explicit
+ *     vendor-host allowlist (Stripe, PostHog). Required by Next.js 15's
+ *     inline boot scripts and the Stripe.js / PostHog browser SDKs.
+ *   - `style-src 'self' 'unsafe-inline'` — Next.js 15 inlines style
+ *     attributes for several primitives.
+ *   - No nonce, no `'strict-dynamic'`. The middleware does NOT generate a
+ *     per-request nonce or set an `x-nonce` header, so any
+ *     `<Script nonce={...}>` reading from `headers()` would receive
+ *     `undefined` today.
  *
- * Future `<Script>` consumers should read the nonce in a server component:
- *   const nonce = (await headers()).get('x-nonce') ?? undefined;
- *   <Script nonce={nonce} src="..." />
+ * P2 follow-up: switch to a nonce-based policy that drops `'unsafe-inline'`
+ * and `'unsafe-eval'` from `script-src` in favor of `'strict-dynamic'` plus
+ * a per-request nonce. See HANDOFF.md §5a.
  */
 function buildCsp(): string {
   return [
