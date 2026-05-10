@@ -3,11 +3,22 @@ export const dynamic = 'force-dynamic';
 
 import * as Sentry from '@sentry/nextjs';
 import type Stripe from 'stripe';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '@/env';
+import { scrubString } from '@/lib/observability/redact';
 import { getStripe } from '@/lib/stripe/client';
 import { deriveUserIdFromEventObject } from '@/lib/stripe/events';
 import { handleStripeEvent } from '@/lib/stripe/handlers';
 import { getAdminClient } from '@/lib/supabase/admin';
+
+const LAST_ERROR_MAX = 500;
+
+type ProcessedStatus = 'success' | 'failed' | null;
+
+type BillingEventRow = {
+  id: string;
+  processed_status: ProcessedStatus;
+};
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -32,64 +43,116 @@ export async function POST(request: Request): Promise<Response> {
 
     const supabase = getAdminClient();
 
-    // Idempotency check — if we've already persisted this event, ack and exit.
-    // The unique constraint on `stripe_event_id` is the ultimate guarantee,
-    // but checking first lets us return a friendly `deduped` flag and avoid
-    // a write on retries.
+    // ---- billing_events row reconciliation -------------------------------
+    //
+    // Insert if first sighting, fetch if a prior request already inserted.
+    // The unique constraint on `stripe_event_id` is the durable dedupe; the
+    // pre-check + 23505 fallback below just narrows the path so we never
+    // hit a wasted INSERT on a hot retry.
+
     const existing = await supabase
       .from('billing_events')
-      .select('id')
+      .select('id, processed_status')
       .eq('stripe_event_id', event.id)
       .maybeSingle();
 
+    let billingEventId: string;
+    let previousStatus: ProcessedStatus;
+
     if (existing.data) {
-      console.log('[stripe.webhook]', event.type, event.id, 'deduped');
-      return Response.json({ received: true, deduped: true });
-    }
-
-    const userId = deriveUserIdFromEventObject(event.data.object);
-
-    const insertResult = await supabase.from('billing_events').insert({
-      stripe_event_id: event.id,
-      type: event.type,
-      payload: event as unknown as Record<string, unknown>,
-      user_id: userId,
-    });
-
-    if (insertResult.error) {
-      // If the unique constraint tripped concurrently, treat as deduped.
-      // Postgres unique violation is SQLSTATE 23505; supabase-js surfaces it
-      // via `code`. Anything else is unexpected.
-      const code = (insertResult.error as { code?: string }).code;
-      if (code === '23505') {
+      const row = existing.data as BillingEventRow;
+      if (row.processed_status === 'success') {
+        // H8: this event was already fully processed. Idempotent ack.
         console.log('[stripe.webhook]', event.type, event.id, 'deduped');
         return Response.json({ received: true, deduped: true });
       }
-      console.error(
-        '[stripe.webhook] insert failed',
-        event.type,
-        event.id,
-        insertResult.error,
-      );
-      // We catch + return manually here, so Next's onRequestError hook never
-      // fires. Capture explicitly so the failure shows up in Sentry.
-      Sentry.captureException(insertResult.error, {
-        tags: { area: 'stripe.webhook', stripe_event_type: event.type },
-        extra: { stripe_event_id: event.id },
-      });
-      return new Response('Internal error', { status: 500 });
+      billingEventId = row.id;
+      previousStatus = row.processed_status;
+    } else {
+      const userId = deriveUserIdFromEventObject(event.data.object);
+      const insertResult = await supabase
+        .from('billing_events')
+        .insert({
+          stripe_event_id: event.id,
+          type: event.type,
+          payload: event as unknown as Record<string, unknown>,
+          user_id: userId,
+        })
+        .select('id, processed_status')
+        .maybeSingle();
+
+      if (insertResult.error) {
+        const code = (insertResult.error as { code?: string }).code;
+        if (code === '23505') {
+          // A concurrent request beat us to it. Re-fetch the winning row.
+          const raced = await supabase
+            .from('billing_events')
+            .select('id, processed_status')
+            .eq('stripe_event_id', event.id)
+            .maybeSingle();
+          if (!raced.data) {
+            console.error(
+              '[stripe.webhook] race fetch failed',
+              event.type,
+              event.id,
+            );
+            Sentry.captureException(
+              new Error('race fetch returned no row after 23505'),
+              {
+                tags: { area: 'stripe.webhook', stripe_event_type: event.type },
+                extra: { stripe_event_id: event.id },
+              },
+            );
+            return new Response('Internal error', { status: 500 });
+          }
+          const row = raced.data as BillingEventRow;
+          if (row.processed_status === 'success') {
+            console.log('[stripe.webhook]', event.type, event.id, 'deduped');
+            return Response.json({ received: true, deduped: true });
+          }
+          billingEventId = row.id;
+          previousStatus = row.processed_status;
+        } else {
+          console.error(
+            '[stripe.webhook] insert failed',
+            event.type,
+            event.id,
+            insertResult.error,
+          );
+          Sentry.captureException(insertResult.error, {
+            tags: { area: 'stripe.webhook', stripe_event_type: event.type },
+            extra: { stripe_event_id: event.id },
+          });
+          return new Response('Internal error', { status: 500 });
+        }
+      } else {
+        if (!insertResult.data) {
+          console.error(
+            '[stripe.webhook] insert returned no row',
+            event.type,
+            event.id,
+          );
+          return new Response('Internal error', { status: 500 });
+        }
+        const row = insertResult.data as BillingEventRow;
+        billingEventId = row.id;
+        previousStatus = row.processed_status; // null for fresh inserts
+      }
     }
 
     console.log('[stripe.webhook]', event.type, event.id);
 
-    // Phase 4: branch on event.type to mutate profiles. The event row has
-    // already been persisted, so if the handler throws we capture to Sentry
-    // and still ack the webhook — Stripe will not retry, but we can replay
-    // from `billing_events` later. (Alternative: return 500 to force a Stripe
-    // retry. We prefer ack-and-replay because Stripe's retry budget is
-    // limited and we'd rather repair manually than lose visibility.)
+    // ---- handler invocation + state recording ----------------------------
+    //
+    // H8: previously this catch swallowed handler errors and returned 200 so
+    // Stripe wouldn't retry. We now re-throw a 5xx so Stripe DOES retry. The
+    // per-handler effects MUST be safe to re-run — the credit grant in
+    // checkout.session.completed gates on `previousStatus` for that reason.
+
+    await markAttempt(supabase, billingEventId);
+
     try {
-      await handleStripeEvent(event, supabase);
+      await handleStripeEvent(event, supabase, { previousStatus });
     } catch (handlerErr) {
       console.error(
         '[stripe.webhook] handler failed',
@@ -101,12 +164,77 @@ export async function POST(request: Request): Promise<Response> {
         tags: { area: 'stripe.webhook.handler', stripe_event_type: event.type },
         extra: { stripe_event_id: event.id },
       });
+      await markFailure(supabase, billingEventId, handlerErr);
+      return new Response('Handler failed', { status: 500 });
     }
 
+    await markSuccess(supabase, billingEventId);
     return Response.json({ received: true });
   } catch (err) {
     console.error('[stripe.webhook] unexpected error', err);
     Sentry.captureException(err, { tags: { area: 'stripe.webhook' } });
     return new Response('Internal error', { status: 500 });
+  }
+}
+
+async function markAttempt(
+  supabase: SupabaseClient,
+  billingEventId: string,
+): Promise<void> {
+  // Best-effort — a missed mark just means the cron may pick the row up
+  // a touch sooner. Don't fail the webhook over a logging-table write.
+  try {
+    await supabase
+      .from('billing_events')
+      .update({ last_attempted_at: new Date().toISOString() })
+      .eq('id', billingEventId);
+  } catch (markErr) {
+    Sentry.captureException(markErr, {
+      tags: { area: 'stripe.webhook.mark_attempt' },
+      extra: { billingEventId },
+    });
+  }
+}
+
+async function markSuccess(
+  supabase: SupabaseClient,
+  billingEventId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('billing_events')
+    .update({
+      processed_at: new Date().toISOString(),
+      processed_status: 'success',
+      last_error: null,
+    })
+    .eq('id', billingEventId);
+  if (error) {
+    // Surface the bookkeeping failure but don't 5xx — the side effects landed.
+    Sentry.captureException(error, {
+      tags: { area: 'stripe.webhook.mark_success' },
+      extra: { billingEventId },
+    });
+  }
+}
+
+async function markFailure(
+  supabase: SupabaseClient,
+  billingEventId: string,
+  err: unknown,
+): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  const safe = scrubString(message).slice(0, LAST_ERROR_MAX);
+  const { error } = await supabase
+    .from('billing_events')
+    .update({
+      processed_status: 'failed',
+      last_error: safe,
+    })
+    .eq('id', billingEventId);
+  if (error) {
+    Sentry.captureException(error, {
+      tags: { area: 'stripe.webhook.mark_failure' },
+      extra: { billingEventId },
+    });
   }
 }

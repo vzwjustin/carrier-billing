@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { ReportView } from '@/components/audits/report-view';
 import { trackServer } from '@/lib/analytics/events';
+import { hashTokenForAnalytics } from '@/lib/analytics/hash';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { buildReportData } from '@/reports/builder';
 import type {
@@ -150,7 +151,7 @@ export default async function ShareReportPage({
         name: 'report_viewed',
         properties: { auditId, isPublic: true },
       },
-      token,
+      hashTokenForAnalytics(token),
     );
   } catch {
     // ignore

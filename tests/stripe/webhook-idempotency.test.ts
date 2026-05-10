@@ -13,11 +13,17 @@ vi.mock('@/lib/stripe/client', () => ({
   }),
 }));
 
-// In-memory billing_events table to simulate the unique-constraint based
-// idempotency check. Pre-existence check returns the row if seen before;
-// insert appends to the in-memory store and returns a 23505 if a duplicate
-// id slips through (the race path).
-type BillingEventRow = { id: string; stripe_event_id: string };
+// In-memory billing_events table that models the unique-constraint dedup +
+// per-event processing state introduced in 0008. It is intentionally minimal
+// — only the row-shape the route actually reads/writes is supported.
+type BillingEventRow = {
+  id: string;
+  stripe_event_id: string;
+  processed_status: 'success' | 'failed' | null;
+  last_attempted_at: string | null;
+  processed_at: string | null;
+  last_error: string | null;
+};
 const billingEvents: BillingEventRow[] = [];
 
 const fromMock = vi.fn((_table: string) => ({
@@ -25,24 +31,61 @@ const fromMock = vi.fn((_table: string) => ({
     eq: (_col: string, val: string) => ({
       maybeSingle: async () => {
         const row = billingEvents.find((r) => r.stripe_event_id === val);
-        return { data: row ? { id: row.id } : null, error: null };
+        return row
+          ? { data: { id: row.id, processed_status: row.processed_status }, error: null }
+          : { data: null, error: null };
       },
     }),
   }),
-  insert: async (row: unknown) => {
-    const r = row as { stripe_event_id: string };
-    if (billingEvents.some((b) => b.stripe_event_id === r.stripe_event_id)) {
-      return {
-        data: null,
-        error: { code: '23505', message: 'duplicate' },
-      };
-    }
-    billingEvents.push({
-      id: `row_${billingEvents.length + 1}`,
-      stripe_event_id: r.stripe_event_id,
-    });
-    return { data: null, error: null };
-  },
+  insert: (row: unknown) => ({
+    select: (_cols: string) => ({
+      maybeSingle: async () => {
+        const r = row as { stripe_event_id: string };
+        if (billingEvents.some((b) => b.stripe_event_id === r.stripe_event_id)) {
+          return {
+            data: null,
+            error: { code: '23505', message: 'duplicate' },
+          };
+        }
+        const newRow: BillingEventRow = {
+          id: `row_${billingEvents.length + 1}`,
+          stripe_event_id: r.stripe_event_id,
+          processed_status: null,
+          last_attempted_at: null,
+          processed_at: null,
+          last_error: null,
+        };
+        billingEvents.push(newRow);
+        return {
+          data: { id: newRow.id, processed_status: newRow.processed_status },
+          error: null,
+        };
+      },
+    }),
+  }),
+  update: (patch: Record<string, unknown>) => ({
+    eq: async (_col: string, val: string) => {
+      const row = billingEvents.find((r) => r.id === val);
+      if (row) {
+        if ('processed_status' in patch) {
+          row.processed_status = patch['processed_status'] as
+            | 'success'
+            | 'failed'
+            | null;
+        }
+        if ('processed_at' in patch) {
+          row.processed_at = patch['processed_at'] as string | null;
+        }
+        if ('last_error' in patch) {
+          row.last_error = patch['last_error'] as string | null;
+        }
+        if ('last_attempted_at' in patch) {
+          row.last_attempted_at = patch['last_attempted_at'] as string | null;
+        }
+      }
+      return { error: null };
+    },
+  }),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -109,7 +152,8 @@ describe('POST /api/stripe/webhook — idempotency', () => {
     expect(firstJson).toEqual({ received: true });
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
 
-    // Replay — same event id. Pre-check should short-circuit, no handler.
+    // Replay — same event id. The first attempt marked the row processed=success,
+    // so the second should short-circuit before reaching the handler.
     constructEventMock.mockReturnValue(event);
     const second = await POST(makeRequest('{}', 'sig_ok'));
     expect(second.status).toBe(200);

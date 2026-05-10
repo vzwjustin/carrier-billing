@@ -18,7 +18,32 @@ const SECURITY_HEADERS = [
   },
 ];
 
-const nextConfig: NextConfig = {
+// Routes whose URL embeds a share token (either in the path, like /share/<token>,
+// or in a query string, like /api/audits/.../report.pdf?token=...) must not
+// leak that token via the Referer header — not even on same-origin navigation.
+// When two header entries match the same path and set the same key, the later
+// entry wins, so this overrides Referrer-Policy from SECURITY_HEADERS for these
+// routes only.
+const NO_REFERRER_HEADER = [
+  { key: 'Referrer-Policy', value: 'no-referrer' },
+];
+
+export const headersConfig = [
+  {
+    source: '/:path*',
+    headers: SECURITY_HEADERS,
+  },
+  {
+    source: '/share/:path*',
+    headers: NO_REFERRER_HEADER,
+  },
+  {
+    source: '/api/audits/:id*/report.pdf',
+    headers: NO_REFERRER_HEADER,
+  },
+];
+
+export const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     serverActions: {
@@ -30,12 +55,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [],
   },
   async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: SECURITY_HEADERS,
-      },
-    ];
+    return headersConfig;
   },
 };
 

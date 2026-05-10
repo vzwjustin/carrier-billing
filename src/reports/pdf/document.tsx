@@ -15,6 +15,7 @@ import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { ReactElement } from 'react';
 
 import { formatCents } from '@/lib/utils';
+import { FindingCard } from '@/reports/pdf/finding-card';
 import type { ReportData, Finding, Severity } from '@/reports/types';
 
 // -- Styles ----------------------------------------------------------------
@@ -26,18 +27,7 @@ const COLORS = {
   border: '#E2E8F0',
   page: '#FFFFFF',
   card: '#F8FAFC',
-  accent: '#0F172A',
 } as const;
-
-const SEVERITY: Record<
-  Severity,
-  { bg: string; text: string; label: string }
-> = {
-  high: { bg: '#FECACA', text: '#B91C1C', label: 'High' },
-  medium: { bg: '#FED7AA', text: '#B45309', label: 'Medium' },
-  low: { bg: '#BFDBFE', text: '#1D4ED8', label: 'Low' },
-  info: { bg: '#E5E5E5', text: '#525252', label: 'Info' },
-};
 
 const styles = StyleSheet.create({
   page: {
@@ -168,14 +158,7 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 4,
   },
-  // -- Finding cards ------------------------------------------------------
-  findingCard: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 6,
-    padding: 14,
-    marginBottom: 10,
-  },
+  // -- Account cards (executive-summary breakdown) ------------------------
   findingCardSmall: {
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -195,74 +178,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
-  badge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    marginRight: 8,
-  },
-  badgeText: {
-    fontSize: 8,
-    fontFamily: 'Helvetica-Bold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  findingTitle: {
-    fontSize: 12,
-    fontFamily: 'Helvetica-Bold',
-    color: COLORS.ink,
-    flex: 1,
-  },
   findingTitleSmall: {
     fontSize: 11,
     fontFamily: 'Helvetica-Bold',
     color: COLORS.ink,
     flex: 1,
   },
-  savings: {
-    fontSize: 11,
-    fontFamily: 'Helvetica-Bold',
-    color: '#047857',
-    textAlign: 'right',
-  },
   savingsSmall: {
     fontSize: 10,
     fontFamily: 'Helvetica-Bold',
     color: '#047857',
     textAlign: 'right',
-  },
-  findingBody: {
-    fontSize: 10,
-    color: COLORS.ink,
-    marginBottom: 6,
-  },
-  findingBodySmall: {
-    fontSize: 9,
-    color: COLORS.ink,
-    marginBottom: 4,
-  },
-  recommendBlock: {
-    backgroundColor: COLORS.card,
-    borderLeftWidth: 2,
-    borderLeftColor: COLORS.accent,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    marginBottom: 6,
-  },
-  recommendLabel: {
-    fontSize: 8,
-    color: COLORS.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  recommendText: {
-    fontSize: 10,
-    color: COLORS.ink,
-  },
-  recommendTextSmall: {
-    fontSize: 9,
-    color: COLORS.ink,
   },
   metaRow: {
     flexDirection: 'row',
@@ -340,11 +266,6 @@ function formatDate(value: string | null | undefined): string {
 function formatPeriod(start: string | null, end: string | null): string {
   if (!start && !end) return '—';
   return `${formatDate(start)} – ${formatDate(end)}`;
-}
-
-function confidencePercent(c: number): string {
-  const clamped = Math.max(0, Math.min(1, c));
-  return `${Math.round(clamped * 100)}%`;
 }
 
 function pluralize(n: number, singular: string, plural?: string): string {
@@ -534,80 +455,6 @@ function ExecutiveSummaryPage({
 
       <PageFooter auditId={audit.id} />
     </Page>
-  );
-}
-
-function SeverityBadge({ severity }: { severity: Severity }): ReactElement {
-  const palette = SEVERITY[severity];
-  return (
-    <View style={[styles.badge, { backgroundColor: palette.bg }]}>
-      <Text style={[styles.badgeText, { color: palette.text }]}>
-        {palette.label}
-      </Text>
-    </View>
-  );
-}
-
-function FindingCard({
-  finding,
-  small = false,
-}: {
-  finding: Finding;
-  small?: boolean;
-}): ReactElement {
-  const affectedLineCount = finding.affected_line_indexes.length;
-  const affectedAccountCount = finding.affected_account_indexes.length;
-
-  const cardStyle = small ? styles.findingCardSmall : styles.findingCard;
-  const titleStyle = small ? styles.findingTitleSmall : styles.findingTitle;
-  const bodyStyle = small ? styles.findingBodySmall : styles.findingBody;
-  const recoStyle = small ? styles.recommendTextSmall : styles.recommendText;
-  const savingsStyle = small ? styles.savingsSmall : styles.savings;
-
-  return (
-    <View style={cardStyle} wrap={false}>
-      <View style={styles.findingHeaderRow}>
-        <View style={styles.findingHeaderLeft}>
-          <SeverityBadge severity={finding.severity} />
-          <Text style={titleStyle}>{finding.title}</Text>
-        </View>
-        <Text style={savingsStyle}>
-          {formatCents(finding.estimated_monthly_savings_cents)}/mo
-        </Text>
-      </View>
-
-      <Text style={bodyStyle}>{finding.description}</Text>
-
-      <View style={styles.recommendBlock}>
-        <Text style={styles.recommendLabel}>Recommended action</Text>
-        <Text style={recoStyle}>{finding.recommended_action}</Text>
-      </View>
-
-      <View style={styles.metaRow}>
-        {affectedLineCount > 0 ? (
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>
-              {pluralize(affectedLineCount, 'line')} affected
-            </Text>
-          </View>
-        ) : null}
-        {affectedAccountCount > 0 ? (
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>
-              {pluralize(affectedAccountCount, 'account')} affected
-            </Text>
-          </View>
-        ) : null}
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>
-            Confidence {confidencePercent(finding.confidence)}
-          </Text>
-        </View>
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>{finding.rule_id}</Text>
-        </View>
-      </View>
-    </View>
   );
 }
 

@@ -42,7 +42,10 @@ export const ExtractedCreditSchema = z.object({
 export type ExtractedCredit = z.infer<typeof ExtractedCreditSchema>;
 
 export const ExtractedDppSchema = z.object({
-  device: z.string().min(1),
+  // Bound length so a model leak of full device/PII strings can't bloat logs
+  // or, via Sentry beforeSend, exfiltrate large bodies. 40 chars covers all
+  // canonical SKU strings ("iPhone 15 Pro Max 256GB" is 22).
+  device: z.string().min(1).max(40),
   monthly_cents: z.number().int().nonnegative(),
   remaining_payments: z.number().int().nonnegative().nullable(),
   total_payments: z.number().int().positive().nullable(),
@@ -54,8 +57,10 @@ export const ExtractedLineSchema = z.object({
     .string()
     .regex(/^\d{4}$/)
     .nullable(),
-  user_label: z.string().nullable(),
-  device: z.string().nullable(),
+  // Free-text PII risk: X12 REF*EM emits subscriber names verbatim.
+  // Bound length so an oversized payload can't be persisted or echoed in logs.
+  user_label: z.string().max(40).nullable(),
+  device: z.string().max(40).nullable(),
   plan_name: z.string().nullable(),
   plan_base_cents: z.number().int().nonnegative().nullable(),
   data_used_gb: z.number().nonnegative().nullable(),
@@ -73,13 +78,20 @@ export const ExtractedAccountSchema = z.object({
     .string()
     .regex(/^\d{4}$/)
     .nullable(),
-  label: z.string().nullable(),
+  label: z.string().max(40).nullable(),
   total_charges_cents: z.number().int().nonnegative(),
   taxes_fees_cents: z.number().int().nonnegative().nullable(),
   account_level_credits: z.array(ExtractedCreditSchema).default([]),
   lines: z.array(ExtractedLineSchema),
 });
 export type ExtractedAccount = z.infer<typeof ExtractedAccountSchema>;
+
+// Overall extraction confidence. Optional + treated as 'high' when absent so
+// fixtures and existing carrier normalizers do not have to be touched. When
+// post-extraction sanity checks (e.g. totals reconciliation) flag the bill
+// as suspect, the value is downgraded one tier (high→medium→low).
+export const BillConfidenceSchema = z.enum(['high', 'medium', 'low']);
+export type BillConfidence = z.infer<typeof BillConfidenceSchema>;
 
 export const ExtractedBillSchema = z.object({
   carrier: CarrierSchema,
@@ -88,6 +100,7 @@ export const ExtractedBillSchema = z.object({
   total_charges_cents: z.number().int().nonnegative(),
   accounts: z.array(ExtractedAccountSchema).min(1),
   notes: z.array(z.string()).default([]),
+  confidence: BillConfidenceSchema.optional(),
 });
 export type ExtractedBill = z.infer<typeof ExtractedBillSchema>;
 

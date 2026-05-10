@@ -10,6 +10,13 @@ type SendCall = { command: string; input: unknown };
 // Hoist mock-side state so `vi.mock` factories (which run before the rest of
 // the module body) can reference them. Without `vi.hoisted`, the classes
 // would be in the temporal-dead-zone when the factories execute.
+const { sentryCaptureException } = vi.hoisted(() => ({
+  sentryCaptureException: vi.fn(),
+}));
+vi.mock('@sentry/nextjs', () => ({
+  captureException: sentryCaptureException,
+}));
+
 const {
   textractSend,
   s3Send,
@@ -107,6 +114,7 @@ function recordCalls(mock: ReturnType<typeof vi.fn>): SendCall[] {
 beforeEach(() => {
   textractSend.mockReset();
   s3Send.mockReset();
+  sentryCaptureException.mockReset();
   __resetClientsForTests();
   // Restore default bucket before each test
   (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET =
@@ -265,6 +273,73 @@ describe('extractTextWithOCR — async path', () => {
       'PutObjectCommand',
       'DeleteObjectCommand',
     ]);
+  });
+
+  it('logs S3 cleanup failure to Sentry but still returns the OCR result', async () => {
+    // Put succeeds, Delete fails — cleanup error must not poison the result.
+    s3Send.mockResolvedValueOnce({}); // Put
+    s3Send.mockRejectedValueOnce(new Error('AccessDenied: cannot delete'));
+
+    textractSend.mockResolvedValueOnce({ JobId: 'job-cleanup' });
+    textractSend.mockResolvedValueOnce({
+      JobStatus: 'SUCCEEDED',
+      Blocks: [{ BlockType: 'LINE', Text: 'Survived cleanup error' }],
+    });
+
+    const out = await extractTextWithOCR(asyncBuffer());
+
+    // OCR result returned despite cleanup failure
+    expect(out).toBe('Survived cleanup error');
+
+    // Sentry was called with warning level, module/op tags, and PII-free extra
+    expect(sentryCaptureException).toHaveBeenCalledTimes(1);
+    const [errArg, ctx] = sentryCaptureException.mock.calls[0] as [
+      Error,
+      {
+        level: string;
+        tags: Record<string, string>;
+        extra: Record<string, string>;
+      },
+    ];
+    expect(errArg).toBeInstanceOf(Error);
+    expect(ctx.level).toBe('warning');
+    expect(ctx.tags).toEqual({ module: 'extraction.ocr', op: 's3_cleanup' });
+    expect(ctx.extra).toEqual({
+      bucket: 'carrieraudit-textract-staging-test',
+      keyPrefix: 'carrieraudit/textract-staging/',
+    });
+    // Defense in depth: full S3 key (which embeds the random UUID) must NOT
+    // appear anywhere in the captured payload.
+    const payload = JSON.stringify(ctx);
+    expect(payload).not.toMatch(/\.pdf/);
+
+    // Both Put and Delete commands were attempted in that order
+    const s3Calls = recordCalls(s3Send);
+    expect(s3Calls.map((c) => c.command)).toEqual([
+      'PutObjectCommand',
+      'DeleteObjectCommand',
+    ]);
+  });
+
+  it('logs cleanup failure to Sentry even when the OCR job itself failed', async () => {
+    // OCR fails AND cleanup fails — the original OCR error must propagate,
+    // and the cleanup failure must be reported to Sentry (not lost).
+    s3Send.mockResolvedValueOnce({}); // Put
+    s3Send.mockRejectedValueOnce(new Error('cleanup boom'));
+
+    textractSend.mockRejectedValueOnce(new Error('textract down'));
+
+    await expect(extractTextWithOCR(asyncBuffer())).rejects.toBeInstanceOf(
+      OcrError,
+    );
+
+    expect(sentryCaptureException).toHaveBeenCalledTimes(1);
+    const [, ctx] = sentryCaptureException.mock.calls[0] as [
+      Error,
+      { level: string; tags: Record<string, string> },
+    ];
+    expect(ctx.level).toBe('warning');
+    expect(ctx.tags).toEqual({ module: 'extraction.ocr', op: 's3_cleanup' });
   });
 
   it('times out after 5 minutes of IN_PROGRESS polling', async () => {

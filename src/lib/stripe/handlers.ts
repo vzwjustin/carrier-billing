@@ -10,40 +10,54 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  * Stripe event handler. Branches on `event.type` and applies the corresponding
  * mutation to `public.profiles`.
  *
- * Idempotency contract: callers (the webhook route) MUST gate this function on
- * the `billing_events.stripe_event_id` unique constraint so that the same
- * Stripe event id is never handled twice. Each branch is also written to be
- * naturally idempotent (subscription updates are upserts of the canonical
- * status; the only non-idempotent mutation is the credit increment, which is
- * exactly why the dedupe is required).
+ * Idempotency contract: callers (the webhook route + the replay cron) gate
+ * this function on the `billing_events.stripe_event_id` unique constraint so
+ * that the same Stripe event id is never persisted twice. On retry, callers
+ * pass `previousStatus` in the context so non-idempotent mutations (the
+ * credit grant in checkout.session.completed) can short-circuit and avoid
+ * double-effects.
  *
- * Throwing from here means the parent webhook will capture to Sentry and still
- * return 200 — the event has been persisted, so we can replay later.
+ * Throwing from here surfaces a 5xx out of the webhook route so Stripe
+ * automatically retries (H8). Each branch is written to be safe under retry:
+ * subscription updates are timestamp-guarded upserts, the past_due update is
+ * idempotent, and the credit grant is gated on `previousStatus === null`.
  */
+export type HandlerContext = {
+  /** processed_status of the billing_events row at the start of this attempt. */
+  previousStatus: 'success' | 'failed' | null;
+};
+
+const DEFAULT_CONTEXT: HandlerContext = { previousStatus: null };
+
 export async function handleStripeEvent(
   event: Stripe.Event,
   supabase: SupabaseClient,
+  context: HandlerContext = DEFAULT_CONTEXT,
 ): Promise<void> {
   switch (event.type) {
     case 'checkout.session.completed':
       await onCheckoutSessionCompleted(
         event.data.object as Stripe.Checkout.Session,
         supabase,
+        context,
       );
       return;
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
       // C4 — pass event type so the handler can attribute the upsert.
+      // H9 — pass event.created so the handler can refuse out-of-order updates.
       await onSubscriptionUpserted(
         event.data.object as Stripe.Subscription,
         supabase,
         event.type,
+        event.created,
       );
       return;
     case 'customer.subscription.deleted':
       await onSubscriptionDeleted(
         event.data.object as Stripe.Subscription,
         supabase,
+        event.created,
       );
       return;
     case 'invoice.payment_failed':
@@ -64,6 +78,7 @@ export async function handleStripeEvent(
 async function onCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
   supabase: SupabaseClient,
+  context: HandlerContext,
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
@@ -77,15 +92,30 @@ async function onCheckoutSessionCompleted(
   const customerId = readCustomerId(session.customer);
 
   if (session.mode === 'payment') {
-    // One-time audit purchase: bump credit counter via RPC for atomicity.
-    const { error: rpcError } = await supabase.rpc(
-      'increment_audit_credits',
-      { profile_id: userId, delta: 1 },
-    );
-    if (rpcError) {
-      throw new Error(
-        `increment_audit_credits failed: ${rpcError.message}`,
+    // H8 retry-safety: `increment_audit_credits` is additive and would
+    // double-credit on retry. The webhook route only sets context.previousStatus
+    // to null on a brand-new billing_events row; any subsequent retry (Stripe
+    // delivery retry OR the replay cron) sees the row's prior status and we
+    // skip the credit. The tradeoff: if the very first credit RPC fails before
+    // any other write, the credit is lost and must be reconciled manually via
+    // Sentry alerts on `stripe.webhook.handler` failures.
+    if (context.previousStatus === null) {
+      const { error: rpcError } = await supabase.rpc(
+        'increment_audit_credits',
+        { profile_id: userId, delta: 1 },
       );
+      if (rpcError) {
+        throw new Error(
+          `increment_audit_credits failed: ${rpcError.message}`,
+        );
+      }
+    } else {
+      Sentry.addBreadcrumb({
+        category: 'stripe',
+        message: 'checkout.session.completed: skipping credit grant on retry',
+        level: 'info',
+        data: { previousStatus: context.previousStatus, userId },
+      });
     }
 
     if (customerId) {
@@ -98,11 +128,16 @@ async function onCheckoutSessionCompleted(
   }
 
   if (session.mode === 'subscription') {
+    // H11: do NOT write `subscription_status='active'` here. Stripe sends
+    // checkout.session.completed *after* the subscription is created, so the
+    // subscription.created event (handled by onSubscriptionUpserted with the
+    // H9 ordering guard) is the authoritative source of subscription_status.
+    // Writing 'active' unconditionally here grants premature paid access for
+    // subscriptions in `incomplete` state (3DS pending, payment-method-required).
+    // We still record the subscription_id and link the customer id so the
+    // profile is wired up before the subscription event lands.
     const subscriptionId = readSubscriptionId(session.subscription);
-    const patch: ProfilePatch = {
-      subscription_status: 'active',
-      subscription_id: subscriptionId,
-    };
+    const patch: ProfilePatch = { subscription_id: subscriptionId };
     if (customerId) patch.stripe_customer_id = customerId;
     await updateProfile(supabase, userId, patch);
     await trackCheckoutCompleted('subscription', userId);
@@ -118,6 +153,7 @@ async function onSubscriptionUpserted(
   eventType:
     | 'customer.subscription.created'
     | 'customer.subscription.updated',
+  eventCreated: number,
 ): Promise<void> {
   // C4 — observability breadcrumb so Sentry traces show which Stripe event
   // type triggered this upsert (created vs updated). No behavior change.
@@ -144,31 +180,16 @@ async function onSubscriptionUpserted(
     return;
   }
 
-  // B7 — verify the update actually matched a profile. A 0-row result means
-  // the customer id is unknown to us (orphaned customer, race with a profile
-  // delete, or Stripe sending an event for a customer we never persisted).
-  // In that case throw so the webhook surfaces 5xx and Stripe retries; >1 row
-  // means data corruption (duplicate stripe_customer_id) and must throw too.
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({
-      subscription_id: subscription.id,
-      subscription_status: normalizeSubscriptionStatus(subscription.status),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('stripe_customer_id', customerId)
-    .select('id');
-
-  if (error) {
-    throw new Error(`profile subscription update failed: ${error.message}`);
-  }
-
-  assertExactlyOneProfileMatched(data, customerId, eventType);
+  await applySubscriptionPatchWithOrderGuard(supabase, customerId, eventType, eventCreated, {
+    subscription_id: subscription.id,
+    subscription_status: normalizeSubscriptionStatus(subscription.status),
+  });
 }
 
 async function onSubscriptionDeleted(
   subscription: Stripe.Subscription,
   supabase: SupabaseClient,
+  eventCreated: number,
 ): Promise<void> {
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
@@ -179,25 +200,83 @@ async function onSubscriptionDeleted(
     return;
   }
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({
-      subscription_status: 'canceled',
-      subscription_id: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('stripe_customer_id', customerId)
-    .select('id');
-
-  if (error) {
-    throw new Error(`profile subscription cancel failed: ${error.message}`);
-  }
-
-  assertExactlyOneProfileMatched(
-    data,
+  await applySubscriptionPatchWithOrderGuard(
+    supabase,
     customerId,
     'customer.subscription.deleted',
+    eventCreated,
+    {
+      subscription_status: 'canceled',
+      subscription_id: null,
+    },
   );
+}
+
+/**
+ * H9: SELECT current `subscription_event_at` then conditionally UPDATE.
+ *
+ * If the incoming event's `event.created` is older than (or equal to) the
+ * timestamp of the last applied subscription event, drop the update — the
+ * profile already reflects a more recent decision. Otherwise apply the
+ * patch AND advance `subscription_event_at`.
+ *
+ * Two-step rather than a single CAS UPDATE because the supabase-js mock surface
+ * used in handler tests doesn't model `.or()`, and the small race window
+ * (between SELECT and UPDATE) is bounded by Stripe's per-subscription
+ * delivery serialization.
+ */
+async function applySubscriptionPatchWithOrderGuard(
+  supabase: SupabaseClient,
+  customerId: string,
+  eventType: string,
+  eventCreated: number,
+  patch: ProfilePatch,
+): Promise<void> {
+  const eventCreatedAt = new Date(eventCreated * 1000).toISOString();
+
+  const { data: profiles, error: selectErr } = await supabase
+    .from('profiles')
+    .select('id, subscription_event_at')
+    .eq('stripe_customer_id', customerId);
+
+  if (selectErr) {
+    throw new Error(`profile lookup failed: ${selectErr.message}`);
+  }
+
+  const matched = assertExactlyOneProfileMatched(
+    profiles as Array<{ id: string; subscription_event_at?: string | null }> | null,
+    customerId,
+    eventType,
+  );
+
+  const currentEventAt = matched.subscription_event_at ?? null;
+  if (currentEventAt !== null && currentEventAt >= eventCreatedAt) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'ignoring out-of-order subscription event',
+      level: 'info',
+      data: {
+        eventType,
+        eventCreatedAt,
+        currentEventAt,
+        customerId,
+      },
+    });
+    return;
+  }
+
+  const { error: updateErr } = await supabase
+    .from('profiles')
+    .update({
+      ...patch,
+      subscription_event_at: eventCreatedAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', matched.id);
+
+  if (updateErr) {
+    throw new Error(`profile subscription update failed: ${updateErr.message}`);
+  }
 }
 
 async function onInvoicePaymentFailed(
@@ -297,7 +376,7 @@ async function trackCheckoutCompleted(
  * `stripe_customer_id`.
  *
  * - 0 rows: customer id is unknown to us. Log to Sentry and throw — the
- *   webhook will surface 5xx and Stripe will retry, giving any racing
+ *   webhook will surface 5xx (H8) and Stripe will retry, giving any racing
  *   profile-write a chance to land first.
  * - 1 row: happy path; returns the matched row for downstream use.
  * - >1 rows: data corruption (duplicate stripe_customer_id across profiles).

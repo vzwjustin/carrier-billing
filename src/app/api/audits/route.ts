@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -126,9 +128,11 @@ export async function POST(request: Request): Promise<Response> {
     // this user, but the RPC is the atomic source of truth — if a concurrent
     // creation drained the credits between the gate read and now, the RPC
     // throws `no_credits` and we roll back the audit row below.
+    let creditConsumed = false;
     if (gate.reason === 'credit') {
       try {
         await decrementAuditCreditAtomically(user.id);
+        creditConsumed = true;
       } catch {
         await supabase.from('audits').delete().eq('id', auditId);
         return NextResponse.json(
@@ -149,6 +153,27 @@ export async function POST(request: Request): Promise<Response> {
     if (signError || !signed) {
       // Clean up the orphaned audit row so the user can retry cleanly.
       await supabase.from('audits').delete().eq('id', auditId);
+      // If we consumed a credit on this request, refund it. The orphan-cleanup
+      // cron only sees rows that survive — since we just deleted the row, the
+      // credit would otherwise be lost. Subscription users never spent a
+      // credit, so nothing to refund there.
+      if (creditConsumed) {
+        try {
+          const admin = getAdminClient();
+          const { error: refundError } = await admin.rpc(
+            'increment_audit_credits',
+            { profile_id: user.id, delta: 1 },
+          );
+          if (refundError) {
+            throw new Error(refundError.message);
+          }
+        } catch (refundErr) {
+          Sentry.captureException(refundErr, {
+            tags: { surface: 'audits.create.refund' },
+            extra: { userId: user.id, auditId },
+          });
+        }
+      }
       return NextResponse.json(
         { error: 'Failed to create upload URL.' },
         { status: 500 },
