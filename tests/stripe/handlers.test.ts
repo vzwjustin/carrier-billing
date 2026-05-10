@@ -416,24 +416,12 @@ describe('handleStripeEvent', () => {
     email: string | null,
     subscriptionEventAt: string | null = null,
   ) {
-    const queue: Array<Array<Record<string, unknown>>> = [
-      [{ id: profileId, subscription_event_at: subscriptionEventAt }],
-      [{ id: profileId, email }],
+    // Production now does ONE select (the H9 guard) and the email comes back
+    // from the UPDATE's .select('id, email') clause — no second SELECT.
+    client.__nextSelectRows = [
+      { id: profileId, subscription_event_at: subscriptionEventAt },
     ];
-    // Wrap in a function so the mock keeps using the SAME function reference
-    // across multiple selects (the mock only resets the slot when the value
-    // is non-function — `typeof next === 'function'` branches re-call it).
-    // We re-assign __nextSelectRows after each consumption.
-    const reArm = () => {
-      client.__nextSelectRows = consumer;
-    };
-    const consumer = (): Array<Record<string, unknown>> => {
-      const rows = queue.shift() ?? [];
-      // Re-arm for the next call so the mock's null-after-consume doesn't bite.
-      reArm();
-      return rows;
-    };
-    client.__nextSelectRows = consumer;
+    client.__nextUpdateRows = [{ id: profileId, email }];
   }
 
   it('invoice.payment_failed marks the profile past_due (H2 routes through CAS guard)', async () => {
@@ -455,10 +443,11 @@ describe('handleStripeEvent', () => {
     expect(update?.patch['subscription_event_at']).toEqual(expect.any(String));
     expect(update?.or).toMatch(/subscription_event_at\.is\.null/);
     expect(update?.or).toMatch(/subscription_event_at\.lt\./);
-    // Two SELECTs: the guard read + the post-CAS email re-fetch.
-    expect(client.__selects).toHaveLength(2);
+    // One SELECT — the H9 guard. The email comes back from the UPDATE's
+    // own `.select('id, email')` clause, eliminating the post-CAS re-fetch.
+    expect(client.__selects).toHaveLength(1);
     expect(client.__selects[0]?.cols).toBe('id, subscription_event_at');
-    expect(client.__selects[1]?.cols).toBe('id, email');
+    expect(update?.select).toBe('id, email');
   });
 
   it('invoice.payment_failed skips past_due flip when fresher subscription event already landed (H2)', async () => {

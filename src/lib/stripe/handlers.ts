@@ -385,13 +385,13 @@ async function onInvoicePaymentFailed(
     .or(
       `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
     )
-    .select('id');
+    .select('id, email');
 
   if (updateErr) {
     throw new Error(`profile past_due update failed: ${updateErr.message}`);
   }
 
-  const rows = (updatedRows ?? []) as Array<{ id: string }>;
+  const rows = (updatedRows ?? []) as Array<{ id: string; email?: string | null }>;
   if (rows.length === 0) {
     // Fresher event won between SELECT and UPDATE — skip the email too.
     Sentry.addBreadcrumb({
@@ -403,23 +403,7 @@ async function onInvoicePaymentFailed(
     return;
   }
 
-  // Re-fetch the profile to get the email (the CAS UPDATE only returned id).
-  const { data: emailRows, error: emailErr } = await supabase
-    .from('profiles')
-    .select('id, email')
-    .eq('id', matchedForGuard.id);
-
-  if (emailErr) {
-    throw new Error(`profile email lookup failed: ${emailErr.message}`);
-  }
-
-  const emailMatched = assertExactlyOneProfileMatched(
-    emailRows as Array<{ id: string; email?: string | null }> | null,
-    customerId,
-    'invoice.payment_failed',
-  );
-
-  const profile = emailMatched as { id: string; email?: string | null };
+  const profile = rows[0]!;
   const customerEmail = profile.email ?? null;
 
   if (!customerEmail) {
