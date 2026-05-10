@@ -43,10 +43,6 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: {
       getUser: () => getUserMock(),
     },
-    from: fromMock,
-    storage: {
-      from: storageFromMock,
-    },
   }),
 }));
 
@@ -63,7 +59,11 @@ vi.mock('@/lib/access/decrement', () => ({
 const adminRpcMock =
   vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
 vi.mock('@/lib/supabase/admin', () => ({
-  getAdminClient: () => ({ rpc: adminRpcMock }),
+  getAdminClient: () => ({
+    rpc: adminRpcMock,
+    from: fromMock,
+    storage: { from: storageFromMock },
+  }),
 }));
 
 const sentryCaptureMock = vi.fn();

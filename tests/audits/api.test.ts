@@ -17,8 +17,7 @@ type SignedUrlResult = {
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditsInsertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
 const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
-const createSignedUploadUrlMock =
-  vi.fn<(path: string) => Promise<SignedUrlResult>>();
+const createSignedUploadUrlMock = vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
 const fromMock = vi.fn((_table: string) => ({
   insert: (row: unknown) => auditsInsertMock(row),
@@ -36,6 +35,11 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: {
       getUser: () => getUserMock(),
     },
+  }),
+}));
+
+vi.mock('@/lib/supabase/admin', () => ({
+  getAdminClient: () => ({
     from: fromMock,
     storage: {
       from: storageFromMock,
@@ -103,32 +107,24 @@ describe('POST /api/audits', () => {
   });
 
   it('returns 400 when file size exceeds 25 MB', async () => {
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 26 * 1024 * 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 26 * 1024 * 1024 }));
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when filename is not a PDF', async () => {
-    const res = await POST(
-      makeRequest({ filename: 'bill.docx', fileSize: 1024 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.docx', fileSize: 1024 }));
     expect(res.status).toBe(400);
   });
 
   it('returns 401 when there is no authenticated user', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
     expect(res.status).toBe(401);
   });
 
   it('returns auditId and uploadUrl on the happy path', async () => {
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
     expect(res.status).toBe(200);
 
     const json = (await res.json()) as {
@@ -147,10 +143,7 @@ describe('POST /api/audits', () => {
 
     // Confirm we wrote an audits row with the expected shape.
     expect(auditsInsertMock).toHaveBeenCalledTimes(1);
-    const inserted = auditsInsertMock.mock.calls[0]?.[0] as Record<
-      string,
-      unknown
-    >;
+    const inserted = auditsInsertMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(inserted['user_id']).toBe('user-uuid-1');
     expect(inserted['status']).toBe('pending');
     expect(inserted['original_filename']).toBe('bill.pdf');
@@ -160,9 +153,7 @@ describe('POST /api/audits', () => {
 
     // And we requested a signed upload URL for the same storage path.
     expect(createSignedUploadUrlMock).toHaveBeenCalledTimes(1);
-    expect(createSignedUploadUrlMock.mock.calls[0]?.[0]).toBe(
-      inserted['storage_path'],
-    );
+    expect(createSignedUploadUrlMock.mock.calls[0]?.[0]).toBe(inserted['storage_path']);
   });
 
   it('returns 400 on invalid JSON body', async () => {

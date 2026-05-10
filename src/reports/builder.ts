@@ -87,9 +87,7 @@ export function buildReportData(input: BuildReportInput): ReportData {
     const bucket = bySeverity[sev];
     bucket.sort((a, b) => {
       if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
-        return (
-          b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents
-        );
+        return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
       }
       return a.title.localeCompare(b.title);
     });
@@ -103,7 +101,7 @@ export function buildReportData(input: BuildReportInput): ReportData {
 
   const reportAccounts: ReportBillAccount[] = accounts.map((a) => ({
     id: a.id,
-    label: a.label,
+    label: a.account_label,
     account_number_masked: a.account_number_masked,
     total_charges_cents: a.total_charges_cents,
     lineCount: linesPerAccount.get(a.id) ?? 0,

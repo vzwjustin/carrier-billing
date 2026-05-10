@@ -28,6 +28,8 @@
  * on 5xx, which would be worse than dropping a single email and surfacing
  * via Sentry.
  */
+import { createHash } from 'node:crypto';
+
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -65,12 +67,19 @@ function safeFilename(input: string): string {
   return cleaned.slice(0, 200) || 'bill.pdf';
 }
 
-function isPdfAttachment(att: {
-  content_type: string;
-  filename: string;
-}): boolean {
+function isPdfAttachment(att: { content_type: string; filename: string }): boolean {
   if (att.content_type.toLowerCase() === 'application/pdf') return true;
   return att.filename.toLowerCase().endsWith('.pdf');
+}
+
+function hashInboundPayload(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
+  );
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -80,10 +89,7 @@ export async function POST(request: Request): Promise<Response> {
     // here since the request itself is well-formed; the operator just hasn't
     // turned it on. Providers won't retry forever on 503 but they shouldn't
     // be sending us anything in this case anyway.
-    return NextResponse.json(
-      { error: 'inbound_disabled' },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: 'inbound_disabled' }, { status: 503 });
   }
 
   const signature = request.headers.get('x-inbound-signature');
@@ -173,16 +179,26 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ ok: true, skipped: `gate_${gate.reason}` });
     }
 
+    const eventHash = hashInboundPayload(raw);
+    const dedupeInsert = await admin.from('inbound_email_events').insert({
+      event_hash: eventHash,
+      user_id: userId,
+    });
+    if (dedupeInsert.error) {
+      if (isUniqueViolation(dedupeInsert.error)) {
+        return NextResponse.json({ ok: true, deduped: true });
+      }
+      throw new Error(`inbound dedupe insert failed: ${dedupeInsert.error.message}`);
+    }
+
     const auditId = crypto.randomUUID();
     const cleanName = safeFilename(pdf.filename);
     const storagePath = `${userId}/${auditId}/${cleanName}`;
 
-    const { error: uploadErr } = await admin.storage
-      .from('bills')
-      .upload(storagePath, bytes, {
-        contentType: 'application/pdf',
-        upsert: false,
-      });
+    const { error: uploadErr } = await admin.storage.from('bills').upload(storagePath, bytes, {
+      contentType: 'application/pdf',
+      upsert: false,
+    });
     if (uploadErr) {
       throw new Error(`storage upload failed: ${uploadErr.message}`);
     }
@@ -199,6 +215,17 @@ export async function POST(request: Request): Promise<Response> {
       // Roll back the storage upload so we don't leak orphaned objects.
       await admin.storage.from('bills').remove([storagePath]);
       throw new Error(`audit insert failed: ${insertErr.message}`);
+    }
+
+    const dedupeUpdate = await admin
+      .from('inbound_email_events')
+      .update({ audit_id: auditId })
+      .eq('event_hash', eventHash);
+    if (dedupeUpdate.error) {
+      Sentry.captureException(dedupeUpdate.error, {
+        tags: { surface: 'inbound.email.dedupe_update' },
+        extra: { userId, auditId },
+      });
     }
 
     if (gate.reason === 'credit') {
@@ -218,6 +245,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     await inngest.send({
+      id: `${auditId}-uploaded`,
       name: 'bill.uploaded',
       data: { auditId, userId, storagePath },
     });

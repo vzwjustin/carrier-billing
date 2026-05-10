@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Repository Pointers
 
@@ -27,7 +27,7 @@ This repo uses **pnpm 10.33.0** and **Node 22+**. All commands run from `carrier
 | Watch mode | `pnpm test:watch` |
 | Single test file | `pnpm test -- tests/rules/expired-promo-credit.test.ts` |
 | Single test by name | `pnpm test -- -t "fires on expired credit"` |
-| Gated LLM tests (real Claude API, costs credit) | `RUN_LLM_TESTS=1 pnpm test:llm` |
+| Gated LLM tests (real Codex API, costs credit) | `RUN_LLM_TESTS=1 pnpm test:llm` |
 | E2E | `pnpm test:e2e` (Playwright; needs dev server unless `RUN_FULL_E2E=1`) |
 | Single E2E spec | `pnpm test:e2e tests/e2e/happy-path.spec.ts` |
 | Regenerate fixtures | `pnpm fixtures:generate` |
@@ -45,7 +45,7 @@ stripe listen --forward-to localhost:3000/api/stripe/webhook
 
 ## Architecture — Big Picture
 
-CarrierAudit ingests a PDF wireless bill, extracts structured data with Claude Sonnet, runs a rules engine, and produces a savings report. The flow is intentionally split across an HTTP request and an Inngest worker so the LLM/OCR/rules pipeline runs durably.
+CarrierAudit ingests a PDF wireless bill, extracts structured data with Codex Sonnet, runs a rules engine, and produces a savings report. The flow is intentionally split across an HTTP request and an Inngest worker so the LLM/OCR/rules pipeline runs durably.
 
 ### Request → Worker handoff
 
@@ -59,7 +59,7 @@ Every side effect inside `process-bill` is in `step.run` so it survives retries.
 
 ### Extraction pipeline (`src/extraction/`)
 
-`runExtractionPipeline` orchestrates: `pdf.ts` (pdf-parse text + page count) → `detect.ts` (carrier from header heuristics) → `ocr.ts` (Textract sync ≤5MB / async via S3 >5MB, only when text < threshold) → `llm.ts` (Claude Sonnet with native PDF input + retry-on-validation-failure) → carrier-specific normalizer (`carriers/{verizon,att,tmobile}.ts`) → `ExtractedBillSchema.parse` (`schema.ts`).
+`runExtractionPipeline` orchestrates: `pdf.ts` (pdf-parse text + page count) → `detect.ts` (carrier from header heuristics) → `ocr.ts` (Textract sync ≤5MB / async via S3 >5MB, only when text < threshold) → `llm.ts` (Codex Sonnet with native PDF input + retry-on-validation-failure) → carrier-specific normalizer (`carriers/{verizon,att,tmobile}.ts`) → `ExtractedBillSchema.parse` (`schema.ts`).
 
 The schema is the contract between the LLM and the rest of the system. Treat it like an API. Money is signed integer cents; credits are constrained to `<= 0`; phone/account fields are last-4 only.
 
@@ -116,7 +116,7 @@ Full rationale in [`SPEC.md` §1](./SPEC.md). The non-negotiables for day-to-day
 
 - **Unit (Vitest):** every rule, schema validation, helpers. Mocks for Supabase/Anthropic/Stripe clients — see `tests/audits/api.test.ts` for the established mocking patterns.
 - **Integration:** `runRules` against full bill fixture; Inngest functions with mocked clients; route handlers via direct function call.
-- **LLM extraction (gated, costs API credit):** `RUN_LLM_TESTS=1 pnpm test:llm` — runs real Claude against fixtures and asserts schema parses, totals match within $1.
+- **LLM extraction (gated, costs API credit):** `RUN_LLM_TESTS=1 pnpm test:llm` — runs real Codex against fixtures and asserts schema parses, totals match within $1.
 - **E2E (Playwright):** happy-path signup → buy → upload → see report → download PDF. Public-surface specs (`landing.spec.ts`, `health.spec.ts`) run without auth.
 - **Multi-tenant isolation:** `tests/audits/rls-isolation.test.ts` simulates user A reading user B's audit and asserts 404 across every authenticated audit route.
 
