@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
@@ -48,6 +49,9 @@ export const headersConfig = [
 
 export const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Pin tracing root to this project so Next doesn't walk up to a stray
+  // ~/package-lock.json (or similar) when inferring the workspace root.
+  outputFileTracingRoot: path.join(__dirname),
   experimental: {
     serverActions: {
       bodySizeLimit: '30mb',
