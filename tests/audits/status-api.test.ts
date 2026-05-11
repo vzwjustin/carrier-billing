@@ -8,6 +8,7 @@ type GetUserResult = {
 };
 
 type AuditRow = {
+  user_id: string;
   status: string;
   carrier: string | null;
   line_count: number | null;
@@ -76,6 +77,7 @@ function makeRequest(): Request {
 
 function emptyAudit(overrides: Partial<AuditRow>): AuditRow {
   return {
+    user_id: 'user-uuid-1',
     status: 'pending',
     carrier: null,
     line_count: null,

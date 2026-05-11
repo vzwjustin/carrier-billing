@@ -5,10 +5,9 @@ import { updateSession } from '@/lib/supabase/middleware';
 /**
  * Build the Content-Security-Policy header for every matched request.
  *
- * Shipped policy (intentionally permissive for now):
- *   - `script-src 'self' 'unsafe-inline' 'unsafe-eval'` plus an explicit
- *     vendor-host allowlist (Stripe, PostHog). Required by Next.js 15's
- *     inline boot scripts and the Stripe.js / PostHog browser SDKs.
+ * Shipped policy:
+ *   - `script-src 'self' 'unsafe-inline'` plus an explicit vendor-host
+ *     allowlist (Stripe, PostHog). Next.js 15 still needs inline boot scripts.
  *   - `style-src 'self' 'unsafe-inline'` — Next.js 15 inlines style
  *     attributes for several primitives.
  *   - No nonce, no `'strict-dynamic'`. The middleware does NOT generate a

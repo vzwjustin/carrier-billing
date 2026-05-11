@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { inngest } from '../client';
 import { getAdminClient } from '@/lib/supabase/admin';
 import {
@@ -850,19 +852,16 @@ async function persistBill(
     }
   }
 
-  // Insert accounts. We need their generated IDs back to link children.
   const accountInsertRows = bill.accounts.map((account) =>
-    accountToRow(auditId, account),
+    withGeneratedId(accountToRow(auditId, account)),
   );
-  const insertedAccounts = await insertAndReturnIds(
-    'bill_accounts',
-    accountInsertRows,
-  );
+  await insertRows('bill_accounts', accountInsertRows);
+  const insertedAccounts = accountInsertRows.map((row) => row.id);
 
   // Build line rows for ALL accounts in one batch, remembering which line
   // belongs to which (accountIndex, lineIndex) pair so we can wire up
   // features/credits/dpp_installments after the insert.
-  type LineInsertRow = ReturnType<typeof lineToRow>;
+  type LineInsertRow = ReturnType<typeof lineToRow> & { id: string };
   const allLineRows: LineInsertRow[] = [];
   const lineOrigin: Array<{ accountIndex: number; lineIndex: number }> = [];
 
@@ -874,15 +873,13 @@ async function persistBill(
       );
     }
     account.lines.forEach((line, lineIndex) => {
-      allLineRows.push(lineToRow(auditId, accountId, line));
+      allLineRows.push(withGeneratedId(lineToRow(auditId, accountId, line)));
       lineOrigin.push({ accountIndex, lineIndex });
     });
   });
 
-  const insertedLineIds =
-    allLineRows.length > 0
-      ? await insertAndReturnIds('bill_lines', allLineRows)
-      : [];
+  await insertRows('bill_lines', allLineRows);
+  const insertedLineIds = allLineRows.map((row) => row.id);
 
   // Now: features, credits (line + account-level), dpp_installments.
   type Row = Record<string, unknown>;
@@ -1208,37 +1205,23 @@ export const __testables = {
   withTimeout,
   ExtractionTimeoutError,
   EXTRACTION_TIMEOUT_MS,
+  withGeneratedId,
 };
 
-/**
- * Insert rows and return the generated `id`s in the same order they were sent.
- * Supabase preserves request order in the response, so positional FK linking
- * is safe without doing one round-trip per parent row.
- */
-async function insertAndReturnIds(
+function withGeneratedId<T extends Record<string, unknown>>(
+  row: T,
+): T & { id: string } {
+  return { ...row, id: randomUUID() };
+}
+
+async function insertRows(
   table: 'bill_accounts' | 'bill_lines',
   rows: Array<Record<string, unknown>>,
-): Promise<string[]> {
-  if (rows.length === 0) return [];
+): Promise<void> {
+  if (rows.length === 0) return;
   const supabase = getAdminClient();
-  const { data, error } = await supabase.from(table).insert(rows).select('id');
+  const { error } = await supabase.from(table).insert(rows);
   if (error) {
     throw new Error(`insert ${table} failed: ${error.message}`);
   }
-  if (!data) {
-    throw new Error(`insert ${table} returned no data`);
-  }
-  const ids: string[] = [];
-  for (const row of data as Array<{ id: unknown }>) {
-    if (typeof row.id !== 'string') {
-      throw new Error(`insert ${table} returned non-string id`);
-    }
-    ids.push(row.id);
-  }
-  if (ids.length !== rows.length) {
-    throw new Error(
-      `insert ${table} returned ${ids.length} ids for ${rows.length} rows`,
-    );
-  }
-  return ids;
 }

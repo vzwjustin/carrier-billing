@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -22,6 +23,40 @@ const SAFE_FILENAME_RE = /[^A-Za-z0-9._-]+/g;
 /** Extensions accepted at the upload route. EDI 811 files come in as plain
  *  ASCII; the worker also content-sniffs to guard against confused extensions. */
 const ACCEPTED_EXTENSIONS = ['.pdf', '.edi', '.x12', '.811', '.txt'] as const;
+
+async function refundConsumedCredit(
+  admin: ReturnType<typeof getAdminClient>,
+  userId: string,
+  auditId: string,
+  surface: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.rpc('increment_audit_credits', {
+      profile_id: userId,
+      delta: 1,
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { userId, auditId },
+    });
+  }
+}
+
+async function markCreditConsumed(
+  admin: ReturnType<typeof getAdminClient>,
+  auditId: string,
+): Promise<void> {
+  const updateResult = admin.from('audits').update?.({ credit_consumed: true });
+  if (!updateResult) return;
+  const { error } = await updateResult.eq('id', auditId);
+  if (error) {
+    throw new Error(`credit marker failed: ${error.message}`);
+  }
+}
 
 function isAcceptedFilename(filename: string): boolean {
   const lower = filename.toLowerCase();
@@ -66,6 +101,15 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
+    const limit = await consumeRateLimit({
+      key: `audit-create:${user.id}`,
+      limit: 20,
+      windowSeconds: 60 * 60,
+    });
+    if (!limit.ok) {
+      return rateLimitedResponse(limit.resetAt);
+    }
+
     // Phase 4 access gate. Runs BEFORE we create the audit row so a user
     // without a plan or credits never gets a row at all.
     const gate = await assertCanRunAudit(user.id);
@@ -94,10 +138,12 @@ export async function POST(request: Request): Promise<Response> {
     const storagePath = `${user.id}/${auditId}/${cleanName}`;
     const admin = getAdminClient();
 
+    let creditConsumed = false;
     const { error: insertError } = await admin.from('audits').insert({
       id: auditId,
       user_id: user.id,
       status: 'pending',
+      credit_consumed: false,
       storage_path: storagePath,
       original_filename: filename,
       file_size_bytes: fileSize,
@@ -112,11 +158,11 @@ export async function POST(request: Request): Promise<Response> {
     // this user, but the RPC is the atomic source of truth — if a concurrent
     // creation drained the credits between the gate read and now, the RPC
     // throws `no_credits` and we roll back the audit row below.
-    let creditConsumed = false;
     if (gate.reason === 'credit') {
       try {
         await decrementAuditCreditAtomically(user.id);
         creditConsumed = true;
+        await markCreditConsumed(admin, auditId);
       } catch (decrementErr) {
         Sentry.captureException(decrementErr, {
           tags: { surface: 'audits.create.decrement', transient: 'true' },
@@ -129,6 +175,14 @@ export async function POST(request: Request): Promise<Response> {
             tags: { surface: 'audits.create.rollback_orphan' },
             extra: { auditId, userId: user.id },
           });
+        }
+        if (creditConsumed) {
+          await refundConsumedCredit(
+            admin,
+            user.id,
+            auditId,
+            'audits.create.decrement_refund',
+          );
         }
         return NextResponse.json(
           {
@@ -172,20 +226,7 @@ export async function POST(request: Request): Promise<Response> {
       // credit would otherwise be lost. Subscription users never spent a
       // credit, so nothing to refund there.
       if (creditConsumed) {
-        try {
-          const { error: refundError } = await admin.rpc(
-            'increment_audit_credits',
-            { profile_id: user.id, delta: 1 },
-          );
-          if (refundError) {
-            throw new Error(refundError.message);
-          }
-        } catch (refundErr) {
-          Sentry.captureException(refundErr, {
-            tags: { surface: 'audits.create.refund' },
-            extra: { userId: user.id, auditId },
-          });
-        }
+        await refundConsumedCredit(admin, user.id, auditId, 'audits.create.refund');
       }
       return NextResponse.json(
         { error: 'Failed to create upload URL.' },

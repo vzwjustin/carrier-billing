@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -87,6 +88,15 @@ export async function POST(
         { error: `Audit is not in a failed state (current: ${data.status}).` },
         { status: 409 },
       );
+    }
+
+    const limit = await consumeRateLimit({
+      key: `audit-retry:${user.id}:${auditId}`,
+      limit: 3,
+      windowSeconds: 60 * 60,
+    });
+    if (!limit.ok) {
+      return rateLimitedResponse(limit.resetAt);
     }
 
     // M-A3 — invalidate the cached PDF for this audit (if any) before resetting
