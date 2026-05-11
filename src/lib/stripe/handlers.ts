@@ -512,12 +512,16 @@ async function updateProfile(
   userId: string,
   patch: ProfilePatch,
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', userId);
+    .eq('id', userId)
+    .select('id');
   if (error) {
     throw new Error(`profile update failed: ${error.message}`);
+  }
+  if ((data ?? []).length === 0) {
+    throw new Error(`profile update matched 0 rows for userId=${userId}`);
   }
 }
 

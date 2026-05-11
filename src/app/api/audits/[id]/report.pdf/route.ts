@@ -24,6 +24,7 @@ import type {
   ReportFindingRow,
   ReportLineRow,
 } from '@/reports/types';
+import * as Sentry from '@sentry/nextjs';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -93,10 +94,15 @@ export async function GET(
   const auditId = parsed.data.id;
 
   const url = new URL(request.url);
-  const token = url.searchParams.get('token');
+  const rawToken = url.searchParams.get('token');
+  const token = rawToken && /^[A-Za-z0-9_-]{32}$/.test(rawToken) ? rawToken : null;
 
   // ---- Resolve & authorize the audit ------------------------------------
   let audit: AuditFullRow | null = null;
+
+  if (rawToken && !token) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 });
+  }
 
   if (token) {
     const admin = getAdminClient();
@@ -159,6 +165,11 @@ export async function GET(
     const arrayBuf = await cached.data.arrayBuffer();
     await trackPdfDownload(auditId, audit.user_id, token);
     return pdfResponse(new Uint8Array(arrayBuf), auditId);
+  }
+  if (cached.error && cached.error.message !== 'The resource was not found') {
+    Sentry.captureException(cached.error, {
+      tags: { surface: 'report.pdf.cache_read' },
+    });
   }
 
   // ---- Otherwise render fresh, persist, and return ----------------------

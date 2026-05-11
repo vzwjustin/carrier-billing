@@ -49,10 +49,13 @@ async function refundConsumedCredit(
 async function markCreditConsumed(
   admin: ReturnType<typeof getAdminClient>,
   auditId: string,
+  userId: string,
 ): Promise<void> {
-  const updateResult = admin.from('audits').update?.({ credit_consumed: true });
-  if (!updateResult) return;
-  const { error } = await updateResult.eq('id', auditId);
+  const { error } = await admin
+    .from('audits')
+    .update({ credit_consumed: true })
+    .eq('id', auditId)
+    .eq('user_id', userId);
   if (error) {
     throw new Error(`credit marker failed: ${error.message}`);
   }
@@ -162,7 +165,7 @@ export async function POST(request: Request): Promise<Response> {
       try {
         await decrementAuditCreditAtomically(user.id);
         creditConsumed = true;
-        await markCreditConsumed(admin, auditId);
+        await markCreditConsumed(admin, auditId, user.id);
       } catch (decrementErr) {
         Sentry.captureException(decrementErr, {
           tags: { surface: 'audits.create.decrement', transient: 'true' },

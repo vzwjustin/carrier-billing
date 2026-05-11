@@ -130,7 +130,7 @@ export async function POST(request: Request): Promise<Response> {
             '[stripe.webhook] insert failed',
             event.type,
             event.id,
-            insertResult.error,
+            insertResult.error instanceof Error ? insertResult.error.message : 'unknown',
           );
           Sentry.captureException(insertResult.error, {
             tags: { area: 'stripe.webhook', stripe_event_type: event.type },
@@ -183,7 +183,7 @@ export async function POST(request: Request): Promise<Response> {
         '[stripe.webhook] handler failed',
         event.type,
         event.id,
-        handlerErr,
+        handlerErr instanceof Error ? handlerErr.message : 'unknown',
       );
       Sentry.captureException(handlerErr, {
         tags: { area: 'stripe.webhook.handler', stripe_event_type: event.type },
@@ -209,7 +209,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ received: true });
   } catch (err) {
-    console.error('[stripe.webhook] unexpected error', err);
+    console.error('[stripe.webhook] unexpected error', err instanceof Error ? err.message : 'unknown');
     Sentry.captureException(err, { tags: { area: 'stripe.webhook' } });
     return new Response('Internal error', { status: 500 });
   }

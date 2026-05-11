@@ -223,7 +223,7 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ url: session.url });
   } catch (err) {
-    console.error('[stripe.checkout] unexpected error', err);
+    console.error('[stripe.checkout] unexpected error', err instanceof Error ? err.message : 'unknown');
     Sentry.captureException(err, { tags: { area: 'stripe.checkout' } });
     return Response.json({ error: 'internal_error' }, { status: 500 });
   }

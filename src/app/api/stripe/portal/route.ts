@@ -57,7 +57,7 @@ export async function POST(): Promise<Response> {
 
     return Response.json({ url: session.url });
   } catch (err) {
-    console.error('[stripe.portal] unexpected error', err);
+    console.error('[stripe.portal] unexpected error', err instanceof Error ? err.message : 'unknown');
     Sentry.captureException(err, { tags: { area: 'stripe.portal' } });
     return Response.json({ error: 'internal_error' }, { status: 500 });
   }
