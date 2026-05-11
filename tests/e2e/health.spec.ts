@@ -11,10 +11,11 @@ test('GET /api/health returns 200 with status + checks keys', async ({
   const body = (await res.json()) as Record<string, unknown>;
   expect(body).toHaveProperty('status');
   expect(body).toHaveProperty('checks');
-  expect(['ok', 'degraded']).toContain(body.status);
+  expect(body.status).toBe('ok');
 
   const checks = body.checks as Record<string, unknown>;
-  expect(checks).toHaveProperty('db');
-  expect(checks).toHaveProperty('stripe');
-  expect(checks).toHaveProperty('anthropic');
+  expect(checks).toHaveProperty('app');
+  expect(checks).not.toHaveProperty('db');
+  expect(checks).not.toHaveProperty('stripe');
+  expect(checks).not.toHaveProperty('anthropic');
 });

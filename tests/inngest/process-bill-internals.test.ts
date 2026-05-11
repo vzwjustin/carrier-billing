@@ -12,6 +12,7 @@ const {
   withTimeout,
   ExtractionTimeoutError,
   EXTRACTION_TIMEOUT_MS,
+  withGeneratedId,
 } = __testables;
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -227,6 +228,18 @@ describe('translateLineIndexes (B1)', () => {
       warn: silentLogger.warn,
     });
     expect(out).toEqual([]);
+  });
+});
+
+describe('persist-bill id generation', () => {
+  it('pre-generates parent row ids so FK mapping does not depend on RETURNING order', () => {
+    const row = withGeneratedId({ audit_id: 'audit-1', account_label: 'Main' });
+
+    expect(row.audit_id).toBe('audit-1');
+    expect(row.account_label).toBe('Main');
+    expect(row.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
   });
 });
 

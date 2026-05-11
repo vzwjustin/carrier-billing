@@ -27,6 +27,7 @@ const STATUS_STEP: Record<string, string> = {
 };
 
 interface AuditStatusRow {
+  user_id: string;
   status: string;
   carrier: string | null;
   line_count: number | null;
@@ -63,7 +64,7 @@ export async function GET(
     const { data, error } = await supabase
       .from('audits')
       .select(
-        'status,carrier,line_count,total_charges_cents,failure_reason,account_count,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count',
+        'user_id,status,carrier,line_count,total_charges_cents,failure_reason,account_count,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count',
       )
       .eq('id', parsed.data.id)
       .maybeSingle<AuditStatusRow>();
@@ -75,6 +76,9 @@ export async function GET(
       );
     }
     if (!data) {
+      return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
+    }
+    if (data.user_id !== user.id) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
     }
 

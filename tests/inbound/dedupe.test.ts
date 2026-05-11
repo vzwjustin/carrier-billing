@@ -5,10 +5,20 @@ import { createHmac } from 'node:crypto';
 
 const inboundEventsInsertMock = vi.fn<(row: unknown) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>>();
 const inboundEventsUpdateEqMock = vi.fn(async () => ({ data: null, error: null }));
+const inboundEventsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
 const profilesSelectMock = vi.fn();
 const auditsInsertMock = vi.fn(async (_row: unknown) => ({ data: null, error: null }));
 const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
-const storageUploadMock = vi.fn(async (_path: string, _body: Buffer, _opts: unknown) => ({ data: null, error: null }));
+const storageUploadMock = vi.fn<
+  (
+    path: string,
+    body: Buffer,
+    opts: unknown,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>
+>(async (_path: string, _body: Buffer, _opts: unknown) => ({
+  data: null,
+  error: null,
+}));
 const storageRemoveMock = vi.fn(async (_paths: string[]) => ({ data: null, error: null }));
 const inngestSendMock = vi.fn(async (..._args: unknown[]) => ({}));
 const decrementMock = vi.fn(async (_uid: string) => ({ remaining: 0 }));
@@ -29,6 +39,9 @@ const fromMock = vi.fn((table: string) => {
       insert: (row: unknown) => inboundEventsInsertMock(row),
       update: () => ({
         eq: () => inboundEventsUpdateEqMock(),
+      }),
+      delete: () => ({
+        eq: () => inboundEventsDeleteEqMock(),
       }),
     };
   }
@@ -69,7 +82,10 @@ vi.mock('@/lib/access/decrement', () => ({
 }));
 
 vi.mock('@/env', () => ({
-  env: { INBOUND_EMAIL_SECRET: 'test-secret-1234567890abcdef' },
+  env: {
+    INBOUND_EMAIL_SECRET: 'test-secret-1234567890abcdef',
+    INBOUND_EMAIL_DOMAIN: 'inbound.example.com',
+  },
 }));
 
 vi.mock('@sentry/nextjs', () => ({
@@ -113,6 +129,7 @@ beforeEach(() => {
   inboundEventsInsertMock.mockReset();
   inboundEventsInsertMock.mockResolvedValue({ data: null, error: null });
   inboundEventsUpdateEqMock.mockClear();
+  inboundEventsDeleteEqMock.mockClear();
   profilesSelectMock.mockReset();
   profilesSelectMock.mockResolvedValue({
     data: { id: 'user-uuid-1' },
@@ -250,5 +267,52 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     const res = await POST(makeRequest(payload));
     expect(res.status).toBe(200);
     expect(order).toEqual(['dedupe-insert', 'storage-upload']);
+  });
+
+  it('skips recipients outside the configured inbound domain', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 domain', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@other.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('bad_recipient_domain');
+    expect(profilesSelectMock).not.toHaveBeenCalled();
+    expect(inboundEventsInsertMock).not.toHaveBeenCalled();
+  });
+
+  it('releases dedupe claim when downstream storage upload fails', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 storage-fail', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    storageUploadMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'storage offline' },
+    });
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('internal_error');
+    expect(inboundEventsDeleteEqMock).toHaveBeenCalledTimes(1);
   });
 });
