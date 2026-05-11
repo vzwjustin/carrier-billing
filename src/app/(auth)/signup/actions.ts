@@ -1,5 +1,6 @@
 'use server';
 
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { env } from '@/env';
@@ -7,7 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 
 const SignUpSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8).max(128),
+  password: z.string().min(12).max(128),
 });
 
 type SignUpResult = { ok: true } | { ok: false; error: string };
@@ -29,12 +30,13 @@ export async function signUpAction(input: unknown): Promise<SignUpResult> {
     });
 
     if (error) {
-      return { ok: false, error: error.message };
+      Sentry.captureException(error, { tags: { surface: 'auth.signup' } });
+      return { ok: false, error: 'Could not sign up. Please try again.' };
     }
 
     return { ok: true };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `Server error: ${msg}` };
+    Sentry.captureException(err, { tags: { surface: 'auth.signup' } });
+    return { ok: false, error: 'Server error. Please try again.' };
   }
 }

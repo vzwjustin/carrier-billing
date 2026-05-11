@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { trackServer } from '@/lib/analytics/events';
+import { hashTokenForAnalytics } from '@/lib/analytics/hash';
 import { buildReportData } from '@/reports/builder';
 import type {
   ReportAccountRow,
@@ -140,6 +141,9 @@ export async function GET(
     if (!audit) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
     }
+    if (audit.user_id !== user.id) {
+      return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
+    }
   }
 
   if (audit.status !== 'completed') {
@@ -216,7 +220,7 @@ export async function GET(
  * Fire-and-forget analytics for a PDF download. Errors swallowed — the user
  * already has the PDF; analytics must never delay or fail the response.
  *
- * distinctId: the share token for public downloads, the user id otherwise.
+ * distinctId: hashed share token for public downloads, the user id otherwise.
  */
 async function trackPdfDownload(
   auditId: string,
@@ -229,7 +233,7 @@ async function trackPdfDownload(
         name: 'report_pdf_downloaded',
         properties: { auditId, isPublic: shareToken !== null },
       },
-      shareToken ?? userId,
+      shareToken ? hashTokenForAnalytics(shareToken) : userId,
     );
   } catch {
     // ignore

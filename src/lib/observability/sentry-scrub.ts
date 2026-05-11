@@ -1,4 +1,4 @@
-import type { ErrorEvent, EventHint } from '@sentry/nextjs';
+import type { ErrorEvent } from '@sentry/nextjs';
 
 import { redactDetails, scrubString } from './redact';
 
@@ -13,10 +13,7 @@ import { redactDetails, scrubString } from './redact';
  * Returning `null` would drop the event entirely; we keep observability and
  * just scrub the body.
  */
-export function scrubSentryEvent(
-  event: ErrorEvent,
-  _hint?: EventHint,
-): ErrorEvent | null {
+export function scrubSentryEvent(event: ErrorEvent): ErrorEvent | null {
   try {
     if (typeof event.message === 'string') {
       event.message = scrubString(event.message);

@@ -13,7 +13,7 @@
  * payload shape is the only thing we depend on.
  *
  * Flow:
- *   1. Reject oversize payloads via Content-Length BEFORE reading the body.
+ *   1. Reject oversize payloads with a hard stream byte cap.
  *   2. Verify signature (constant-time).
  *   3. Parse `to` → token → user via `profiles.inbound_email_token`.
  *   4. Run access gate (skip + log if user is past_due / out of credits —
@@ -68,6 +68,28 @@ const InboundEmailSchema = z.object({
 
 const SAFE_FILENAME_RE = /[^A-Za-z0-9._-]+/g;
 
+async function readRawBodyWithLimit(request: Request, maxBytes: number): Promise<string | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks, total).toString('utf8');
+}
+
 function safeFilename(input: string): string {
   const base = input.split(/[\\/]/).pop() ?? input;
   const cleaned = base.replace(SAFE_FILENAME_RE, '_');
@@ -103,6 +125,23 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
+async function releaseDedupeClaim(eventHash: string): Promise<void> {
+  try {
+    const admin = getAdminClient();
+    const { error } = await admin
+      .from('inbound_email_events')
+      .delete()
+      .eq('event_hash', eventHash);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface: 'inbound.email.dedupe_release' },
+    });
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
   const secret = env.INBOUND_EMAIL_SECRET;
   if (!secret) {
@@ -113,8 +152,8 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'inbound_disabled' }, { status: 503 });
   }
 
-  // Bound the read BEFORE pulling the body into memory. A multi-GB junk POST
-  // could otherwise OOM us on a serverless runtime. Reject 411 if missing.
+  // Bound the read before concatenating the request body. Content-Length is
+  // checked as a cheap early reject, but the stream cap is authoritative.
   const contentLengthHeader = request.headers.get('content-length');
   if (!contentLengthHeader) {
     return NextResponse.json({ error: 'missing_content_length' }, { status: 411 });
@@ -133,15 +172,8 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'missing_signature' }, { status: 401 });
   }
 
-  // Read raw body so HMAC matches whatever the provider signed (re-stringifying
-  // a parsed JSON would mutate whitespace and break the signature).
-  const raw = await request.text();
-
-  // Enforce the actual body size AFTER reading — the pre-read Content-Length
-  // check trusts the header value, but a sender can lie. Node/Next does not
-  // truncate the stream at the declared length, so a forged Content-Length:1
-  // header with a multi-MB body would bypass the early check.
-  if (Buffer.byteLength(raw, 'utf8') > MAX_REQUEST_BYTES) {
+  const raw = await readRawBodyWithLimit(request, MAX_REQUEST_BYTES);
+  if (raw === null) {
     return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   }
 
@@ -166,6 +198,7 @@ export async function POST(request: Request): Promise<Response> {
   // user sees nothing happen which is the correct UX (a malformed forwarded
   // email shouldn't loop forever in the provider's retry queue).
   // ─────────────────────────────────────────────────────────────────────────
+  let claimedDedupeHash: string | null = null;
   try {
     const recipient = parseInboundRecipient(parsed.data.to);
     if (!recipient) {
@@ -173,6 +206,14 @@ export async function POST(request: Request): Promise<Response> {
         level: 'warning',
       });
       return NextResponse.json({ ok: true, skipped: 'bad_recipient' });
+    }
+
+    const expectedDomain = env.INBOUND_EMAIL_DOMAIN?.toLowerCase();
+    if (expectedDomain && recipient.domain !== expectedDomain) {
+      Sentry.captureMessage('inbound: recipient domain mismatch', {
+        level: 'warning',
+      });
+      return NextResponse.json({ ok: true, skipped: 'bad_recipient_domain' });
     }
 
     const admin = getAdminClient();
@@ -243,6 +284,7 @@ export async function POST(request: Request): Promise<Response> {
       throw new Error(`inbound dedupe insert failed: ${dedupeInsert.error.message}`);
     }
 
+    claimedDedupeHash = eventHash;
     const auditId = crypto.randomUUID();
     const cleanName = safeFilename(pdf.filename);
     const storagePath = `${userId}/${auditId}/${cleanName}`;
@@ -259,6 +301,7 @@ export async function POST(request: Request): Promise<Response> {
       id: auditId,
       user_id: userId,
       status: 'pending',
+      credit_consumed: false,
       storage_path: storagePath,
       original_filename: pdf.filename,
       file_size_bytes: bytes.length,
@@ -288,11 +331,24 @@ export async function POST(request: Request): Promise<Response> {
         // Roll the audit row back so the user can retry without waste.
         await admin.from('audits').delete().eq('id', auditId);
         await admin.storage.from('bills').remove([storagePath]);
+        await releaseDedupeClaim(eventHash);
+        claimedDedupeHash = null;
         Sentry.captureException(decErr, {
           tags: { surface: 'inbound.email.decrement' },
           extra: { userId },
         });
         return NextResponse.json({ ok: true, skipped: 'credit_race' });
+      }
+      const { error: creditMarkerErr } = await admin
+        .from('audits')
+        .update({ credit_consumed: true })
+        .eq('id', auditId);
+      if (creditMarkerErr) {
+        await admin.from('audits').delete().eq('id', auditId);
+        await admin.storage.from('bills').remove([storagePath]);
+        await releaseDedupeClaim(eventHash);
+        claimedDedupeHash = null;
+        throw new Error(`credit marker failed: ${creditMarkerErr.message}`);
       }
     }
 
@@ -301,9 +357,13 @@ export async function POST(request: Request): Promise<Response> {
       name: 'bill.uploaded',
       data: { auditId, userId, storagePath },
     });
+    claimedDedupeHash = null;
 
     return NextResponse.json({ ok: true, auditId });
   } catch (err) {
+    if (claimedDedupeHash) {
+      await releaseDedupeClaim(claimedDedupeHash);
+    }
     Sentry.captureException(err, { tags: { surface: 'inbound.email' } });
     // Still 200 so the provider doesn't retry. The orphan-audit cleanup cron
     // would catch any half-created rows.

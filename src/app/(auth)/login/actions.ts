@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
@@ -26,13 +27,14 @@ export async function signInAction(input: unknown): Promise<SignInResult | undef
     });
 
     if (error) {
-      return { ok: false, error: error.message };
+      Sentry.captureException(error, { tags: { surface: 'auth.login' } });
+      return { ok: false, error: 'Invalid email or password.' };
     }
 
     redirect('/dashboard');
   } catch (err) {
     if ((err as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw err;
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `Server error: ${msg}` };
+    Sentry.captureException(err, { tags: { surface: 'auth.login' } });
+    return { ok: false, error: 'Server error. Please try again.' };
   }
 }

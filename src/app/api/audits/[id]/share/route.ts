@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { env } from '@/env';
 import { trackServer } from '@/lib/analytics/events';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -88,6 +89,15 @@ export async function POST(
       // M-A1 — RLS should have hidden this row, but verify ownership
       // explicitly so a service-role-leaning future change can't open a hole.
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
+    }
+
+    const limit = await consumeRateLimit({
+      key: `audit-share:${user.id}:${existing.id}`,
+      limit: 20,
+      windowSeconds: 60 * 60,
+    });
+    if (!limit.ok) {
+      return rateLimitedResponse(limit.resetAt);
     }
 
     const admin = getAdminClient();
