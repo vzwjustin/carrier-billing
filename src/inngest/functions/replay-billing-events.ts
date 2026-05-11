@@ -38,7 +38,12 @@ export type ReplayCandidate = {
   stripe_event_id: string;
   type: string;
   payload: unknown;
-  processed_status: 'failed' | null;
+  // 'in_flight' included so the cron can recover rows where the webhook
+  // crashed AFTER markInFlight but BEFORE markSuccess/markFailure. Stripe's
+  // own retry budget (~13 attempts over ~3 days) is the primary recovery
+  // path; the cron is the safety net for rows still stuck after Stripe
+  // gives up.
+  processed_status: 'failed' | 'in_flight' | null;
   last_attempted_at: string | null;
 };
 
@@ -56,15 +61,20 @@ export async function findReplayCandidates(
     now.getTime() - REPLAY_COOLDOWN_SECONDS * 1000,
   ).toISOString();
 
-  // The replay-eligible set covers two cases:
+  // The replay-eligible set covers three cases:
   //   1. processed_status is null (handler never recorded a result — probably
   //      crashed mid-flight) AND the row is older than the cooldown so we
   //      know any in-flight Stripe-driven attempt has timed out.
   //   2. processed_status is 'failed' and last_attempted_at is null OR older
   //      than the cooldown — explicit failure, ready to retry.
+  //   3. processed_status is 'in_flight' AND last_attempted_at is older than
+  //      the cooldown — webhook crashed mid-handler. Stripe's retry budget
+  //      handles the normal recovery; this query is the safety net for rows
+  //      still stuck after Stripe gives up. The 0014 partial index excludes
+  //      in_flight rows, so this query does a small filtered scan instead.
   //
-  // Two queries, merged and de-duplicated by id, keep the supabase-js filter
-  // surface readable and easy to mock in tests.
+  // Queries are merged and de-duplicated by id; per-query filter surface
+  // stays small and easy to mock in tests.
 
   const nullStatusQuery = await supabase
     .from('billing_events')
@@ -111,11 +121,31 @@ export async function findReplayCandidates(
     );
   }
 
+  // Stuck in_flight recovery: rows where the webhook set 'in_flight' but
+  // never reached 'success' or 'failed'. last_attempted_at past cooldown
+  // means the in-flight worker is presumed dead. The CAS claim in
+  // replayBillingEvent guards against concurrent recovery.
+  const stuckInFlightQuery = await supabase
+    .from('billing_events')
+    .select('id, stripe_event_id, type, payload, processed_status, last_attempted_at')
+    .eq('processed_status', 'in_flight')
+    .gte('created_at', lookbackCutoff)
+    .lte('last_attempted_at', cooldownCutoff)
+    .order('created_at', { ascending: true })
+    .limit(REPLAY_BATCH_LIMIT);
+
+  if (stuckInFlightQuery.error) {
+    throw new Error(
+      `replay candidate select (in_flight, stuck) failed: ${stuckInFlightQuery.error.message}`,
+    );
+  }
+
   const merged = new Map<string, ReplayCandidate>();
   for (const row of [
     ...((nullStatusQuery.data ?? []) as ReplayCandidate[]),
     ...((failedNoAttemptQuery.data ?? []) as ReplayCandidate[]),
     ...((failedCooledQuery.data ?? []) as ReplayCandidate[]),
+    ...((stuckInFlightQuery.data ?? []) as ReplayCandidate[]),
   ]) {
     if (!merged.has(row.id)) merged.set(row.id, row);
   }
@@ -145,12 +175,23 @@ export async function replayBillingEvent(
   // the candidate select: if another worker already moved the timestamp,
   // our UPDATE matches 0 rows and we skip without invoking the handler.
   // `.select('id')` lets us read the row count.
-  const claim = await supabase
+  //
+  // R1-F3 — also CAS on processed_status. `markSuccess` in the webhook route
+  // flips processed_status without touching last_attempted_at, so a row that
+  // the webhook completed AFTER our SELECT can still pass the timestamp CAS.
+  // previousStatus='failed' (below) protects the credit grant, but other
+  // handler side effects (subscription_status writes, past_due flip,
+  // inngest.send) would otherwise fire twice. CAS-on-status closes that.
+  const claimBase = supabase
     .from('billing_events')
     .update({ last_attempted_at: now.toISOString() })
     .eq('id', row.id)
-    .is('last_attempted_at', row.last_attempted_at)
-    .select('id');
+    .is('last_attempted_at', row.last_attempted_at);
+  const claimWithStatus =
+    row.processed_status === null
+      ? claimBase.is('processed_status', null)
+      : claimBase.eq('processed_status', row.processed_status);
+  const claim = await claimWithStatus.select('id');
 
   const claimedRows = (claim.data ?? []) as Array<{ id: string }>;
   if (claimedRows.length === 0) {

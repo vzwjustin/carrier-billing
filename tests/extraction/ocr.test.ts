@@ -10,11 +10,13 @@ type SendCall = { command: string; input: unknown };
 // Hoist mock-side state so `vi.mock` factories (which run before the rest of
 // the module body) can reference them. Without `vi.hoisted`, the classes
 // would be in the temporal-dead-zone when the factories execute.
-const { sentryCaptureException } = vi.hoisted(() => ({
+const { sentryCaptureException, sentryCaptureMessage } = vi.hoisted(() => ({
   sentryCaptureException: vi.fn(),
+  sentryCaptureMessage: vi.fn(),
 }));
 vi.mock('@sentry/nextjs', () => ({
   captureException: sentryCaptureException,
+  captureMessage: sentryCaptureMessage,
 }));
 
 const {
@@ -115,6 +117,7 @@ beforeEach(() => {
   textractSend.mockReset();
   s3Send.mockReset();
   sentryCaptureException.mockReset();
+  sentryCaptureMessage.mockReset();
   __resetClientsForTests();
   // Restore default bucket before each test
   (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET =
@@ -340,6 +343,89 @@ describe('extractTextWithOCR — async path', () => {
     ];
     expect(ctx.level).toBe('warning');
     expect(ctx.tags).toEqual({ module: 'extraction.ocr', op: 's3_cleanup' });
+  });
+
+  it('PARTIAL_SUCCESS: returns aggregated lines and emits a Sentry warning', async () => {
+    s3Send.mockResolvedValueOnce({}); // Put
+    s3Send.mockResolvedValueOnce({}); // Delete
+
+    textractSend.mockResolvedValueOnce({ JobId: 'job-partial' });
+    textractSend.mockResolvedValueOnce({
+      JobStatus: 'PARTIAL_SUCCESS',
+      Blocks: [
+        { BlockType: 'LINE', Text: 'Partial line one' },
+        { BlockType: 'LINE', Text: 'Partial line two' },
+      ],
+    });
+
+    const out = await extractTextWithOCR(asyncBuffer());
+
+    expect(out).toBe('Partial line one\nPartial line two');
+
+    // Must emit a Sentry warning (not an exception) with the jobId
+    expect(sentryCaptureMessage).toHaveBeenCalledTimes(1);
+    const [msg, ctx] = sentryCaptureMessage.mock.calls[0] as [
+      string,
+      { level: string; tags: Record<string, string>; extra: Record<string, unknown> },
+    ];
+    expect(msg).toMatch(/PARTIAL_SUCCESS/i);
+    expect(ctx.level).toBe('warning');
+    expect(ctx.extra).toMatchObject({ jobId: 'job-partial' });
+
+    // Cleanup must still run
+    const s3Calls = recordCalls(s3Send);
+    expect(s3Calls.map((c) => c.command)).toEqual([
+      'PutObjectCommand',
+      'DeleteObjectCommand',
+    ]);
+  });
+
+  it('throws OcrError synchronously on an unrecognised Textract status', async () => {
+    s3Send.mockResolvedValueOnce({}); // Put
+    s3Send.mockResolvedValueOnce({}); // Delete
+
+    textractSend.mockResolvedValueOnce({ JobId: 'job-cancelled' });
+    textractSend.mockResolvedValueOnce({ JobStatus: 'CANCELLED' });
+
+    await expect(extractTextWithOCR(asyncBuffer())).rejects.toMatchObject({
+      name: 'OcrError',
+      message: expect.stringContaining('CANCELLED'),
+    });
+
+    // Must NOT have drained to timeout — only one poll call after Start
+    const tCalls = recordCalls(textractSend);
+    expect(tCalls.map((c) => c.command)).toEqual([
+      'StartDocumentTextDetectionCommand',
+      'GetDocumentTextDetectionCommand',
+    ]);
+  });
+
+  it('IN_PROGRESS still polls without throwing (no regression)', async () => {
+    vi.useFakeTimers();
+
+    s3Send.mockResolvedValueOnce({}); // Put
+    s3Send.mockResolvedValueOnce({}); // Delete
+
+    textractSend.mockResolvedValueOnce({ JobId: 'job-slow2' });
+    // First poll: IN_PROGRESS, second poll: SUCCEEDED
+    textractSend.mockResolvedValueOnce({ JobStatus: 'IN_PROGRESS' });
+    textractSend.mockResolvedValueOnce({
+      JobStatus: 'SUCCEEDED',
+      Blocks: [{ BlockType: 'LINE', Text: 'Eventually done' }],
+    });
+
+    const promise = extractTextWithOCR(asyncBuffer());
+    // Advance past the 5s poll interval so the IN_PROGRESS sleep resolves.
+    await vi.advanceTimersByTimeAsync(6_000);
+    const out = await promise;
+    expect(out).toBe('Eventually done');
+
+    const tCalls = recordCalls(textractSend);
+    expect(tCalls.map((c) => c.command)).toEqual([
+      'StartDocumentTextDetectionCommand',
+      'GetDocumentTextDetectionCommand',
+      'GetDocumentTextDetectionCommand',
+    ]);
   });
 
   it('times out after 5 minutes of IN_PROGRESS polling', async () => {

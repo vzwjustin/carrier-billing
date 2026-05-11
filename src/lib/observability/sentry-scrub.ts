@@ -66,6 +66,12 @@ export function scrubSentryEvent(
           }
         }
       }
+      // request.data is populated from the parsed request body by Sentry's
+      // Next.js integration — webhook bodies, Stripe payloads, and form POST
+      // data can all contain PII here.
+      if (event.request.data !== undefined) {
+        event.request.data = redactDetails(event.request.data);
+      }
     }
     if (event.user && typeof event.user === 'object') {
       const user = event.user as Record<string, unknown>;

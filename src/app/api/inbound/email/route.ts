@@ -137,6 +137,14 @@ export async function POST(request: Request): Promise<Response> {
   // a parsed JSON would mutate whitespace and break the signature).
   const raw = await request.text();
 
+  // Enforce the actual body size AFTER reading — the pre-read Content-Length
+  // check trusts the header value, but a sender can lie. Node/Next does not
+  // truncate the stream at the declared length, so a forged Content-Length:1
+  // header with a multi-MB body would bypass the early check.
+  if (Buffer.byteLength(raw, 'utf8') > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
+  }
+
   if (!verifyHmac(raw, signature, secret)) {
     return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
   }

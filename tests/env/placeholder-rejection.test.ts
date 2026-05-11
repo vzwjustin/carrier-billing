@@ -16,6 +16,8 @@ const REAL_VALUES: Record<(typeof REQUIRED_SERVER_SECRETS)[number], string> = {
   STRIPE_PRICE_ID_ONE_TIME: 'price_1RealOneTime',
   STRIPE_PRICE_ID_SUBSCRIPTION: 'price_1RealSubscription',
   RESEND_API_KEY: 're_realresendkey',
+  INNGEST_EVENT_KEY: 'evt-real-inngest-event-key',
+  INNGEST_SIGNING_KEY: 'signkey-real-inngest-signing-key',
 };
 
 function buildEnv(overrides: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {

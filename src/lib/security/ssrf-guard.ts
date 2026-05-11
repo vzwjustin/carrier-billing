@@ -171,6 +171,25 @@ function isBlockedV6(addrIn: string): boolean {
   // Expand to 8 hextets for prefix checks.
   const hextets = expandV6(addr);
   if (!hextets) return true;
+
+  // R2-F2 fix: post-expansion loopback/unspecified detection. The exact-match
+  // checks at the top of this function catch the canonical `::1` / `::` and
+  // the colon-separated 8-hextet form `0:0:0:0:0:0:0:1`, but a zero-padded
+  // form like `0000:0000:0000:0000:0000:0000:0000:0001` reaches this point.
+  // Block it post-expansion. Same defense applies to the unspecified address.
+  if (
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0 &&
+    hextets[6] === 0 &&
+    (hextets[7] === 0 || hextets[7] === 1)
+  ) {
+    return true;
+  }
+
   const first = hextets[0]!;
 
   // fc00::/7 — unique local addresses (fc00..fdff).
@@ -179,6 +198,53 @@ function isBlockedV6(addrIn: string): boolean {
   if ((first & 0xffc0) === 0xfe80) return true;
   // ff00::/8 — multicast.
   if ((first & 0xff00) === 0xff00) return true;
+
+  // R2-F1 fix: 6to4 prefix (2002::/16, RFC 3056). hextets[1..2] hold the
+  // embedded IPv4. An attacker supplying `2002:7f00:0001::` reaches a host
+  // representing 127.0.0.1 via 6to4 tunnel encoding. Even on systems where
+  // 6to4 is no longer routable, defense-in-depth blocks the form before any
+  // future stack re-enables it.
+  if ((first & 0xffff) === 0x2002) {
+    const h1 = hextets[1]!;
+    const h2 = hextets[2]!;
+    const embedded =
+      `${(h1 >> 8) & 0xff}.${h1 & 0xff}.${(h2 >> 8) & 0xff}.${h2 & 0xff}`;
+    return isBlockedV4(embedded);
+  }
+
+  // C1 fix: IPv4-mapped hex-group form (::ffff:h1:h2 where hextets 0–4 are 0
+  // and hextet 5 is 0xffff). The dot-notation regex above catches
+  // `::ffff:a.b.c.d`; this catches `::ffff:7f00:1` (= 127.0.0.1) etc.
+  if (
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0xffff
+  ) {
+    const h6 = hextets[6]!;
+    const h7 = hextets[7]!;
+    const embedded = `${(h6 >> 8) & 0xff}.${h6 & 0xff}.${(h7 >> 8) & 0xff}.${h7 & 0xff}`;
+    return isBlockedV4(embedded);
+  }
+
+  // C2 fix: NAT64 prefix (64:ff9b::/96, RFC 6052/6146). On IPv6-only or
+  // dual-stack NAT64 hosts this maps IPv4 into IPv6 space. hextets 6–7 hold
+  // the embedded IPv4 in the same layout as the v4-mapped case above.
+  if (
+    hextets[0] === 0x0064 &&
+    hextets[1] === 0xff9b &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0
+  ) {
+    const h6 = hextets[6]!;
+    const h7 = hextets[7]!;
+    const embedded = `${(h6 >> 8) & 0xff}.${h6 & 0xff}.${(h7 >> 8) & 0xff}.${h7 & 0xff}`;
+    return isBlockedV4(embedded);
+  }
 
   return false;
 }

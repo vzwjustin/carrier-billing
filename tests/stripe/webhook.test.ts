@@ -47,9 +47,40 @@ const fromMock = vi.fn((_table: string) => ({
       maybeSingle: async () => insertMock(row),
     }),
   }),
-  update: (patch: unknown) => ({
-    eq: () => updateMock(patch),
-  }),
+  // R1-F1: markInFlight now uses a CAS chain `.update().eq().or().select()`.
+  // The builder below is thenable so legacy `await .update().eq(...)` (used by
+  // markSuccess / markFailure) still resolves to `{ error }`; chaining
+  // `.or()` / `.is()` and terminating with `.select()` exercises the CAS path
+  // and resolves to `{ data: [{id}], error: null }` (or the error from
+  // updateMock). updateMock's return value flows through both paths.
+  update: (patch: unknown) => {
+    const chainable: {
+      eq: () => typeof chainable;
+      is: () => typeof chainable;
+      or: () => typeof chainable;
+      select: () => Promise<{
+        data: Array<{ id: string }> | null;
+        error: unknown;
+      }>;
+      then: (
+        onFulfilled: (v: { error: null }) => unknown,
+        onRejected?: (e: unknown) => unknown,
+      ) => Promise<unknown>;
+    } = {
+      eq: () => chainable,
+      is: () => chainable,
+      or: () => chainable,
+      select: async () => {
+        const r = await updateMock(patch);
+        return r.error
+          ? { data: null, error: r.error }
+          : { data: [{ id: 'be_mock' }], error: null };
+      },
+      then: (onFulfilled, onRejected) =>
+        updateMock(patch).then(onFulfilled, onRejected),
+    };
+    return chainable;
+  },
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({

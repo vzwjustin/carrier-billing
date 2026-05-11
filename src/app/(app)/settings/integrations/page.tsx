@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 interface ProfileRow {
   outbound_webhook_url: string | null;
   outbound_webhook_secret: string | null;
+  // secret stays server-side: only a boolean flag crosses the RSC boundary
 }
 
 export default async function IntegrationsSettingsPage(): Promise<React.ReactElement> {
@@ -52,7 +53,7 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
       />
       <OutboundWebhookCard
         initialUrl={profile?.outbound_webhook_url ?? null}
-        initialSecret={profile?.outbound_webhook_secret ?? null}
+        hasSecret={typeof profile?.outbound_webhook_secret === 'string' && profile.outbound_webhook_secret.length > 0}
       />
     </div>
   );

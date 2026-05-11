@@ -101,7 +101,7 @@ describe('trackServer', () => {
       trackServer(
         {
           name: 'checkout_completed',
-          properties: { mode: 'subscription', userId: 'u' },
+          properties: { mode: 'subscription' },
         },
         'u',
       ),

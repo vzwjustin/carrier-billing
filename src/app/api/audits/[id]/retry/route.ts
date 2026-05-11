@@ -142,18 +142,51 @@ export async function POST(
     const winningRow = updated[0];
     const retryCount = isRetryCountRow(winningRow) ? winningRow.retry_count : nextRetryCount;
 
-    await inngest.send({
-      id: `${auditId}-uploaded-retry-${retryCount}`,
-      name: 'bill.uploaded',
-      data: {
-        auditId: data.id,
-        userId: data.user_id,
-        storagePath: data.storage_path,
-      },
-    });
+    try {
+      await inngest.send({
+        id: `${auditId}-uploaded-retry-${retryCount}`,
+        name: 'bill.uploaded',
+        data: {
+          auditId: data.id,
+          userId: data.user_id,
+          storagePath: data.storage_path,
+        },
+      });
+    } catch (sendErr) {
+      Sentry.captureException(sendErr, {
+        tags: { surface: 'audits.retry.inngest_send' },
+        extra: { auditId },
+      });
+      // Best-effort rollback: reset audit to failed with original retry_count so
+      // the user can attempt again rather than being stuck in pending forever.
+      try {
+        await admin
+          .from('audits')
+          .update({
+            status: 'failed',
+            retry_count: data.retry_count,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', auditId)
+          .eq('retry_count', nextRetryCount);
+      } catch (rollbackErr) {
+        Sentry.captureException(rollbackErr, {
+          tags: { surface: 'audits.retry.rollback' },
+          extra: { auditId },
+        });
+      }
+      return NextResponse.json(
+        { error: 'Internal server error.' },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface: 'audits.retry.unknown' },
+      extra: { auditId },
+    });
     return NextResponse.json(
       { error: 'Internal server error.' },
       { status: 500 },

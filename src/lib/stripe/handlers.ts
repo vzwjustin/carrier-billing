@@ -25,7 +25,7 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  */
 export type HandlerContext = {
   /** processed_status of the billing_events row at the start of this attempt. */
-  previousStatus: 'success' | 'failed' | null;
+  previousStatus: 'success' | 'failed' | 'in_flight' | null;
 };
 
 const DEFAULT_CONTEXT: HandlerContext = { previousStatus: null };
@@ -450,7 +450,7 @@ async function trackCheckoutCompleted(
 ): Promise<void> {
   try {
     await trackServer(
-      { name: 'checkout_completed', properties: { mode, userId } },
+      { name: 'checkout_completed', properties: { mode } },
       userId,
     );
   } catch {

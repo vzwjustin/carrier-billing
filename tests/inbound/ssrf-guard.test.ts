@@ -81,6 +81,29 @@ describe('isBlockedAddress', () => {
     expect(isBlockedAddress('::ffff:10.0.0.1')).toBe(true);
   });
 
+  it('R2-F2: rejects zero-padded loopback / unspecified (post-expand defense-in-depth)', () => {
+    // The exact-match table catches `::1` and `0:0:0:0:0:0:0:1` but a fully
+    // zero-padded form has its own canonical-looking representation that
+    // reaches `isBlockedV6` and must be blocked post-expansion.
+    expect(isBlockedAddress('0000:0000:0000:0000:0000:0000:0000:0001')).toBe(true);
+    expect(isBlockedAddress('0000:0000:0000:0000:0000:0000:0000:0000')).toBe(true);
+  });
+
+  it('R2-F1: rejects 6to4 (2002::/16) embedding private IPv4', () => {
+    // 2002:7f00:0001:: encodes 127.0.0.1; 2002:c0a8:0101:: encodes 192.168.1.1;
+    // 2002:a9fe:a9fe:: encodes 169.254.169.254 (EC2 IMDS).
+    expect(isBlockedAddress('2002:7f00:0001::')).toBe(true);
+    expect(isBlockedAddress('2002:c0a8:0101::')).toBe(true);
+    expect(isBlockedAddress('2002:a9fe:a9fe::')).toBe(true);
+  });
+
+  it('R2-F1: 6to4 embedding genuine public IPv4 is still allowed', () => {
+    // 2002:0808:0808:: encodes 8.8.8.8 — public DNS, not a private range.
+    // Confirms the 6to4 branch defers to isBlockedV4 instead of blocking the
+    // entire 2002::/16 prefix.
+    expect(isBlockedAddress('2002:0808:0808::')).toBe(false);
+  });
+
   it('accepts genuine public IPv6', () => {
     expect(isBlockedAddress('2001:4860:4860::8888')).toBe(false);
   });

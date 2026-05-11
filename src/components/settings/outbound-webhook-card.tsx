@@ -3,24 +3,33 @@
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 
-import { updateOutboundWebhookAction } from '@/app/(app)/settings/actions';
+import {
+  copyOutboundWebhookSecretAction,
+  updateOutboundWebhookAction,
+} from '@/app/(app)/settings/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 export interface OutboundWebhookCardProps {
   initialUrl: string | null;
-  initialSecret: string | null;
+  // Secret never crosses the RSC boundary. The boolean flag tells the card
+  // whether a secret exists so it can render the signing-secret section.
+  // The plaintext is fetched on demand via copyOutboundWebhookSecretAction.
+  hasSecret: boolean;
 }
 
 export function OutboundWebhookCard({
   initialUrl,
-  initialSecret,
+  hasSecret: initialHasSecret,
 }: OutboundWebhookCardProps): React.JSX.Element {
   const [url, setUrl] = useState(initialUrl ?? '');
-  const [secret, setSecret] = useState<string | null>(initialSecret);
-  const [revealSecret, setRevealSecret] = useState(false);
+  const [hasSecret, setHasSecret] = useState(initialHasSecret);
+  // revealedSecret holds the plaintext only after the user explicitly clicks
+  // Reveal — it is never present in the initial page HTML.
+  const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isRevealing, startRevealTransition] = useTransition();
 
   function onSubmit(formData: FormData): void {
     const next = String(formData.get('outbound_webhook_url') ?? '').trim();
@@ -29,14 +38,18 @@ export function OutboundWebhookCard({
         outbound_webhook_url: next,
       });
       if (result.ok) {
-        setSecret(result.secret);
         if (next === '') {
           toast.success('Webhook disabled.');
           setUrl('');
+          setHasSecret(false);
+          setRevealedSecret(null);
         } else {
           toast.success('Webhook saved.');
           setUrl(next);
-          setRevealSecret(true);
+          setHasSecret(true);
+          // Clear any previously-revealed secret so the user re-fetches if
+          // the URL change triggered a new secret generation.
+          setRevealedSecret(null);
         }
       } else {
         toast.error(result.error);
@@ -44,7 +57,32 @@ export function OutboundWebhookCard({
     });
   }
 
-  async function copy(value: string): Promise<void> {
+  function onReveal(): void {
+    if (revealedSecret) {
+      setRevealedSecret(null);
+      return;
+    }
+    startRevealTransition(async () => {
+      const result = await copyOutboundWebhookSecretAction();
+      if (result.ok) {
+        setRevealedSecret(result.secret);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  async function copy(): Promise<void> {
+    // Fetch the secret server-side if not yet revealed, then copy.
+    let value = revealedSecret;
+    if (!value) {
+      const result = await copyOutboundWebhookSecretAction();
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      value = result.secret;
+    }
     try {
       await navigator.clipboard.writeText(value);
       toast.success('Copied.');
@@ -106,27 +144,28 @@ export function OutboundWebhookCard({
         </div>
       </form>
 
-      {secret ? (
+      {hasSecret ? (
         <div className="space-y-2 border-t border-neutral-200 pt-4">
           <p className="text-sm font-medium text-neutral-900">Signing secret</p>
           <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <code className="break-all text-sm font-mono text-neutral-900">
-              {revealSecret ? secret : '•'.repeat(Math.min(secret.length, 32))}
+              {revealedSecret ? revealedSecret : '•'.repeat(32)}
             </code>
             <div className="flex gap-2">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => setRevealSecret((v) => !v)}
+                disabled={isRevealing}
+                onClick={onReveal}
               >
-                {revealSecret ? 'Hide' : 'Reveal'}
+                {isRevealing ? 'Loading…' : revealedSecret ? 'Hide' : 'Reveal'}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => void copy(secret)}
+                onClick={() => void copy()}
               >
                 Copy
               </Button>

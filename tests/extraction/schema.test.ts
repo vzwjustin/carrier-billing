@@ -313,4 +313,83 @@ describe('ExtractedBillSchema', () => {
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(true);
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Cents upper-bound caps (F7). Unbounded nonnegative cents allow
+  // INT_MAX values from malformed LLM output or adversarial EDI to pass
+  // Zod and surface as multi-million-dollar charges in reports.
+  // ─────────────────────────────────────────────────────────────────────
+  it('rejects feature monthly_cents above 1,000,000 ($10k cap)', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.features = [{ name: 'Insurance', category: 'insurance', monthly_cents: 2_000_000_000 }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts feature monthly_cents at exactly 1,000,000', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.features = [{ name: 'Insurance', category: 'insurance', monthly_cents: 1_000_000 }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects feature monthly_cents at 1,000,001 (one over cap)', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.features = [{ name: 'Insurance', category: 'insurance', monthly_cents: 1_000_001 }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects DPP monthly_cents above 1,000,000', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 2_000_000_000, remaining_payments: null, total_payments: null }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects plan_base_cents above 10,000,000 ($100k cap)', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.plan_base_cents = 10_000_001;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts plan_base_cents at exactly 10,000,000', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    // Also need account total to be valid
+    bill.accounts[0]!.total_charges_cents = 10_000_000;
+    bill.total_charges_cents = 10_000_000;
+    line.plan_base_cents = 10_000_000;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects account total_charges_cents above 100,000,000 ($1M cap)', () => {
+    const bill = minimalBill();
+    bill.accounts[0]!.total_charges_cents = 100_000_001;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects bill total_charges_cents above 1,000,000,000 ($10M cap)', () => {
+    const bill = minimalBill();
+    bill.total_charges_cents = 1_000_000_001;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts bill total_charges_cents at exactly 1,000,000,000', () => {
+    // The schema does not require bill total == sum of account totals; set the
+    // bill total to the cap while leaving the account total within its own cap.
+    const bill = minimalBill();
+    bill.total_charges_cents = 1_000_000_000;
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
 });

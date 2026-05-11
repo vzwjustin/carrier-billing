@@ -42,7 +42,7 @@ export type AnalyticsEvent =
     }
   | {
       name: 'checkout_completed';
-      properties: { mode: 'one_time' | 'subscription'; userId: string };
+      properties: { mode: 'one_time' | 'subscription' };
     };
 
 // Re-exports preserve the original import shape for any module using

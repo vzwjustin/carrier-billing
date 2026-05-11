@@ -13,7 +13,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 
 const LAST_ERROR_MAX = 500;
 
-type ProcessedStatus = 'success' | 'failed' | null;
+type ProcessedStatus = 'success' | 'failed' | 'in_flight' | null;
 
 type BillingEventRow = {
   id: string;
@@ -61,8 +61,17 @@ export async function POST(request: Request): Promise<Response> {
 
     if (existing.data) {
       const row = existing.data as BillingEventRow;
-      if (row.processed_status === 'success') {
-        // H8: this event was already fully processed. Idempotent ack.
+      if (
+        row.processed_status === 'success' ||
+        row.processed_status === 'in_flight'
+      ) {
+        // H8: already-processed → idempotent ack.
+        // R1-F2: in_flight → another worker is mid-handler right now. Dedupe
+        // at the entry path so we don't invoke handleStripeEvent in parallel.
+        // Some handler side effects (subscription_status writes, past_due
+        // flip, inngest.send) are not gated by previousStatus and would
+        // otherwise fire twice. The CAS in markInFlight is the durable
+        // backstop; this is the entry-time fast path.
         console.log('[stripe.webhook]', event.type, event.id, 'deduped');
         return Response.json({ received: true, deduped: true });
       }
@@ -106,7 +115,11 @@ export async function POST(request: Request): Promise<Response> {
             return new Response('Internal error', { status: 500 });
           }
           const row = raced.data as BillingEventRow;
-          if (row.processed_status === 'success') {
+          if (
+            row.processed_status === 'success' ||
+            row.processed_status === 'in_flight'
+          ) {
+            // R1-F2 — same dedupe as the existing-row path above.
             console.log('[stripe.webhook]', event.type, event.id, 'deduped');
             return Response.json({ received: true, deduped: true });
           }
@@ -148,8 +161,20 @@ export async function POST(request: Request): Promise<Response> {
     // Stripe wouldn't retry. We now re-throw a 5xx so Stripe DOES retry. The
     // per-handler effects MUST be safe to re-run — the credit grant in
     // checkout.session.completed gates on `previousStatus` for that reason.
-
-    await markAttempt(supabase, billingEventId);
+    //
+    // M-1+M-2: set processed_status='in_flight' BEFORE invoking the handler so
+    // any concurrent attempt (replay cron or duplicate Stripe delivery) sees a
+    // non-null previousStatus and short-circuits non-idempotent ops (credit
+    // grant). R1-F1: this is now a true CAS — the UPDATE only matches when
+    // processed_status is still null or 'failed'. A concurrent worker that
+    // already claimed the row (e.g. the 23505-loser of a brand-new INSERT
+    // race) gets `'lost'` back and short-circuits BEFORE invoking the handler
+    // so the credit grant in checkout.session.completed cannot fire twice.
+    const claim = await markInFlight(supabase, billingEventId);
+    if (claim === 'lost') {
+      console.log('[stripe.webhook]', event.type, event.id, 'claim lost, deduped');
+      return Response.json({ received: true, deduped: true });
+    }
 
     try {
       await handleStripeEvent(event, supabase, { previousStatus });
@@ -190,22 +215,45 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
-async function markAttempt(
+async function markInFlight(
   supabase: SupabaseClient,
   billingEventId: string,
-): Promise<void> {
-  // Best-effort — a missed mark just means the cron may pick the row up
-  // a touch sooner. Don't fail the webhook over a logging-table write.
+): Promise<'claimed' | 'lost'> {
+  // R1-F1 — true CAS claim. The UPDATE matches only when processed_status is
+  // still null (fresh insert) or 'failed' (retry of a prior failure). If
+  // another worker already flipped the row to 'in_flight' or 'success', the
+  // UPDATE matches zero rows and we return 'lost' so the caller short-circuits
+  // BEFORE invoking the handler. This closes the window between INSERT and the
+  // first markInFlight where two concurrent webhook deliveries could otherwise
+  // both observe previousStatus=null and both fire the credit grant.
   try {
-    await supabase
+    const { data, error } = await supabase
       .from('billing_events')
-      .update({ last_attempted_at: new Date().toISOString() })
-      .eq('id', billingEventId);
+      .update({
+        processed_status: 'in_flight',
+        last_attempted_at: new Date().toISOString(),
+      })
+      .eq('id', billingEventId)
+      .or('processed_status.is.null,processed_status.eq.failed')
+      .select('id');
+    if (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'stripe.webhook.mark_in_flight' },
+        extra: { billingEventId },
+      });
+      // Err on the safe side: a transient DB error here is indistinguishable
+      // from a lost claim from the caller's perspective. Return 'lost' so the
+      // handler does not run; Stripe will retry the delivery.
+      return 'lost';
+    }
+    const rows = (data ?? []) as Array<{ id: string }>;
+    return rows.length > 0 ? 'claimed' : 'lost';
   } catch (markErr) {
     Sentry.captureException(markErr, {
-      tags: { area: 'stripe.webhook.mark_attempt' },
+      tags: { area: 'stripe.webhook.mark_in_flight' },
       extra: { billingEventId },
     });
+    return 'lost';
   }
 }
 
