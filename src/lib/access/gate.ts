@@ -1,5 +1,9 @@
 import * as Sentry from '@sentry/nextjs';
 import { getAdminClient } from '@/lib/supabase/admin';
+import {
+  isSubscriptionStatus,
+  type SubscriptionStatus,
+} from '@/types/db-enums';
 
 /**
  * Result of asking "is this user allowed to start a new audit right now?".
@@ -16,7 +20,11 @@ export type AccessGateResult =
   | { ok: false; reason: 'no_plan' | 'past_due' };
 
 interface ProfileRow {
-  subscription_status: string | null;
+  // M13: narrow to the CHECK-constrained literal union mirrored in
+  // src/types/db-enums.ts. The runtime guard below validates against the
+  // same set so a row with an unexpected value (e.g. a future Stripe
+  // status not yet added to our normalizer) is caught at the boundary.
+  subscription_status: SubscriptionStatus | null;
   audit_credits: number | null;
 }
 
@@ -26,7 +34,7 @@ function isProfileRow(value: unknown): value is ProfileRow {
   const status = v['subscription_status'];
   const credits = v['audit_credits'];
   return (
-    (status === null || typeof status === 'string') &&
+    (status === null || isSubscriptionStatus(status)) &&
     (credits === null || typeof credits === 'number')
   );
 }

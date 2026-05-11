@@ -25,6 +25,10 @@ import type {
   ReportLineRow,
 } from '@/reports/types';
 import * as Sentry from '@sentry/nextjs';
+import {
+  consumeRateLimit,
+  rateLimitedResponse,
+} from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -105,6 +109,19 @@ export async function GET(
   }
 
   if (token) {
+    // L5: rate-limit the public token path on a hashed token derivative. The
+    // PDF render is expensive on cache miss and the public surface is the
+    // higher-risk one (no session cookie required). 10 reqs / 5 min per
+    // token is far above any legitimate share-link usage and bounds the
+    // worst-case render cost from a hostile burst.
+    const limited = await consumeRateLimit({
+      key: `audit-pdf-public:${hashTokenForAnalytics(token)}`,
+      limit: 10,
+      windowSeconds: 300,
+    });
+    if (!limited.ok) {
+      return rateLimitedResponse(limited.resetAt);
+    }
     const admin = getAdminClient();
     const { data, error } = await admin
       .from('audits')
@@ -134,6 +151,18 @@ export async function GET(
     } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+    }
+    // L5: rate-limit the authenticated path too. The user controls cache
+    // misses indirectly (deleting the cache object would force a re-render
+    // on next download), and a buggy client polling for the PDF would
+    // otherwise pin a worker. 30 reqs / 5 min covers any sane user pattern.
+    const limited = await consumeRateLimit({
+      key: `audit-pdf-auth:${user.id}`,
+      limit: 30,
+      windowSeconds: 300,
+    });
+    if (!limited.ok) {
+      return rateLimitedResponse(limited.resetAt);
     }
     const { data, error } = await supabase
       .from('audits')
@@ -217,11 +246,22 @@ export async function GET(
   const pdfBuffer = await renderReportPdf(reportData);
   const pdfBytes = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
 
-  // Best-effort cache write. If it fails we still return the rendered PDF.
-  await admin.storage.from('reports').upload(storagePath, pdfBytes, {
-    contentType: 'application/pdf',
-    upsert: true,
-  });
+  // Best-effort cache write. If it fails we still return the rendered PDF —
+  // but capture the failure (H9). Silently discarding the upload result meant
+  // every subsequent download did a full cold render (DB query + heavy
+  // @react-pdf/renderer pass) with no signal that the cache was broken.
+  const cacheWrite = await admin.storage
+    .from('reports')
+    .upload(storagePath, pdfBytes, {
+      contentType: 'application/pdf',
+      upsert: true,
+    });
+  if (cacheWrite.error) {
+    Sentry.captureException(cacheWrite.error, {
+      tags: { surface: 'pdf.cache_write' },
+      extra: { auditId, storagePath },
+    });
+  }
 
   await trackPdfDownload(auditId, audit.user_id, token);
   return pdfResponse(pdfBytes, auditId);

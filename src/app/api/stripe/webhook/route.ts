@@ -177,7 +177,10 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     try {
-      await handleStripeEvent(event, supabase, { previousStatus });
+      await handleStripeEvent(event, supabase, {
+        previousStatus,
+        billingEventId,
+      });
     } catch (handlerErr) {
       console.error(
         '[stripe.webhook] handler failed',

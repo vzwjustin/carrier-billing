@@ -27,7 +27,7 @@ describe('unused_mifi_or_jetpack_line rule', () => {
     expect(findings).toHaveLength(1);
     const f = findings[0];
     if (!f) throw new Error('expected finding');
-    expect(f.severity).toBe('medium');
+    expect(f.severity).toBe('low'); // M3: zero_use tier capped at 'low' pending activation_date_in_period schema
     expect(f.estimated_monthly_savings_cents).toBe(4000);
   });
 
@@ -91,7 +91,7 @@ describe('unused_mifi_or_jetpack_line rule', () => {
     expect(evidence.tier).toBe('light_use');
   });
 
-  it('fires MEDIUM severity (zero_use tier) when hotspot used <0.1 GB', async () => {
+  it('fires LOW severity (zero_use tier) when hotspot used <0.1 GB (M3 cap)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -109,7 +109,10 @@ describe('unused_mifi_or_jetpack_line rule', () => {
     expect(findings).toHaveLength(1);
     const f = findings[0];
     if (!f) throw new Error('expected finding');
-    expect(f.severity).toBe('medium');
+    // M3: zero_use tier severity capped at 'low' pending activation date
+    // signal in the schema. Mid-cycle activations would otherwise produce
+    // false-positive "suspend or cancel" findings on fresh devices.
+    expect(f.severity).toBe('low');
     const evidence = f.evidence as { tier: string };
     expect(evidence.tier).toBe('zero_use');
   });

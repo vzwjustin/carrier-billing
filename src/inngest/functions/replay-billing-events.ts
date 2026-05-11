@@ -212,18 +212,31 @@ export async function replayBillingEvent(
       level: 'error',
       extra: { billingEventId: row.id, stripe_event_id: row.stripe_event_id },
     });
-    await supabase
+    // C2: surface bookkeeping write failures. Silently swallowing here meant
+    // a flapping DB would leave the row at its original processed_status, so
+    // the cron would re-claim it every 15 min forever (and re-invoke the
+    // handler when the row's status is recoverable). Throw on update error
+    // so Inngest retries the step.
+    const { error: markErr } = await supabase
       .from('billing_events')
       .update({
         processed_status: 'failed',
         last_error: 'invalid payload (cannot reconstruct event)'.slice(0, LAST_ERROR_MAX),
       })
       .eq('id', row.id);
+    if (markErr) {
+      throw new Error(
+        `replay-billing-events: bookkeeping (invalid_payload) update failed: ${markErr.message}`,
+      );
+    }
     return 'invalid_payload';
   }
 
   try {
-    await handleStripeEvent(event, supabase, { previousStatus: 'failed' });
+    await handleStripeEvent(event, supabase, {
+      previousStatus: row.processed_status === null ? 'failed' : row.processed_status,
+      billingEventId: row.id,
+    });
   } catch (handlerErr) {
     Sentry.captureException(handlerErr, {
       tags: { area: 'inngest.replay-billing-events' },
@@ -231,17 +244,28 @@ export async function replayBillingEvent(
     });
     const message = handlerErr instanceof Error ? handlerErr.message : String(handlerErr);
     const safe = scrubString(message).slice(0, LAST_ERROR_MAX);
-    await supabase
+    // C2: same — must not swallow bookkeeping errors.
+    const { error: markErr } = await supabase
       .from('billing_events')
       .update({
         processed_status: 'failed',
         last_error: safe,
       })
       .eq('id', row.id);
+    if (markErr) {
+      throw new Error(
+        `replay-billing-events: bookkeeping (failed) update failed: ${markErr.message}`,
+      );
+    }
     return 'failed';
   }
 
-  await supabase
+  // C2: success bookkeeping. Previously this was the most dangerous swallow —
+  // a failure here left the row at 'failed' or 'in_flight' while reporting
+  // 'success' to the caller, causing the next cron tick to re-run the handler
+  // (re-firing non-idempotent side effects like subscription_status writes
+  // and inngest.send).
+  const { error: successErr } = await supabase
     .from('billing_events')
     .update({
       processed_at: now.toISOString(),
@@ -249,6 +273,11 @@ export async function replayBillingEvent(
       last_error: null,
     })
     .eq('id', row.id);
+  if (successErr) {
+    throw new Error(
+      `replay-billing-events: bookkeeping (success) update failed: ${successErr.message}`,
+    );
+  }
   return 'success';
 }
 

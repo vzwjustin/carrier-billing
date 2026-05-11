@@ -12,6 +12,11 @@ import {
   dataOveragePatternRule,
   duplicateProtectionFeaturesRule,
   accountPromoExpiringSoonRule,
+  insuranceAfterDevicePayoffRule,
+  underutilizedPhoneOnPremiumPlanRule,
+  disproportionateTaxesFeesRule,
+  activationFeeOnExistingLineRule,
+  strandedCloudStorageRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -25,6 +30,11 @@ export const ALL_RULES: Rule[] = [
   dataOveragePatternRule,
   duplicateProtectionFeaturesRule,
   accountPromoExpiringSoonRule,
+  insuranceAfterDevicePayoffRule,
+  underutilizedPhoneOnPremiumPlanRule,
+  disproportionateTaxesFeesRule,
+  activationFeeOnExistingLineRule,
+  strandedCloudStorageRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);

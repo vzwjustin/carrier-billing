@@ -34,6 +34,9 @@ describe('stale_international_feature rule', () => {
     expect(f.severity).toBe('info');
     expect(f.estimated_monthly_savings_cents).toBe(0);
     expect(f.confidence).toBe(0.6);
+    const evidence = f.evidence as { line_count: number; total_monthly_cents: number };
+    expect(evidence.line_count).toBe(1);
+    expect(evidence.total_monthly_cents).toBe(1000);
   });
 
   it('does not fire when no international feature is present', async () => {
@@ -58,7 +61,7 @@ describe('stale_international_feature rule', () => {
     expect(findings).toHaveLength(0);
   });
 
-  it('aggregates multiple international features on the same line', async () => {
+  it('rolls multiple international features on the same line into the single per-bill finding (L7)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -86,14 +89,19 @@ describe('stale_international_feature rule', () => {
     const f = findings[0];
     if (!f) throw new Error('expected finding');
     const evidence = f.evidence as {
-      international_features: { name: string; monthly_cents: number }[];
+      per_line: { feature_names: string[]; total_cents: number }[];
+      line_count: number;
+      total_monthly_cents: number;
     };
-    expect(evidence.international_features).toHaveLength(2);
-    expect(f.description).toContain('TravelPass');
-    expect(f.description).toContain('International Plan');
+    expect(evidence.line_count).toBe(1);
+    expect(evidence.total_monthly_cents).toBe(5000);
+    expect(evidence.per_line[0]?.feature_names).toEqual([
+      'TravelPass',
+      'International Plan',
+    ]);
   });
 
-  it('emits one finding per line with international features', async () => {
+  it('rolls all lines into a single per-bill finding (L7)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -127,8 +135,16 @@ describe('stale_international_feature rule', () => {
       ],
     });
     const findings = await staleInternationalFeatureRule.evaluate(c);
-    expect(findings).toHaveLength(2);
-    expect(findings[0]?.affected_line_indexes).toEqual([0]);
-    expect(findings[1]?.affected_line_indexes).toEqual([1]);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    const evidence = f.evidence as {
+      line_count: number;
+      total_monthly_cents: number;
+      per_line: Array<{ account_index: number; line_index: number }>;
+    };
+    expect(evidence.line_count).toBe(2);
+    expect(evidence.total_monthly_cents).toBe(8000);
+    expect(evidence.per_line.map((p) => p.line_index)).toEqual([0, 1]);
   });
 });

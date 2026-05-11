@@ -43,8 +43,13 @@ export const orphanInsuranceRule: Rule = {
           line.dpp_installments.length === 0;
         // The early return at the top of the loop already guarantees
         // insuranceFeatures.length > 0 — drop the dead-code re-check.
+        // M7: treat null plan_base_cents as 0 — a missing plan-base value
+        // is functionally identical to "no plan base on this line" for the
+        // zombie-line heuristic (a line with insurance billing but no plan).
+        // Previously `=== 0` only matched explicit zeros, leaving null-base
+        // zombie lines invisible to this branch.
         const isFeatureOnlyZombie =
-          !isSuspended && !isByod && line.plan_base_cents === 0;
+          !isSuspended && !isByod && (line.plan_base_cents ?? 0) === 0;
 
         if (isSuspended) triggerReasons.push('line_suspended');
         if (noDevice) triggerReasons.push('no_device_no_dpp');

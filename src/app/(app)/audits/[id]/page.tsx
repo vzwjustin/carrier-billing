@@ -59,6 +59,8 @@ interface AuditRow {
   high_severity_count: number | null;
   failure_reason: string | null;
   completed_at: string | null;
+  // F5: page_count surfaces the >100-page slowdown notice in audit-viewer.
+  page_count: number | null;
 }
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -83,7 +85,7 @@ export default async function AuditDetailPage({
   const { data, error } = await supabase
     .from('audits')
     .select(
-      'id,original_filename,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,failure_reason,completed_at',
+      'id,original_filename,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,failure_reason,completed_at,page_count',
     )
     .eq('id', parsed.data.id)
     .maybeSingle<AuditRow>();
@@ -107,6 +109,7 @@ export default async function AuditDetailPage({
     finding_count: data.finding_count,
     high_severity_count: data.high_severity_count,
     failure_reason: data.failure_reason,
+    page_count: data.page_count,
   };
 
   // For completed audits, fetch the rest of the report data.
