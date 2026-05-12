@@ -214,7 +214,7 @@ beforeEach(() => {
 });
 
 describe('handleStripeEvent', () => {
-  it('checkout.session.completed (payment) increments credits and stores customer id', async () => {
+  it('checkout.session.completed (payment) grants credit idempotently and stores customer id', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
       client_reference_id: 'user_abc',
@@ -225,8 +225,8 @@ describe('handleStripeEvent', () => {
 
     expect(client.__rpcs).toHaveLength(1);
     expect(client.__rpcs[0]).toEqual({
-      name: 'increment_audit_credits',
-      args: { profile_id: 'user_abc', delta: 1 },
+      name: 'grant_audit_credit_once',
+      args: { p_profile_id: 'user_abc', p_stripe_event_id: event.id },
     });
 
     // The customer id should also be persisted to the profile.
@@ -237,7 +237,7 @@ describe('handleStripeEvent', () => {
     expect(update?.patch['stripe_customer_id']).toBe('cus_111');
   });
 
-  it('checkout.session.completed (payment) with previousStatus=failed SKIPS the credit RPC (H8 retry safety)', async () => {
+  it('checkout.session.completed (payment) with previousStatus=failed still calls idempotent credit RPC', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
       client_reference_id: 'user_replay',
@@ -250,8 +250,13 @@ describe('handleStripeEvent', () => {
       previousStatus: 'failed',
     });
 
-    // Credit RPC must NOT fire on retry.
-    expect(client.__rpcs).toHaveLength(0);
+    // The grant RPC is idempotent by Stripe event id, so retry/replay should
+    // call it again instead of risking a lost credit after a mid-handler crash.
+    expect(client.__rpcs).toHaveLength(1);
+    expect(client.__rpcs[0]).toEqual({
+      name: 'grant_audit_credit_once',
+      args: { p_profile_id: 'user_replay', p_stripe_event_id: event.id },
+    });
     // Idempotent customer-id write still happens.
     expect(client.__updates).toHaveLength(1);
     expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_replay');

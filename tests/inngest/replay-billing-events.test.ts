@@ -436,7 +436,7 @@ describe('replayBillingEvent', () => {
     expect(updates[1]?.patch.last_error).toBeNull();
   });
 
-  it('always passes previousStatus=failed to the handler so non-idempotent ops short-circuit', async () => {
+  it('always passes previousStatus=failed to the handler for retry observability', async () => {
     const updates: Array<{ patch: Record<string, unknown>; eq: [string, unknown] }> = [];
     await replayBillingEvent(makeSupabaseStub([], updates), makeRow(VALID_PAYLOAD), NOW);
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);

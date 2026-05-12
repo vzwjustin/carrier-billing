@@ -162,11 +162,10 @@ export async function updateOutboundWebhookAction(
   return { ok: true };
 }
 
-// R2-F5 — per-user cooldown on plaintext-secret retrieval. 1 second between
-// reveals (~60/min/user). Defense against post-XSS or session-hijack repeated-
-// call exfiltration. Per-row timestamp; can be swapped for an Upstash bucket
-// without losing the column. See migration 0015.
-const REVEAL_COOLDOWN_MS = 1000;
+// R2-F5 — per-user cooldown on plaintext-secret retrieval. Keep this coarse
+// enough to slow post-XSS/session-hijack exfiltration without making the
+// legitimate "copy once while configuring an integration" flow painful.
+const REVEAL_COOLDOWN_MS = 60_000;
 
 export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecretResult> {
   const supabase = await createClient();

@@ -194,15 +194,11 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     // M-S1: if the bookkeeping update fails after the handler succeeded, we
-    // must NOT return 200 — that leaves the row with `processed_status=null`
-    // and the replay cron would re-invoke the handler with previousStatus=null,
-    // which would re-grant credits / re-flip status. Returning 5xx makes
-    // Stripe retry; on the retry the existing row is found, previousStatus
-    // is read from the row (still null OR whatever the next bookkeeping
-    // attempt sets) and the handler short-circuits non-idempotent ops via
-    // the existing previousStatus gate (the credit grant already requires
-    // previousStatus === null, so a retry of an already-credited row will
-    // skip the RPC because the row is now visible to the next request).
+    // must NOT return 200 — that leaves the row claim dirty and makes retry
+    // behavior harder to reason about. Returning 5xx lets Stripe retry; the
+    // next attempt reuses the existing billing_events row, and handler side
+    // effects are protected by timestamp checks / database-level idempotency
+    // (notably `grant_audit_credit_once` for one-time audit credits).
     const markErr = await markSuccess(supabase, billingEventId);
     if (markErr) {
       return new Response('Bookkeeping failed', { status: 500 });

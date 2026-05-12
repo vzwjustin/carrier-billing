@@ -14,14 +14,14 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  * Idempotency contract: callers (the webhook route + the replay cron) gate
  * this function on the `billing_events.stripe_event_id` unique constraint so
  * that the same Stripe event id is never persisted twice. On retry, callers
- * pass `previousStatus` in the context so non-idempotent mutations (the
- * credit grant in checkout.session.completed) can short-circuit and avoid
- * double-effects.
+ * pass `previousStatus` in the context for observability. Non-idempotent
+ * mutations must be made idempotent at the storage boundary; the one-time
+ * credit grant uses `grant_audit_credit_once(stripe_event_id, user_id)`.
  *
  * Throwing from here surfaces a 5xx out of the webhook route so Stripe
  * automatically retries (H8). Each branch is written to be safe under retry:
  * subscription updates are timestamp-guarded upserts, the past_due update is
- * idempotent, and the credit grant is gated on `previousStatus === null`.
+ * idempotent, and the credit grant is protected by a unique Stripe-event ledger.
  */
 export type HandlerContext = {
   /** processed_status of the billing_events row at the start of this attempt. */
@@ -41,6 +41,7 @@ export async function handleStripeEvent(
         event.data.object as Stripe.Checkout.Session,
         supabase,
         context,
+        event.id,
       );
       return;
     case 'customer.subscription.created':
@@ -84,6 +85,7 @@ async function onCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
   supabase: SupabaseClient,
   context: HandlerContext,
+  stripeEventId: string,
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
@@ -97,29 +99,23 @@ async function onCheckoutSessionCompleted(
   const customerId = readCustomerId(session.customer);
 
   if (session.mode === 'payment') {
-    // H8 retry-safety: `increment_audit_credits` is additive and would
-    // double-credit on retry. The webhook route only sets context.previousStatus
-    // to null on a brand-new billing_events row; any subsequent retry (Stripe
-    // delivery retry OR the replay cron) sees the row's prior status and we
-    // skip the credit. The tradeoff: if the very first credit RPC fails before
-    // any other write, the credit is lost and must be reconciled manually via
-    // Sentry alerts on `stripe.webhook.handler` failures.
-    if (context.previousStatus === null) {
-      const { error: rpcError } = await supabase.rpc(
-        'increment_audit_credits',
-        { profile_id: userId, delta: 1 },
-      );
-      if (rpcError) {
-        throw new Error(
-          `increment_audit_credits failed: ${rpcError.message}`,
-        );
-      }
-    } else {
+    // Retry-safe one-time credit grant. The RPC inserts `stripeEventId` into a
+    // unique grant ledger and increments the profile in the same transaction,
+    // so webhook retries and replay-cron recovery can safely call it again.
+    const { error: rpcError } = await supabase.rpc(
+      'grant_audit_credit_once',
+      { p_profile_id: userId, p_stripe_event_id: stripeEventId },
+    );
+    if (rpcError) {
+      throw new Error(`grant_audit_credit_once failed: ${rpcError.message}`);
+    }
+
+    if (context.previousStatus !== null) {
       Sentry.addBreadcrumb({
         category: 'stripe',
-        message: 'checkout.session.completed: skipping credit grant on retry',
+        message: 'checkout.session.completed: idempotent credit grant retried',
         level: 'info',
-        data: { previousStatus: context.previousStatus, userId },
+        data: { previousStatus: context.previousStatus, userId, stripeEventId },
       });
     }
 

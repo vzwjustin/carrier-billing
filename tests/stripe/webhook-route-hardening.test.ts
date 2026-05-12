@@ -13,7 +13,8 @@ import type Stripe from 'stripe';
  *   - Already-processed (processed_status='success') events ⇒ 200 deduped
  *     immediately, handler not re-invoked.
  *   - Failed-then-replayed events ⇒ handler is re-invoked with
- *     previousStatus='failed' so non-idempotent ops (credit grant) skip.
+ *     previousStatus='failed' for retry observability; non-idempotent ops are
+ *     protected at the database boundary.
  */
 
 const constructEventMock = vi.fn();
@@ -377,8 +378,7 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     // processed_status to success returns an error. The route MUST 5xx
     // (not 200) so Stripe retries the delivery and the next attempt has a
     // chance to mark the row clean. The handler's side effects already
-    // landed; the credit grant is gated on previousStatus, so a retry won't
-    // double-credit.
+    // landed; database-level idempotency prevents a retry from double-crediting.
     const event = makeCheckoutEvent('evt_marksuccess_fail');
     constructEventMock.mockReturnValue(event);
     nextMarkSuccessError = { message: 'bookkeeping pg blew up' };

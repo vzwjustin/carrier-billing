@@ -24,8 +24,9 @@ import { getAdminClient } from '@/lib/supabase/admin';
  *     Stripe's own delivery retry)
  *
  * Handler invocations from this cron always pass `previousStatus = 'failed'`
- * so non-idempotent operations (the credit grant) skip on retry. See the
- * tradeoff comment in `handlers.ts:onCheckoutSessionCompleted`.
+ * so handlers can tag retry/replay attempts. Non-idempotent effects must still
+ * be idempotent at the storage boundary; one-time credit grants are protected
+ * by `grant_audit_credit_once`.
  */
 
 export const REPLAY_LOOKBACK_HOURS = 24;
@@ -157,9 +158,9 @@ export type ReplayOutcome = 'success' | 'failed' | 'invalid_payload' | 'skipped'
 /**
  * Replay a single billing_events row. Exported for testing.
  *
- * Always treats the invocation as a retry (`previousStatus = 'failed'`) so
- * non-idempotent ops in handlers short-circuit. See the credit-grant
- * tradeoff comment in `handlers.ts`.
+ * Always treats the invocation as a retry (`previousStatus = 'failed'`) for
+ * observability. Handler side effects remain safe because each branch is
+ * idempotent or uses a database-level uniqueness guard.
  */
 export async function replayBillingEvent(
   supabase: SupabaseClient,
@@ -179,9 +180,9 @@ export async function replayBillingEvent(
   // R1-F3 — also CAS on processed_status. `markSuccess` in the webhook route
   // flips processed_status without touching last_attempted_at, so a row that
   // the webhook completed AFTER our SELECT can still pass the timestamp CAS.
-  // previousStatus='failed' (below) protects the credit grant, but other
-  // handler side effects (subscription_status writes, past_due flip,
-  // inngest.send) would otherwise fire twice. CAS-on-status closes that.
+  // Database-level idempotency protects the credit grant, but other handler
+  // side effects (subscription_status writes, past_due flip, inngest.send)
+  // would otherwise fire twice. CAS-on-status closes that.
   const claimBase = supabase
     .from('billing_events')
     .update({ last_attempted_at: now.toISOString() })

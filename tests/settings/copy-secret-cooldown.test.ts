@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * secret on every call with no throttle, so a post-XSS or session-hijack
  * attacker could exfiltrate the secret via repeated calls. Migration 0015
  * added `profiles.last_secret_reveal_at`; the action now enforces a per-user
- * 1-second cooldown.
+ * 60-second cooldown.
  */
 
 const userId = 'user_secret_owner';
@@ -71,12 +71,12 @@ describe('copyOutboundWebhookSecretAction — R2-F5 cooldown', () => {
     expect(typeof lastRevealAt).toBe('string');
   });
 
-  it('second call within 1s returns cooldown error, secret not exposed', async () => {
+  it('second call within 60s returns cooldown error, secret not exposed', async () => {
     // First call records a fresh reveal timestamp.
     const first = await copyOutboundWebhookSecretAction();
     expect(first).toEqual({ ok: true, secret: 'whs_abcdef0123456789' });
 
-    // Second call within the 1-second cooldown window must be rejected.
+    // Second call within the 60-second cooldown window must be rejected.
     const second = await copyOutboundWebhookSecretAction();
     expect(second).toEqual({
       ok: false,
@@ -85,8 +85,8 @@ describe('copyOutboundWebhookSecretAction — R2-F5 cooldown', () => {
   });
 
   it('call after the cooldown window returns the secret again', async () => {
-    // Pre-seed a reveal timestamp from 2 seconds ago — past the 1s window.
-    lastRevealAt = new Date(Date.now() - 2_000).toISOString();
+    // Pre-seed a reveal timestamp from 61 seconds ago — past the 60s window.
+    lastRevealAt = new Date(Date.now() - 61_000).toISOString();
     const result = await copyOutboundWebhookSecretAction();
     expect(result).toEqual({ ok: true, secret: 'whs_abcdef0123456789' });
   });

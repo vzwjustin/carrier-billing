@@ -22,7 +22,8 @@ Stripe webhook hardening landed:
 - **Recovery cron** — `src/inngest/functions/replay-billing-events.ts` runs
   every 15 min, picks up `processed_status` IS NULL OR 'failed' rows newer
   than 24h that have cooled past 60s since `last_attempted_at`, and re-invokes
-  the handler with `previousStatus='failed'` so non-idempotent ops short-circuit.
+  the handler with `previousStatus='failed'` for retry observability. One-time
+  credit grants are idempotent via `0016_one_time_credit_grant_idempotency.sql`.
 - **PII** — `last_error` is `scrubString`-redacted and capped at 500 chars.
 - **Tests** — 26 new test cases across `tests/stripe/webhook-route-hardening.test.ts`,
   `tests/stripe/handlers.test.ts` (new H9 + credit-replay describe), and
@@ -33,6 +34,10 @@ Stripe webhook hardening landed:
 > imports the hardened webhook route or the replay cron. Without the new
 > columns the route will throw `column does not exist` on every Stripe event
 > and the cron will fail every 15 minutes.
+>
+> Also apply migration 0016 BEFORE deploying any commit where
+> `checkout.session.completed` calls `grant_audit_credit_once`; otherwise
+> one-time audit purchases will fail during webhook handling.
 
 ## Snapshot (pass this file + `CLAUDE.md` to a fresh session)
 
