@@ -250,8 +250,11 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     expect(body).toEqual({ received: true });
 
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
+    // C1: handler context now also carries billingEventId so the atomic
+    // grant_credit_once RPC has the row id to gate on.
     expect(handleStripeEventMock.mock.calls[0]?.[2]).toEqual({
       previousStatus: null,
+      billingEventId: expect.any(String),
     });
 
     const row = billingEvents.find((r) => r.stripe_event_id === 'evt_h8_ok');
@@ -363,8 +366,10 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     const res = await POST(makeRequest('{}'));
     expect(res.status).toBe(200);
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
+    // C1: billingEventId is now also passed through.
     expect(handleStripeEventMock.mock.calls[0]?.[2]).toEqual({
       previousStatus: 'failed',
+      billingEventId: expect.any(String),
     });
 
     const row = billingEvents.find((r) => r.stripe_event_id === 'evt_replay');
@@ -413,8 +418,10 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     const second = await POST(makeRequest('{}'));
     expect(second.status).toBe(200);
     expect(handleStripeEventMock).toHaveBeenCalledTimes(2);
+    // C1: billingEventId is now also passed through.
     expect(handleStripeEventMock.mock.calls[1]?.[2]).toEqual({
       previousStatus: 'failed',
+      billingEventId: expect.any(String),
     });
 
     row = billingEvents.find((r) => r.stripe_event_id === 'evt_retry_chain');

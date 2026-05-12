@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { inngest } from '../client';
+import { BillingPaymentFailedDataSchema, parseEventData } from '../events';
 import { env } from '@/env';
 import {
   PaymentFailedEmail,
@@ -53,7 +54,12 @@ export const sendPaymentFailedEmailFn = inngest.createFunction(
   },
   { event: 'billing.payment_failed' },
   async ({ event, step, logger }) => {
-    const { userId, invoiceId, amountDueCents } = event.data;
+    // M11: validate the payload at the boundary.
+    const { userId, invoiceId, amountDueCents } = parseEventData(
+      'billing.payment_failed',
+      event.data,
+      BillingPaymentFailedDataSchema,
+    );
 
     logger.info('sendPaymentFailedEmail: start', { userId, invoiceId });
 

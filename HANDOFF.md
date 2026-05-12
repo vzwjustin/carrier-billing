@@ -7,6 +7,119 @@
 
 ---
 
+## Most recent pass (2026-05-11): extreme-analysis remediation
+
+A full audit-and-fix pass landed 3 CRITICAL, 11 HIGH, 10 MEDIUM, and 7 LOW
+remediations plus 5 new rules. Highlights:
+
+### Critical
+- **C1** — Permanent credit loss on first-attempt `increment_audit_credits`
+  failure is closed. New atomic `grant_credit_once(event_id, profile_id, delta)`
+  RPC + `billing_events.credit_granted boolean` (migration **0017**). Handler
+  now gates on `credit_granted IS NOT TRUE` so retries can re-attempt the
+  grant indefinitely. Replay cron passes `billingEventId` through.
+- **C2** — Three `update(...)` bookkeeping writes in `replay-billing-events.ts`
+  no longer swallow errors. Each now throws on `.error`, so a flapping DB
+  cannot leave a row stuck claiming success while the cron silently
+  reprocesses it forever.
+- **C3 (operator)** — Resend sender domain (`reports@carrieraudit.com` in
+  `src/lib/resend/from.ts`) is still unset; DNS / verification work is the
+  remaining launch blocker — code path is correct.
+
+### High
+- **H1+H2** — `expired_promo_credit` rewritten: filters non-`is_promo` rows
+  (was false-firing on ops adjustments) and the description no longer
+  claims the discount is missing from this bill.
+- **H3** — `account_level_promo_about_to_expire` now also walks per-line
+  credits in the 31–60d window. The 36-month device-payoff promo gap is
+  closed.
+- **H4** — `/api/health` gains a deep-mode check (`?token=<HEALTH_SECRET>`)
+  for DB + Stripe + Anthropic-presence; liveness behavior unchanged for
+  anon callers. New optional `HEALTH_SECRET` env var.
+- **H5** — `translateLineIndexes` now collects drop counts; emitted as a
+  Sentry breadcrumb at `persist-findings`.
+- **H6** — `profiles.cancel_at_period_end` + `current_period_end` columns
+  in migration **0017**. Handler reads them from `Stripe.Subscription`.
+  `/settings/billing` renders a "cancellation scheduled" notice with the
+  period-end date.
+- **H7** — Rule errors keep their original stack frame (was overwriting
+  with `runner.ts:64`).
+- **H8** — Anthropic call wrapped in 3-attempt exponential-backoff retry
+  on 429/500/502/503/504/529.
+- **H9** — PDF cache-write `upload` errors now `Sentry.captureException`.
+- **H10** — `user_label` Zod transform redacts two-or-more-capitalized-word
+  patterns. Prompt instruction also added.
+- **H11** — `assertExactlyOneProfileMatched` returns a `NO_MATCH` sentinel
+  for terminal events (`customer.subscription.deleted`,
+  `invoice.payment_failed`) when the profile is gone. No more 13× Sentry
+  warning per deleted user.
+
+### Medium
+- **M1** — Stripe checkout orphan-customer cleanup `swallow`s now
+  `Sentry.captureException` with scrubbed message.
+- **M3** — `unused_mifi_or_jetpack_line` capped at `severity: 'low'` until
+  schema carries an activation date.
+- **M4** — Verizon Pro 2.0 removed from `PLAN_SOFT_CAPS_GB`; it has no
+  premium-data cap.
+- **M5** — `legacy_unlimited_plan` strips `replacement_plan` and drops
+  confidence when carrier is `'unknown'`.
+- **M6** — `duplicate_protection_features` savings now `total - max` (drop
+  cheapest) — conservative vs. the prior optimistic `total - min`.
+- **M7** — `orphan_insurance` zombie heuristic uses `?? 0` on
+  `plan_base_cents` so null bases count.
+- **M8** — `detect.ts` AT&T regex now requires a carrier-context keyword.
+- **M11** — Inngest event payloads Zod-parsed at the boundary
+  (`src/inngest/events.ts`). All three consumers wired up.
+- **M13** — Literal unions for `AuditStatus`, `AuditCarrier`,
+  `FindingSeverity`, `SubscriptionStatus` in `src/types/db-enums.ts`.
+  Applied at gate.ts and dispatch-outbound-webhook.ts.
+- **M16** — Inngest-send failure in `onInvoicePaymentFailed` captured at
+  `level: 'error'` (alertable).
+
+### Low
+- **L3** — `dangerouslySetInnerHTML` on the static `&mdash;` in
+  `src/app/page.tsx` is gone.
+- **L5** — Rate-limit added to `/api/audits/[id]/status` (60/min/user) and
+  `/api/audits/[id]/report.pdf` (10/5m public, 30/5m auth).
+- **L6** — Bad LLM raw output `scrubString`-redacted before echoing on retry.
+- **L7** — `stale_international_feature` now emits a single per-bill
+  rolled-up finding (was one per line, each $0).
+- **L9** — `cleanup-orphan-audits` filters on `credit_consumed = true` at
+  the query layer (defense-in-depth on the RPC guard).
+- **L10** — Stripe portal route handles `resource_missing` 404 → returns
+  409 to the client instead of a generic 500.
+
+### New rules (F4–F8)
+Five new rule files in `src/rules/definitions/`, all registered in
+`registry.ts`:
+- `insurance_after_device_payoff`
+- `underutilized_phone_on_premium_plan`
+- `disproportionate_taxes_fees`
+- `activation_fee_on_existing_line`
+- `stranded_cloud_storage`
+
+### F5 — page_count UI warning
+`audit-viewer.tsx` renders a "large bill — may take longer" notice when
+`page_count > 100`. Status route + page server-load both surface it.
+
+### Migration 0017
+**Deploy order:** apply
+`supabase/migrations/0017_credit_grant_atomic_and_subscription_lifecycle.sql`
+**before** deploying any commit that imports the updated handlers.ts. New
+columns are additive + nullable. Without 0017 the handler will throw
+`column credit_granted does not exist` on the next Stripe one-time event,
+and the billing page will fail to read `cancel_at_period_end`.
+
+### Stale claims in older HANDOFF sections (now corrected)
+- "API rate limiting — not implemented" → **false**. `src/lib/security/rate-limit.ts` + table in 0016 + wired in upload/retry/share + (now) status/pdf.
+- "Global `app/error.tsx` not present" → **false**. `src/app/global-error.tsx` exists.
+- "ESLint flat-config ordering bug" → **fixed**; `eslint.config.mjs:13-26`.
+- HANDOFF describes through 0008 — repo has **through 0017**.
+
+---
+
+---
+
 ## Latest review-fix pass (2026-05-09): H8 + H9 + H10 done
 
 Stripe webhook hardening landed:

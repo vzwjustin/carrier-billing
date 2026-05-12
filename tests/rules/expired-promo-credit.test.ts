@@ -16,7 +16,7 @@ function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
 }
 
 describe('expired_promo_credit rule', () => {
-  it('fires high severity when account credit is expired', async () => {
+  it('fires high severity when account credit is expired (L1 confidence: 0.95 for promo-shaped name)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -34,11 +34,12 @@ describe('expired_promo_credit rule', () => {
     expect(f.estimated_monthly_savings_cents).toBe(2500);
     expect(f.affected_account_indexes).toEqual([0]);
     expect(f.affected_line_indexes).toEqual([]);
-    // Already-expired credits get 0.98 confidence (vs 0.95 for expiring-soon).
-    expect(f.confidence).toBe(0.98);
+    // L1: confidence depends on whether the name matches PROMO_NAME_RE.
+    // "Loyalty" matches → already-expired uses 0.95.
+    expect(f.confidence).toBe(0.95);
   });
 
-  it('uses lower confidence (0.95) for credits expiring within 30 days', async () => {
+  it('uses lower confidence when the credit name does not look promo-shaped (L1)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -51,7 +52,8 @@ describe('expired_promo_credit rule', () => {
     const findings = await expiredPromoCreditRule.evaluate(c);
     const f = findings[0];
     if (!f) throw new Error('expected finding');
-    expect(f.confidence).toBe(0.95);
+    // L1: "Soon" doesn't match PROMO_NAME_RE → expiring-soon base 0.9 - 0.1 = 0.8.
+    expect(f.confidence).toBeCloseTo(0.8, 5);
   });
 
   it('fires medium severity when line credit expires within 30 days', async () => {
@@ -108,13 +110,13 @@ describe('expired_promo_credit rule', () => {
   it('fires medium severity (expiring-soon branch) when credit expires exactly today', async () => {
     // TEST_TODAY = 2026-05-08. `isExpired` is strict-past (< 0 days), so a
     // credit expiring today is NOT expired yet — it falls under the
-    // "expiring within 30 days" branch (severity: medium, confidence: 0.95).
+    // "expiring within 30 days" branch (severity: medium).
     const c = ctx({
       accounts: [
         makeAccount({
           account_level_credits: [
             makeCredit({
-              name: 'Expires-today credit',
+              name: 'Promo credit expiring today',
               monthly_cents: -2000,
               expires_on: '2026-05-08',
             }),
@@ -127,8 +129,28 @@ describe('expired_promo_credit rule', () => {
     const f = findings[0];
     if (!f) throw new Error('expected finding');
     expect(f.severity).toBe('medium');
-    expect(f.confidence).toBe(0.95);
+    // L1: name contains "promo" → matches PROMO_NAME_RE → 0.9.
+    expect(f.confidence).toBe(0.9);
     expect(f.estimated_monthly_savings_cents).toBe(2000);
+  });
+
+  it('does NOT fire when the credit row has is_promo=false (H2 — non-promo adjustments out of scope)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          account_level_credits: [
+            makeCredit({
+              name: 'Operations Adjustment',
+              monthly_cents: -2500,
+              expires_on: '2026-04-01',
+              is_promo: false,
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await expiredPromoCreditRule.evaluate(c);
+    expect(findings).toHaveLength(0);
   });
 });
 

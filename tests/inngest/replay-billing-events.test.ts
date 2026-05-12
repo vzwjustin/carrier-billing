@@ -436,12 +436,18 @@ describe('replayBillingEvent', () => {
     expect(updates[1]?.patch.last_error).toBeNull();
   });
 
-  it('always passes previousStatus=failed to the handler so non-idempotent ops short-circuit', async () => {
+  it('passes row.processed_status as previousStatus + billingEventId to the handler (C1, C2)', async () => {
     const updates: Array<{ patch: Record<string, unknown>; eq: [string, unknown] }> = [];
     await replayBillingEvent(makeSupabaseStub([], updates), makeRow(VALID_PAYLOAD), NOW);
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
+    // C1: under the new model the replay cron passes the real prior
+    // processed_status (instead of a hardcoded 'failed') and the
+    // billing_events row id so handlers can use the atomic
+    // grant_credit_once RPC. The makeRow factory defaults the row's
+    // processed_status to 'failed', which is what we expect to see here.
     expect(handleStripeEventMock.mock.calls[0]?.[2]).toEqual({
       previousStatus: 'failed',
+      billingEventId: 'be_target',
     });
   });
 

@@ -17,6 +17,7 @@ import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
 import { trackServer } from '@/lib/analytics/events';
+import { BillUploadedDataSchema, parseEventData } from '../events';
 
 /**
  * process-bill Inngest function (Phase 1 + Phase 2).
@@ -242,7 +243,15 @@ export const processBillFn = inngest.createFunction(
   },
   { event: 'bill.uploaded' },
   async ({ event, step, logger }) => {
-    const { auditId, userId, storagePath } = event.data;
+    // M11: Zod-parse the event payload before any handler logic touches it.
+    // Inngest gives a TS-typed view but no runtime guarantee — a misshapen
+    // payload from a replay tool or future SDK rev would otherwise crash
+    // deep in the pipeline with a `Cannot read property` error.
+    const { auditId, userId, storagePath } = parseEventData(
+      'bill.uploaded',
+      event.data,
+      BillUploadedDataSchema,
+    );
 
     logger.info('processBill: start', {
       auditId,
@@ -561,11 +570,25 @@ export const processBillFn = inngest.createFunction(
 
       // (B1) Translate per-account line indexes to global flat indexes
       // before handing findings to persistFindings (see translateLineIndexes
-      // below for the full rationale).
-      const translatedFindings = translateLineIndexes(findings, bill, {
-        auditId,
-        warn: (msg, ctx) => logger.warn(msg, ctx),
-      });
+      // below for the full rationale). H5: collect drop stats so the
+      // persist-findings breadcrumb can surface aggregate visibility — a
+      // dropped index leaves a finding with empty affected_line_indexes,
+      // which renders in the report as a "Potential saving" with no
+      // affected lines listed. Without observability that looks like a
+      // rule bug to support staff.
+      const indexStats: IndexTranslationStats = {
+        droppedLineIndexes: 0,
+        findingsWithDroppedAccount: 0,
+      };
+      const translatedFindings = translateLineIndexes(
+        findings,
+        bill,
+        {
+          auditId,
+          warn: (msg, ctx) => logger.warn(msg, ctx),
+        },
+        indexStats,
+      );
 
       // ─────────────────────────────────────────────────────────────────────
       // Step 6: persist-findings — delete-then-insert for idempotent retries.
@@ -582,10 +605,29 @@ export const processBillFn = inngest.createFunction(
       // ─────────────────────────────────────────────────────────────────────
       await step.run('persist-findings', async () => {
         await persistFindings(auditId, translatedFindings, persistResult);
-        if (ruleErrors.length > 0) {
-          // Lazy import so we don't pull Sentry into cold paths.
-          try {
-            const Sentry = await import('@sentry/nextjs');
+        // H5: surface drop counts as a Sentry breadcrumb. Always emit (even
+        // at 0) so absence in Sentry === query-related issue, not normal
+        // operation.
+        try {
+          const Sentry = await import('@sentry/nextjs');
+          if (
+            indexStats.droppedLineIndexes > 0 ||
+            indexStats.findingsWithDroppedAccount > 0
+          ) {
+            Sentry.addBreadcrumb({
+              category: 'rules',
+              level: 'warning',
+              message: 'index_translation_drops',
+              data: {
+                auditId,
+                droppedLineIndexes: indexStats.droppedLineIndexes,
+                findingsWithDroppedAccount:
+                  indexStats.findingsWithDroppedAccount,
+                findingCount: findings.length,
+              },
+            });
+          }
+          if (ruleErrors.length > 0) {
             Sentry.addBreadcrumb({
               category: 'rules',
               level: 'warning',
@@ -603,10 +645,10 @@ export const processBillFn = inngest.createFunction(
                 errors: ruleErrors,
               },
             });
-          } catch {
-            // Sentry is optional in some environments; never let telemetry
-            // failure block the pipeline.
           }
+        } catch {
+          // Sentry is optional in some environments; never let telemetry
+          // failure block the pipeline.
         }
         return { ok: true, inserted: findings.length };
       });
@@ -1104,6 +1146,15 @@ type IndexTranslationOptions = {
   warn: IndexTranslationLogger['warn'];
 };
 
+export type IndexTranslationStats = {
+  /** Number of (finding, localIdx) pairs dropped because the local index was
+   *  outside the account's line range. Each drop also emits a warn log. */
+  droppedLineIndexes: number;
+  /** Number of findings whose entire affected_line_indexes array was wiped
+   *  due to a bad account index. Distinct from droppedLineIndexes. */
+  findingsWithDroppedAccount: number;
+};
+
 /**
  * Translate each finding's `affected_line_indexes` from per-account-local
  * positions (what every rule under `src/rules/definitions` actually emits)
@@ -1117,12 +1168,17 @@ type IndexTranslationOptions = {
  * — i.e. local to the account. Without translation, on any multi-account
  * bill the wrong UUID gets stamped on findings.
  *
- * Returns a NEW array (does not mutate input findings).
+ * Returns a NEW array (does not mutate input findings). H5: also populates
+ * an out-parameter with drop counts so the caller can surface aggregate
+ * visibility (a finding that was dropped silently looks like a rule bug to
+ * support — it produces a "Potential saving" report row with no affected
+ * lines listed).
  */
 export function translateLineIndexes(
   findings: Finding[],
   bill: ExtractedBill,
   opts: IndexTranslationOptions,
+  stats?: IndexTranslationStats,
 ): Finding[] {
   const accountLineCounts = bill.accounts.map((a) => a.lines.length);
   const accountStartOffsets: number[] = [];
@@ -1144,6 +1200,7 @@ export function translateLineIndexes(
         'processBill: finding has line indexes but no account index — dropping line indexes',
         { auditId: opts.auditId, rule_id: f.rule_id },
       );
+      if (stats) stats.findingsWithDroppedAccount += 1;
       return { ...f, affected_line_indexes: [] };
     }
     if (accountIdx < 0 || accountIdx >= accountLineCounts.length) {
@@ -1156,6 +1213,7 @@ export function translateLineIndexes(
           accountCount: accountLineCounts.length,
         },
       );
+      if (stats) stats.findingsWithDroppedAccount += 1;
       return { ...f, affected_line_indexes: [] };
     }
     const accountSize = accountLineCounts[accountIdx] ?? 0;
@@ -1177,6 +1235,7 @@ export function translateLineIndexes(
             accountSize,
           },
         );
+        if (stats) stats.droppedLineIndexes += 1;
         continue;
       }
       const globalIdx = offset + localIdx;

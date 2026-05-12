@@ -8,3 +8,8 @@ export { legacyUnlimitedPlanRule } from './legacy-unlimited-plan';
 export { dataOveragePatternRule } from './data-overage-pattern';
 export { duplicateProtectionFeaturesRule } from './duplicate-protection-features';
 export { accountPromoExpiringSoonRule } from './account-promo-expiring-soon';
+export { insuranceAfterDevicePayoffRule } from './insurance-after-device-payoff';
+export { underutilizedPhoneOnPremiumPlanRule } from './underutilized-phone-on-premium-plan';
+export { disproportionateTaxesFeesRule } from './disproportionate-taxes-fees';
+export { activationFeeOnExistingLineRule } from './activation-fee-on-existing-line';
+export { strandedCloudStorageRule } from './stranded-cloud-storage';

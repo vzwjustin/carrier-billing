@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import {
+  consumeRateLimit,
+  rateLimitedResponse,
+} from '@/lib/security/rate-limit';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -40,6 +44,8 @@ interface AuditStatusRow {
   estimated_annual_savings_cents: number | null;
   finding_count: number | null;
   high_severity_count: number | null;
+  // F5: surface page_count so the UI can show a >100-page warning.
+  page_count: number | null;
 }
 
 export async function GET(
@@ -61,10 +67,23 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
+    // L5: cap how often a single user can poll status. The UI polls every 2s
+    // while an audit is in pending/extracting/analyzing — 60 reqs/min covers
+    // worst case and leaves plenty of headroom for tab refreshes, but blocks
+    // an authenticated DOS attempt.
+    const limited = await consumeRateLimit({
+      key: `audit-status:${user.id}`,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!limited.ok) {
+      return rateLimitedResponse(limited.resetAt);
+    }
+
     const { data, error } = await supabase
       .from('audits')
       .select(
-        'user_id,status,carrier,line_count,total_charges_cents,failure_reason,account_count,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count',
+        'user_id,status,carrier,line_count,total_charges_cents,failure_reason,account_count,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,page_count',
       )
       .eq('id', parsed.data.id)
       .maybeSingle<AuditStatusRow>();
@@ -101,6 +120,7 @@ export async function GET(
       finding_count: data.finding_count,
       high_severity_count: data.high_severity_count,
       failure_reason: data.failure_reason,
+      page_count: data.page_count,
     });
   } catch {
     return NextResponse.json(

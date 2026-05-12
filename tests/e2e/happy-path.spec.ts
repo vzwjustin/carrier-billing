@@ -71,7 +71,6 @@ d('CarrierAudit happy path', () => {
       try {
         await cleanupUser(state.email);
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.warn('[happy-path] cleanup failed:', err);
       }
     }

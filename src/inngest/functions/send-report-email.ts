@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { inngest } from '../client';
+import { AuditCompletedDataSchema, parseEventData } from '../events';
 import { env } from '@/env';
 import {
   AuditCompletedEmail,
@@ -86,7 +87,12 @@ export const sendReportEmailFn = inngest.createFunction(
   { id: 'send-report-email', concurrency: { limit: 10 }, retries: 2 },
   { event: 'audit.completed' },
   async ({ event, step, logger }) => {
-    const { auditId, userId } = event.data;
+    // M11: validate the payload at the boundary.
+    const { auditId, userId } = parseEventData(
+      'audit.completed',
+      event.data,
+      AuditCompletedDataSchema,
+    );
 
     logger.info('sendReportEmail: start', { auditId, userId });
 

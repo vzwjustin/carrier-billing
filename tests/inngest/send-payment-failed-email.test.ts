@@ -68,10 +68,12 @@ describe('sendPaymentFailedEmailFn — C2 PII discipline', () => {
   });
 
   it('event payload destructure does NOT include customerEmail', () => {
-    // Match the destructure of `event.data` and ensure customerEmail is absent.
-    const destructure = consumerSrc.match(
-      /const\s*\{([^}]+)\}\s*=\s*event\.data;/,
-    );
+    // M11: the destructure target is now `parseEventData(...)` (Zod boundary
+    // parse), so match either the legacy `event.data` shape or the
+    // parseEventData shape — both must NOT mention customerEmail.
+    const destructure =
+      consumerSrc.match(/const\s*\{([^}]+)\}\s*=\s*event\.data;/) ??
+      consumerSrc.match(/const\s*\{([^}]+)\}\s*=\s*parseEventData\(/);
     expect(destructure).not.toBeNull();
     expect(destructure?.[1]).not.toMatch(/customerEmail/);
   });

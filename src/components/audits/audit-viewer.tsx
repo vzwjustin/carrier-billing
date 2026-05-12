@@ -43,6 +43,9 @@ export interface AuditStatusPayload {
   finding_count: number | null;
   high_severity_count: number | null;
   failure_reason: string | null;
+  // F5: SPEC §11 case 5 — surface a "processing may be slow" notice when
+  // page_count > 100. Persisted to audits.page_count by process-bill.
+  page_count: number | null;
 }
 
 function isStatusPayload(value: unknown): value is AuditStatusPayload {
@@ -155,9 +158,26 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
   const showSummary = ['analyzing', 'completed'].includes(data.status);
   const inFlight = ACTIVE_STATUSES.has(data.status);
 
+  // F5: SPEC §11 case 5 — show a "this may be slow" notice once we know
+  // the bill is large. page_count is persisted by the extract step, so the
+  // notice appears from the analyzing phase onward.
+  const isLargeBill =
+    typeof data.page_count === 'number' && data.page_count > 100;
+
   return (
     <div className="space-y-6">
       <Stepper status={data.status} />
+
+      {isLargeBill && inFlight ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Large bill detected — {data.page_count} pages.</p>
+          <p className="mt-1">
+            Processing a bill this size may take a few minutes longer than
+            usual. You can leave this tab open — we&apos;ll keep the report when
+            it&apos;s ready.
+          </p>
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">
         <p className="text-sm text-neutral-500">Current step</p>

@@ -27,10 +27,17 @@ const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
 const createSignedUploadUrlMock =
   vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
+const auditsUpdateMock = vi.fn(async () => ({ data: [{ id: 'audit-1' }], error: null }));
+
 const fromMock = vi.fn((_table: string) => ({
   insert: (row: unknown) => auditsInsertMock(row),
   delete: () => ({
     eq: () => auditsDeleteEqMock(),
+  }),
+  update: (_patch: unknown) => ({
+    eq: (_col: string, _val: string) => ({
+      eq: (_col2: string, _val2: string) => auditsUpdateMock(),
+    }),
   }),
 }));
 

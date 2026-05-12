@@ -133,6 +133,12 @@ export const env = createEnv({
 
     // PostHog (server)
     POSTHOG_API_KEY: z.string().min(1).optional(),
+
+    // H4: optional secret for the /api/health deep-dependency probe. When
+    // set, callers must pass `?token=<HEALTH_SECRET>` to opt into DB +
+    // Stripe-API + Anthropic-key checks. When unset, /api/health remains a
+    // pure liveness endpoint (200 / app:ok) — the default-safe behavior.
+    HEALTH_SECRET: z.string().min(16).optional(),
   },
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -165,6 +171,7 @@ export const env = createEnv({
     SENTRY_PROJECT: process.env.SENTRY_PROJECT,
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
+    HEALTH_SECRET: process.env.HEALTH_SECRET,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

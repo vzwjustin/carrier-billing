@@ -26,10 +26,15 @@ export const duplicateProtectionFeaturesRule: Rule = {
           (a, b) => a.monthly_cents - b.monthly_cents,
         );
         const total = sortedAsc.reduce((sum, f) => sum + f.monthly_cents, 0);
-        // Keep the cheapest; savings = drop everything else.
-        const cheapest = sortedAsc[0];
-        const cheapestCents = cheapest === undefined ? 0 : cheapest.monthly_cents;
-        const savings = total - cheapestCents;
+        // M6: conservative savings model — assume the customer keeps the MOST
+        // expensive (typically most comprehensive) coverage and drops the
+        // others. Previous "keep the cheapest" math overestimated savings by
+        // up to 6.5× on realistic Asurion-vs-WPP stacks. Customers almost
+        // always keep the broader policy in practice.
+        const mostExpensive = sortedAsc[sortedAsc.length - 1];
+        const mostExpensiveCents =
+          mostExpensive === undefined ? 0 : mostExpensive.monthly_cents;
+        const savings = total - mostExpensiveCents;
 
         const names = insurance.map((f) => f.name).join(', ');
 
@@ -39,7 +44,7 @@ export const duplicateProtectionFeaturesRule: Rule = {
           title: `Line carries ${insurance.length} overlapping protection features`,
           description: `This line has multiple protection/insurance features (${names}) totaling ${formatCents(total)}/mo. Carrier protection plans generally don't stack — keeping more than one is almost always waste.`,
           recommended_action:
-            'Pick the single best plan (typically the most comprehensive at the lowest cost) and drop the others.',
+            'Pick the single most comprehensive plan and drop the others.',
           estimated_monthly_savings_cents: savings,
           confidence: 0.9,
           affected_line_indexes: [lineIndex],
@@ -51,7 +56,7 @@ export const duplicateProtectionFeaturesRule: Rule = {
             })),
             feature_names: insurance.map((f) => f.name),
             total_monthly_cents: total,
-            cheapest_monthly_cents: cheapestCents,
+            most_expensive_monthly_cents: mostExpensiveCents,
             count: insurance.length,
           },
         });
