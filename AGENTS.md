@@ -133,3 +133,33 @@ Don't build any of these without a discussion: carrier API integrations, auto-ne
 - `TODO(domain)` — domain logic Justin will refine. Don't fill these in.
 - `TODO(launch)` — pre-launch polish. Tackle in Phase 5.
 - `TODO(blocker)` — must fix before merging the current work. Should never sit unresolved.
+
+## Cursor Cloud specific instructions
+
+### Environment overview
+
+The update script handles `corepack enable`, `corepack prepare pnpm@10.33.0 --activate`, `pnpm install`, and `pnpm rebuild esbuild`. After VM boot, dependencies are ready.
+
+### Running the dev server
+
+A `.env.local` file with `SKIP_ENV_VALIDATION=1` plus minimal `NEXT_PUBLIC_*` placeholders is required for the Next.js dev server to boot without real API credentials. The file is **not** committed — create it if missing:
+
+```
+SKIP_ENV_VALIDATION=1
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder_anon_key
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_placeholder
+```
+
+Then `pnpm dev` starts at http://localhost:3000.
+
+### Tests, lint, typecheck
+
+All commands documented in the Common Commands table above work from `/workspace`. Unit tests (`pnpm test`) mock all external services and require no credentials. Typecheck and lint similarly need no env vars.
+
+### Key gotchas
+
+- `pnpm install` emits a warning about ignored build scripts (esbuild, sharp, @sentry/cli, etc.). Running `pnpm rebuild esbuild` after install is necessary for Vitest/bundling to work correctly. Other packages (sharp, @sentry/cli) are optional and only needed for image optimization and sourcemap upload respectively.
+- The env validation (`src/env.ts`) rejects known placeholder strings like `"placeholder"` at runtime. `SKIP_ENV_VALIDATION=1` bypasses this for local dev when real keys aren't available. Tests set `NODE_ENV=test` which also skips validation automatically.
+- The Inngest dev server (`pnpm dlx inngest-cli@latest dev`) and Stripe CLI (`stripe listen --forward-to localhost:3000/api/stripe/webhook`) are only needed for testing the full audit pipeline end-to-end; they are **not** required for lint/typecheck/unit-tests or for the dev server to boot.
