@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { assertCanRunAudit } from '@/lib/access/gate';
-import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
+import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -43,21 +43,6 @@ async function refundConsumedCredit(
       tags: { surface },
       extra: { userId, auditId },
     });
-  }
-}
-
-async function markCreditConsumed(
-  admin: ReturnType<typeof getAdminClient>,
-  auditId: string,
-  userId: string,
-): Promise<void> {
-  const { error } = await admin
-    .from('audits')
-    .update({ credit_consumed: true })
-    .eq('id', auditId)
-    .eq('user_id', userId);
-  if (error) {
-    throw new Error(`credit marker failed: ${error.message}`);
   }
 }
 
@@ -156,37 +141,53 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
     }
 
-    // NOTE: spec wanted decrement on first state change; we decrement on
-    // creation for stricter race-free accounting. The gate already approved
-    // this user, but the RPC is the atomic source of truth — if a concurrent
-    // creation drained the credits between the gate read and now, the RPC
-    // throws `no_credits` and we roll back the audit row below.
+    // H4: atomic-once decrement anchored to this audit row. The RPC flips
+    // `audits.credit_consumed: false → true` AND decrements profiles in a
+    // single statement. If the RPC committed server-side but the client
+    // never saw the response, a retry finds credit_consumed=true and is
+    // returned `idempotent=true` instead of throwing — no lost credits.
+    //
+    // The gate at L118 already approved the user, but the RPC is the
+    // atomic source of truth — if a concurrent request drained credits
+    // between the gate read and now, the RPC throws `no_credits` and we
+    // roll back the audit row below.
     if (gate.reason === 'credit') {
       try {
-        await decrementAuditCreditAtomically(user.id);
+        await consumeAuditCreditForAudit(user.id, auditId);
         creditConsumed = true;
-        await markCreditConsumed(admin, auditId, user.id);
       } catch (decrementErr) {
+        const isDefinitiveRefusal =
+          decrementErr instanceof Error &&
+          decrementErr.message === 'no_credits';
         Sentry.captureException(decrementErr, {
-          tags: { surface: 'audits.create.decrement', transient: 'true' },
-          extra: { userId: user.id },
+          tags: {
+            surface: 'audits.create.decrement',
+            transient: isDefinitiveRefusal ? 'false' : 'true',
+          },
+          extra: { userId: user.id, auditId },
         });
-        try {
-          await admin.from('audits').delete().eq('id', auditId);
-        } catch (rollbackErr) {
-          Sentry.captureException(rollbackErr, {
-            tags: { surface: 'audits.create.rollback_orphan' },
-            extra: { auditId, userId: user.id },
-          });
+        if (isDefinitiveRefusal) {
+          // The RPC ran and definitively refused — user has 0 credits,
+          // or audit row state was wrong. Roll back the audit row; no
+          // credit was decremented so no refund is needed.
+          try {
+            await admin.from('audits').delete().eq('id', auditId);
+          } catch (rollbackErr) {
+            Sentry.captureException(rollbackErr, {
+              tags: { surface: 'audits.create.rollback_orphan' },
+              extra: { auditId, userId: user.id },
+            });
+          }
         }
-        if (creditConsumed) {
-          await refundConsumedCredit(
-            admin,
-            user.id,
-            auditId,
-            'audits.create.decrement_refund',
-          );
-        }
+        // For transient errors (network drop between RPC commit and
+        // response, PostgREST 5xx, etc.) we deliberately LEAVE the audit
+        // row in place with status='pending'. If the RPC actually
+        // committed server-side, `credit_consumed=true` will be set;
+        // the orphan-cleanup cron sweeps such rows after 30 minutes and
+        // refunds the credit. If the RPC failed before committing, the
+        // row sits idle with `credit_consumed=false`, and orphan-
+        // cleanup will also reap it (no refund path needed — credit
+        // was never decremented). Either way, no credit is lost.
         return NextResponse.json(
           {
             error: 'no_plan',

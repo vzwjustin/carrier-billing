@@ -261,6 +261,19 @@ export async function GET(
       tags: { surface: 'pdf.cache_write' },
       extra: { auditId, storagePath },
     });
+    // L5: some upload failure modes leave a zero-byte/partial object
+    // behind. A subsequent request would hit the cache path, download
+    // the empty body, and serve a 0-byte PDF. Best-effort scrub so the
+    // next miss re-renders cleanly. Swallow remove errors — the cache
+    // is only an optimization.
+    try {
+      await admin.storage.from('reports').remove([storagePath]);
+    } catch (removeErr) {
+      Sentry.captureException(removeErr, {
+        tags: { surface: 'pdf.cache_scrub' },
+        extra: { auditId, storagePath },
+      });
+    }
   }
 
   await trackPdfDownload(auditId, audit.user_id, token);

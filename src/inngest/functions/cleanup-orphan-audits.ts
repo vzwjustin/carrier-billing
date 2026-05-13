@@ -70,9 +70,6 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
       //   - resilience to future column drift (a code path that sets
       //     credit_consumed=true on a sub audit would otherwise quietly
       //     mint a credit via this cron)
-      // Subscription audits stuck in `pending` are still handled — they
-      // simply do not flow through the refund path; manual reconciliation
-      // is the right answer for them.
       const { data, error } = await supabase
         .from('audits')
         .select('id, user_id, created_at')
@@ -99,6 +96,44 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
       });
     }
 
-    return { processed: orphans.length };
+    // L4: parallel sweep for subscription orphans. Subscription users never
+    // consumed a credit (credit_consumed=false), so the refund RPC correctly
+    // refuses to touch them — but that meant they accumulated in `pending`
+    // forever, cluttering the audits list and skewing per-user counts. Flip
+    // them to `failed` directly. No refund (nothing was spent), no Sentry
+    // (this is a routine garbage-collect, not a system fault).
+    //
+    // Status-guarded UPDATE: only `pending` rows are touched, so a row that
+    // advanced to `extracting` after the find-orphans select cannot be
+    // clobbered. Same TTL cutoff applies.
+    const subOrphanCount = await step.run('fail-subscription-orphans', async () => {
+      const supabase = getAdminClient();
+      const cutoff = new Date(Date.now() - TTL_MINUTES * 60_000).toISOString();
+      const { data, error } = await supabase
+        .from('audits')
+        .update({
+          status: 'failed',
+          failure_reason: 'upload-not-finalized',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('status', 'pending')
+        .eq('credit_consumed', false)
+        .lt('created_at', cutoff)
+        .select('id');
+      if (error) {
+        throw new Error(
+          `audits update (fail-subscription-orphans) failed: ${error.message}`,
+        );
+      }
+      const count = (data ?? []).length;
+      if (count > 0) {
+        logger.info('cleanupOrphanAudits: failed subscription orphans', {
+          count,
+        });
+      }
+      return count;
+    });
+
+    return { processed: orphans.length, subscriptionOrphans: subOrphanCount };
   },
 );

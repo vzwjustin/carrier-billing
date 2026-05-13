@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 
 import { LoginForm } from './login-form';
 
@@ -17,7 +18,12 @@ export default function LoginPage() {
           Welcome back. Enter your credentials to access your audits.
         </p>
       </div>
-      <LoginForm />
+      {/* M4: Suspense wraps the form because `useSearchParams()` opts the
+          tree out of static rendering in Next 15. The fallback is empty
+          because the form is interactive only. */}
+      <Suspense fallback={null}>
+        <LoginForm />
+      </Suspense>
       <p className="text-center text-sm text-neutral-500">
         Don&apos;t have an account?{' '}
         <Link href="/signup" className="font-medium text-neutral-900 underline">

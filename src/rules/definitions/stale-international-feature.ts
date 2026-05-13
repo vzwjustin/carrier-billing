@@ -45,43 +45,60 @@ export const staleInternationalFeatureRule: Rule = {
 
     if (hits.length === 0) return [];
 
-    const grandTotal = hits.reduce((sum, h) => sum + h.total_cents, 0);
-    // Index sets per-account so the finding can carry every affected line —
-    // but emit indexes only for the first account so the per-account index
-    // translation contract holds. Other accounts' lines remain visible in
-    // the evidence payload.
-    const firstAccountIndex = hits[0]?.accountIndex ?? 0;
-    const linesInFirstAccount = hits
-      .filter((h) => h.accountIndex === firstAccountIndex)
-      .map((h) => h.lineIndex);
+    // M2: emit ONE finding per account so multi-account bills don't lose
+    // line linkage on accounts ≥ 1. The previous shape squashed all hits
+    // into a single finding scoped to the first account, leaving lines in
+    // other accounts visible in `evidence.per_line` but unlinked to UUIDs
+    // (no chip in the report UI/PDF).
+    //
+    // Group hits by account; emit one finding per group. The per-finding
+    // contract still holds: each finding's `affected_line_indexes` are
+    // local to its sole `affected_account_indexes[0]`.
+    const byAccount = new Map<number, Hit[]>();
+    for (const hit of hits) {
+      const bucket = byAccount.get(hit.accountIndex);
+      if (bucket) {
+        bucket.push(hit);
+      } else {
+        byAccount.set(hit.accountIndex, [hit]);
+      }
+    }
 
-    const findings: Finding[] = [
-      {
+    const findings: Finding[] = [];
+    for (const [accountIndex, accountHits] of byAccount) {
+      const accountTotal = accountHits.reduce(
+        (sum, h) => sum + h.total_cents,
+        0,
+      );
+      const lineIndexes = accountHits.map((h) => h.lineIndex);
+      const linePlural = accountHits.length === 1 ? '' : 's';
+      const carries = accountHits.length === 1 ? 'ies' : 'y';
+      findings.push({
         rule_id: RULE_ID,
         severity: 'info',
         title:
-          hits.length === 1
+          accountHits.length === 1
             ? 'Verify international add-on is still needed'
-            : `Verify ${hits.length} international add-ons are still needed`,
-        description: `${hits.length} line${hits.length === 1 ? '' : 's'} on this bill carr${hits.length === 1 ? 'ies' : 'y'} international add-on features totaling ${formatCents(grandTotal)}/mo. Informational only — without usage history we can't tell if it's stale. International add-ons are commonly left enabled long after a one-time trip.`,
+            : `Verify ${accountHits.length} international add-ons are still needed`,
+        description: `${accountHits.length} line${linePlural} on this account carr${carries} international add-on features totaling ${formatCents(accountTotal)}/mo. Informational only — without usage history we can't tell if it's stale. International add-ons are commonly left enabled long after a one-time trip.`,
         recommended_action:
           'Ask the affected line owners whether they traveled internationally this period. If not, remove the feature and re-add only when a trip is planned.',
         estimated_monthly_savings_cents: 0,
         confidence: 0.6,
-        affected_line_indexes: linesInFirstAccount,
-        affected_account_indexes: [firstAccountIndex],
+        affected_line_indexes: lineIndexes,
+        affected_account_indexes: [accountIndex],
         evidence: {
-          line_count: hits.length,
-          total_monthly_cents: grandTotal,
-          per_line: hits.map((h) => ({
+          line_count: accountHits.length,
+          total_monthly_cents: accountTotal,
+          per_line: accountHits.map((h) => ({
             account_index: h.accountIndex,
             line_index: h.lineIndex,
             total_cents: h.total_cents,
             feature_names: h.feature_names,
           })),
         },
-      },
-    ];
+      });
+    }
 
     return findings;
   },

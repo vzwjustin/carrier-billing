@@ -55,7 +55,7 @@ vi.mock('@/lib/access/gate', () => ({
 }));
 
 vi.mock('@/lib/access/decrement', () => ({
-  decrementAuditCreditAtomically: async () => ({ remaining: 0 }),
+  consumeAuditCreditForAudit: async () => ({ remaining: 0, idempotent: false }),
 }));
 
 vi.mock('@/env', () => ({
