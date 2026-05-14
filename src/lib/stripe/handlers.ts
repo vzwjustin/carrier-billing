@@ -217,11 +217,120 @@ async function onSubscriptionUpserted(
       ? new Date(periodEndUnix * 1000).toISOString()
       : null;
 
-  await applySubscriptionPatchWithOrderGuard(supabase, customerId, eventType, eventCreated, {
+  const patch: ProfilePatch = {
     subscription_id: subscription.id,
     subscription_status: normalizeSubscriptionStatus(subscription.status),
     cancel_at_period_end: cancelAtPeriodEnd,
     current_period_end: currentPeriodEnd,
+  };
+
+  const applied = await applySubscriptionPatchWithOrderGuard(
+    supabase,
+    customerId,
+    eventType,
+    eventCreated,
+    patch,
+  );
+
+  // H-1: subscription.created can arrive before checkout.session.completed.
+  // When that happens, the profile hasn't yet been linked to the Stripe
+  // customer and the customer-id lookup matches 0 rows. Previously this
+  // threw and Stripe retried until checkout landed, burning warnings.
+  // For subscription.created only, fall back to userId resolved from the
+  // subscription's metadata (Stripe Checkout copies session.metadata onto
+  // the subscription), link the profile, and retry the patch by userId.
+  if (
+    applied === NO_MATCH_NON_TERMINAL &&
+    eventType === 'customer.subscription.created'
+  ) {
+    const userId = deriveUserIdFromSubscription(subscription);
+    if (!userId) {
+      Sentry.captureMessage(
+        'subscription.created arrived before profile link; no fallback userId',
+        {
+          level: 'warning',
+          extra: {
+            subscription_id: subscription.id,
+            customer_id: customerId,
+          },
+        },
+      );
+      return;
+    }
+    // Link the profile and apply the patch by id. Patch is keyed by id and
+    // the order guard column is updated transactionally below.
+    await applySubscriptionPatchByUserId(supabase, userId, customerId, eventCreated, patch);
+  }
+}
+
+/**
+ * Resolve a userId from a Stripe.Subscription's metadata. Stripe Checkout
+ * copies the session's metadata onto the subscription it creates, so the
+ * `userId` we stamp on the Checkout session is reachable here.
+ */
+function deriveUserIdFromSubscription(
+  subscription: Stripe.Subscription,
+): string | null {
+  const md = subscription.metadata;
+  if (md && typeof md === 'object') {
+    const candidate = (md as Record<string, unknown>)['userId'];
+    if (typeof candidate === 'string' && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * H-1 fallback: when the customer-id lookup misses (profile not yet linked)
+ * apply the subscription patch keyed by the userId resolved from event
+ * metadata. Links `stripe_customer_id` in the same update and writes the
+ * order-guard timestamp so a later customer-id-keyed event correctly sees
+ * us as the freshest writer.
+ */
+async function applySubscriptionPatchByUserId(
+  supabase: SupabaseClient,
+  userId: string,
+  customerId: string,
+  eventCreated: number,
+  patch: ProfilePatch,
+): Promise<void> {
+  const eventCreatedAt = new Date(eventCreated * 1000).toISOString();
+  const { data: updatedRows, error: updateErr } = await supabase
+    .from('profiles')
+    .update({
+      ...patch,
+      stripe_customer_id: customerId,
+      subscription_event_at: eventCreatedAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .or(
+      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
+    )
+    .select('id');
+
+  if (updateErr) {
+    throw new Error(
+      `subscription patch (fallback by userId) failed: ${updateErr.message}`,
+    );
+  }
+  const rows = (updatedRows ?? []) as Array<{ id: string }>;
+  if (rows.length === 0) {
+    Sentry.captureMessage(
+      'subscription.created fallback: no profile matched by userId',
+      {
+        level: 'warning',
+        extra: { userId, customerId },
+      },
+    );
+    return;
+  }
+  Sentry.addBreadcrumb({
+    category: 'stripe',
+    message: 'subscription.created applied via userId fallback (linked profile)',
+    level: 'info',
+    data: { userId, customerId },
   });
 }
 
@@ -278,7 +387,7 @@ async function applySubscriptionPatchWithOrderGuard(
   eventType: string,
   eventCreated: number,
   patch: ProfilePatch,
-): Promise<void> {
+): Promise<typeof NO_MATCH_NON_TERMINAL | void> {
   const eventCreatedAt = new Date(eventCreated * 1000).toISOString();
 
   const { data: profiles, error: selectErr } = await supabase
@@ -290,8 +399,22 @@ async function applySubscriptionPatchWithOrderGuard(
     throw new Error(`profile lookup failed: ${selectErr.message}`);
   }
 
+  // H-1: subscription.created can land before checkout.session.completed
+  // has linked the profile. Return a tolerant sentinel so the caller can
+  // attempt a userId-based fallback instead of throwing.
+  const rows = (profiles ?? []) as Array<{ id: string; subscription_event_at?: string | null }>;
+  if (rows.length === 0 && eventType === 'customer.subscription.created') {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      level: 'info',
+      message: 'subscription.created 0-row match by customer id — will attempt userId fallback',
+      data: { customerId, eventType },
+    });
+    return NO_MATCH_NON_TERMINAL;
+  }
+
   const matched = assertExactlyOneProfileMatched(
-    profiles as Array<{ id: string; subscription_event_at?: string | null }> | null,
+    rows,
     customerId,
     eventType,
   );
@@ -337,8 +460,8 @@ async function applySubscriptionPatchWithOrderGuard(
     throw new Error(`profile subscription update failed: ${updateErr.message}`);
   }
 
-  const rows = (updatedRows ?? []) as Array<{ id: string }>;
-  if (rows.length === 0) {
+  const rows2 = (updatedRows ?? []) as Array<{ id: string }>;
+  if (rows2.length === 0) {
     Sentry.addBreadcrumb({
       category: 'stripe',
       message: 'subscription patch rejected by CAS guard (fresher event won)',
@@ -514,6 +637,9 @@ async function trackCheckoutCompleted(
  */
 const NO_MATCH = Symbol('no-match');
 type NoMatch = typeof NO_MATCH;
+
+/** H-1: non-terminal 0-row sentinel for `customer.subscription.created`. */
+const NO_MATCH_NON_TERMINAL = Symbol('no-match-non-terminal');
 
 const TERMINAL_EVENT_TYPES = new Set([
   'customer.subscription.deleted',

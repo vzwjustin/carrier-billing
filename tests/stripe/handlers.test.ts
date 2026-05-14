@@ -376,6 +376,48 @@ describe('handleStripeEvent', () => {
     expect(update?.patch['subscription_status']).toBe('trialing');
   });
 
+  it('customer.subscription.created falls back to userId when profile not yet linked (H-1)', async () => {
+    // Simulate subscription.created arriving before checkout.session.completed.
+    // The customer-id lookup returns 0 rows; the handler should retry by
+    // userId (from subscription.metadata) and link the profile.
+    client.__nextSelectRows = [];
+    const event = makeEvent('customer.subscription.created', {
+      id: 'sub_race',
+      customer: 'cus_race',
+      status: 'active',
+      metadata: { userId: 'user_race' },
+    });
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    // 1 select (the customer-id lookup that missed) and 1 fallback update by id.
+    expect(client.__selects).toHaveLength(1);
+    expect(client.__selects[0]?.eq).toEqual(['stripe_customer_id', 'cus_race']);
+    expect(client.__updates).toHaveLength(1);
+    const update = client.__updates[0];
+    expect(update?.table).toBe('profiles');
+    expect(update?.eq).toEqual(['id', 'user_race']);
+    expect(update?.patch['stripe_customer_id']).toBe('cus_race');
+    expect(update?.patch['subscription_id']).toBe('sub_race');
+    expect(update?.patch['subscription_status']).toBe('active');
+  });
+
+  it('customer.subscription.created with 0-row match and no userId metadata logs and returns (H-1)', async () => {
+    client.__nextSelectRows = [];
+    const event = makeEvent('customer.subscription.created', {
+      id: 'sub_orphan',
+      customer: 'cus_orphan',
+      status: 'active',
+      // no metadata.userId — fallback can't proceed
+    });
+
+    // Must not throw.
+    await expect(
+      handleStripeEvent(event, client as unknown as never),
+    ).resolves.toBeUndefined();
+    expect(client.__updates).toHaveLength(0);
+  });
+
   it('access gate returns { ok: true, reason: "subscription" } for trialing profiles (C1)', async () => {
     // Mock the admin client used by assertCanRunAudit.
     vi.resetModules();
@@ -774,8 +816,11 @@ describe('handleStripeEvent', () => {
         status: 'active',
       }),
       countSurface: 'select' as const,
-      isTerminal: false,
-      expectedThrow: /matched 0 rows .*customer\.subscription\.created/,
+      // H-1: subscription.created with 0-row match no longer throws — the
+      // handler attempts a userId fallback. Without metadata.userId on the
+      // event the fallback can't proceed and we no-op instead.
+      isTerminal: true,
+      expectedThrow: null,
       multiThrow: /matched 2 rows .*customer\.subscription\.created/,
     },
     {
