@@ -126,4 +126,26 @@ describe('verifyHmac', () => {
       verifyHmac(body, undefined as unknown as string, secret),
     ).toBe(false);
   });
+
+  // L-10: accept base64 signatures (some providers send base64 instead of hex).
+  it('accepts a base64-encoded signature', () => {
+    const b64 = createHmac('sha256', secret).update(body).digest('base64');
+    expect(verifyHmac(body, b64, secret)).toBe(true);
+  });
+
+  it('accepts a base64 signature with a sha256= prefix', () => {
+    const b64 = createHmac('sha256', secret).update(body).digest('base64');
+    expect(verifyHmac(body, `sha256=${b64}`, secret)).toBe(true);
+  });
+
+  it('accepts a url-safe base64 signature', () => {
+    const b64 = createHmac('sha256', secret).update(body).digest('base64');
+    const urlSafe = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(verifyHmac(body, urlSafe, secret)).toBe(true);
+  });
+
+  it('returns false for a wrong base64 signature', () => {
+    const b64 = createHmac('sha256', secret).update('different body').digest('base64');
+    expect(verifyHmac(body, b64, secret)).toBe(false);
+  });
 });
