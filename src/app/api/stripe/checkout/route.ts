@@ -189,15 +189,32 @@ export async function POST(request: Request): Promise<Response> {
         try {
           await stripe.customers.del(customer.id);
         } catch (delErr) {
-          // M-S2: scrub the message before Sentry serialization (the
-          // exception text can echo customer email/address).
-          Sentry.captureException(
-            new Error(scrubString(String(delErr))),
-            {
-              tags: { area: 'stripe.checkout.orphan_cleanup' },
-              extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
-            },
-          );
+          // M-7: suppress Sentry noise when the customer is already gone
+          // (manual cleanup, prior retry, etc). These are expected and
+          // not actionable. Log at debug instead.
+          const e = delErr as {
+            code?: unknown;
+            type?: unknown;
+            raw?: { code?: unknown };
+          };
+          const alreadyGone =
+            e?.code === 'resource_missing' ||
+            (e?.type === 'StripeInvalidRequestError' && e?.raw?.code === 'resource_missing');
+          if (alreadyGone) {
+            console.debug('stripe.checkout.orphan_cleanup: customer already gone', {
+              orphanCustomerId: customer.id,
+            });
+          } else {
+            // M-S2: scrub the message before Sentry serialization (the
+            // exception text can echo customer email/address).
+            Sentry.captureException(
+              new Error(scrubString(String(delErr))),
+              {
+                tags: { area: 'stripe.checkout.orphan_cleanup' },
+                extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
+              },
+            );
+          }
         }
         stripeCustomerId = winner;
       }
