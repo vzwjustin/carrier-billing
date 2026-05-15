@@ -167,8 +167,17 @@ function withTimeout<T>(
   ]).catch((err: unknown) => {
     // Tag the timeout origin so the failure reason is unambiguous in logs.
     if (err instanceof ExtractionTimeoutError) {
+      // M7: preserve the original error's stack + chain via `.cause` so
+      // Sentry breadcrumbs keep the deep frame. Allocating a fresh
+      // `ExtractionTimeoutError` lets us prefix the label without
+      // mutating the shared original error (which Promise.race could
+      // surface to multiple callers).
       const tagged = new ExtractionTimeoutError(err.afterMs);
       tagged.message = `${label}: ${tagged.message}`;
+      if (err.stack) {
+        tagged.stack = err.stack;
+      }
+      (tagged as { cause?: unknown }).cause = err;
       throw tagged;
     }
     throw err;
@@ -191,6 +200,34 @@ function isNotAWirelessBill(err: unknown): boolean {
     return true;
   }
   return /not[_ ]a[_ ]wireless[_ ]bill/i.test(err.message);
+}
+
+/**
+ * H3: classify a failure for credit-refund purposes.
+ *
+ * User-fault failures (the bill itself was unprocessable for reasons the
+ * user is best positioned to fix) do NOT refund the credit:
+ *   - `not_a_wireless_bill` — uploaded something we can't audit.
+ *   - `encrypted-pdf` — locked PDF; user must re-export an unlocked copy.
+ *
+ * System-fault failures (transient OCR/LLM/storage errors, timeouts,
+ * empty-extraction edge cases) DO refund — the user should not pay for
+ * the system's inability to complete the audit.
+ *
+ * `failure_reason` is the canonical input: it is the same redacted string
+ * that lands in `audits.failure_reason`. Matching on it keeps the rule
+ * surface narrow and easy to reason about.
+ */
+function isUserFaultFailure(failureReason: string): boolean {
+  if (failureReason.startsWith('encrypted-pdf')) return true;
+  if (
+    /Document does not appear to be a US business wireless bill/i.test(
+      failureReason,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 type ExtractionStepResult = {
@@ -664,7 +701,7 @@ export const processBillFn = inngest.createFunction(
       // affected means we lost the race — bail without throwing so Inngest
       // does not treat the retry as a failure.
       // ─────────────────────────────────────────────────────────────────────
-      await step.run('mark-completed', async () => {
+      const markCompletedResult = await step.run('mark-completed', async () => {
         const findingCount = findings.length;
         const highSeverityCount = findings.filter(
           (f) => f.severity === ('high' as Severity),
@@ -699,10 +736,29 @@ export const processBillFn = inngest.createFunction(
         if ((rows ?? []).length === 0) {
           // Lost the status race — another runner already completed or failed
           // this audit. Do not throw; the audit is in a terminal state.
-          return { ok: false, reason: 'status-guard' };
+          return { ok: false as const, reason: 'status-guard' as const };
         }
-        return { ok: true };
+        return { ok: true as const };
       });
+
+      // M5: if mark-completed lost the status race, another runner already
+      // owns the completion (and therefore the downstream PostHog event +
+      // `audit.completed` Inngest send). Short-circuit so we don't double-
+      // emit analytics. The send-trigger step is still safe under retry
+      // (dedupe key `${auditId}-completed`), but PostHog has no such guard.
+      if (markCompletedResult.ok === false) {
+        logger.info('processBill: mark-completed lost race; skipping downstream', {
+          auditId,
+        });
+        return {
+          auditId,
+          carrier: bill.carrier,
+          accountCount: bill.accounts.length,
+          lineCount,
+          findingCount: findings.length,
+          status: 'already-completed',
+        };
+      }
 
       logger.info('processBill: phase 2 complete (status=completed)', {
         auditId,
@@ -849,8 +905,51 @@ export const processBillFn = inngest.createFunction(
               auditId,
             },
           );
+          return { ok: true, affected, refunded: false };
         }
-        return { ok: true, affected };
+
+        // H3: refund the credit when the failure is system-side. The
+        // `refund_failed_audit` RPC is idempotent — its WHERE clause
+        // gates on `credit_consumed=true AND status='failed'`, so a
+        // retry of this same catch block will find credit_consumed=false
+        // and no-op without double-refunding.
+        //
+        // Subscription users have credit_consumed=false from creation
+        // (per /api/audits insert), so the RPC naturally no-ops for them
+        // too. We don't even need to gate at the call site.
+        let refunded = false;
+        if (!isUserFaultFailure(reason)) {
+          const { data: refundOk, error: refundErr } = await supabase.rpc(
+            'refund_failed_audit',
+            {
+              p_audit_id: auditId,
+              p_user_id: userId,
+            },
+          );
+          if (refundErr) {
+            // Surface to Sentry but do not throw — failing the refund
+            // must not bury the original audit failure. The orphan-
+            // cleanup cron will not catch this (status is already
+            // 'failed'), so the alert is the recovery signal.
+            try {
+              const Sentry = await import('@sentry/nextjs');
+              Sentry.captureException(refundErr, {
+                tags: { surface: 'process-bill.refund_failed_audit' },
+                extra: { auditId, userId, reason },
+              });
+            } catch {
+              // Sentry optional.
+            }
+          } else if (refundOk === true) {
+            refunded = true;
+            logger.info('processBill: refunded credit on system failure', {
+              auditId,
+              userId,
+              reason,
+            });
+          }
+        }
+        return { ok: true, affected, refunded };
       });
 
       throw err;
@@ -1194,6 +1293,28 @@ export function translateLineIndexes(
       // No line indexes to translate — account indexes flow through.
       return f;
     }
+    // M1: enforce single-account-per-finding when line indexes are
+    // present. The rules contract is "all affected_line_indexes belong
+    // to affected_account_indexes[0]"; if a rule ever emits multiple
+    // account indexes alongside line indexes, the translation here would
+    // silently misroute lines in accounts ≥ 1 against the first account's
+    // offset. Refuse to translate and drop the line indexes so persistence
+    // can't stamp the wrong UUIDs.
+    if (f.affected_account_indexes.length > 1) {
+      opts.warn(
+        'processBill: finding has line indexes spanning multiple accounts — dropping line indexes',
+        {
+          auditId: opts.auditId,
+          rule_id: f.rule_id,
+          accountIndexes: f.affected_account_indexes,
+        },
+      );
+      if (stats) stats.findingsWithDroppedAccount += 1;
+      return {
+        ...f,
+        affected_line_indexes: [],
+      };
+    }
     const accountIdx = f.affected_account_indexes[0];
     if (typeof accountIdx !== 'number') {
       opts.warn(
@@ -1214,7 +1335,13 @@ export function translateLineIndexes(
         },
       );
       if (stats) stats.findingsWithDroppedAccount += 1;
-      return { ...f, affected_line_indexes: [] };
+      // L6: drop the bad account index too so persistFindings doesn't
+      // resolve a UUID against a finding whose line indexes were wiped.
+      return {
+        ...f,
+        affected_line_indexes: [],
+        affected_account_indexes: [],
+      };
     }
     const accountSize = accountLineCounts[accountIdx] ?? 0;
     const offset = accountStartOffsets[accountIdx] ?? 0;
@@ -1265,6 +1392,7 @@ export const __testables = {
   ExtractionTimeoutError,
   EXTRACTION_TIMEOUT_MS,
   withGeneratedId,
+  isUserFaultFailure,
 };
 
 function withGeneratedId<T extends Record<string, unknown>>(

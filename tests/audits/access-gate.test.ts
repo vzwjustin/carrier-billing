@@ -59,14 +59,22 @@ vi.mock('@/lib/supabase/admin', () => ({
 import type { AccessGateResult } from '@/lib/access/gate';
 
 const assertCanRunAuditMock = vi.fn<() => Promise<AccessGateResult>>();
-const decrementMock = vi.fn<() => Promise<{ remaining: number }>>();
+// H4: route now calls `consumeAuditCreditForAudit(userId, auditId)`. Mock
+// signature accepts both args; the resolved shape includes `idempotent`.
+const decrementMock = vi.fn<
+  (
+    userId: string,
+    auditId: string,
+  ) => Promise<{ remaining: number; idempotent: boolean }>
+>();
 
 vi.mock('@/lib/access/gate', () => ({
   assertCanRunAudit: () => assertCanRunAuditMock(),
 }));
 
 vi.mock('@/lib/access/decrement', () => ({
-  decrementAuditCreditAtomically: () => decrementMock(),
+  consumeAuditCreditForAudit: (userId: string, auditId: string) =>
+    decrementMock(userId, auditId),
 }));
 
 vi.mock('@/env', () => ({
@@ -133,7 +141,7 @@ describe('POST /api/audits — access gate', () => {
       reason: 'credit',
       remaining: 2,
     });
-    decrementMock.mockResolvedValueOnce({ remaining: 1 });
+    decrementMock.mockResolvedValueOnce({ remaining: 1, idempotent: false });
 
     const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
     expect(res.status).toBe(200);

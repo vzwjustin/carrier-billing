@@ -66,9 +66,16 @@ export default async function ShareReportPage({
 }): Promise<React.JSX.Element> {
   const { token } = await params;
 
-  // Token sanity. The generator emits exactly 32 chars (randomBytes(24)
-  // base64url). Reject anything else before issuing a DB query.
-  if (typeof token !== 'string' || token.length !== SHARE_TOKEN_LENGTH) {
+  // M3: token sanity. The generator emits exactly 32 chars of
+  // base64url (randomBytes(24)). Reject anything that isn't the right
+  // length AND character set before issuing a DB query — keeps input
+  // hygiene consistent with /api/audits/[id]/report.pdf, which enforces
+  // the same regex.
+  if (
+    typeof token !== 'string' ||
+    token.length !== SHARE_TOKEN_LENGTH ||
+    !/^[A-Za-z0-9_-]+$/.test(token)
+  ) {
     notFound();
   }
 

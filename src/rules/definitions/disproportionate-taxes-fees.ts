@@ -39,10 +39,16 @@ export const disproportionateTaxesFeesRule: Rule = {
         rule_id: RULE_ID,
         severity: 'low',
         title: `Account taxes & fees are ${(ratio * 100).toFixed(0)}% of charges`,
-        description: `This account has ${formatCents(fees)} in taxes and fees against ${formatCents(preTax)} in pre-tax charges (${(ratio * 100).toFixed(0)}% ratio). US business wireless typically runs 15–22%; a ratio above 25% is often a mis-categorized "regulatory recovery" or "administrative" surcharge bucket the carrier can credit back.`,
+        description: `This account has ${formatCents(fees)} in taxes and fees against ${formatCents(preTax)} in pre-tax charges (${(ratio * 100).toFixed(0)}% ratio). US business wireless typically runs 15–22%; a ratio above 25% is often a mis-categorized "regulatory recovery" or "administrative" surcharge bucket the carrier can credit back. Potential credit estimated at ${formatCents(excess)}/mo if the carrier removes the excess; not added to monthly savings until confirmed.`,
         recommended_action:
           'Open a fee-detail review with your carrier representative. Ask for an itemized breakdown of "Other charges and credits" — surcharges in this bucket that aren\'t actual government-imposed taxes are routinely negotiable.',
-        estimated_monthly_savings_cents: excess,
+        // M6: confidence:0.5 means this is closer to a "worth asking" hint
+        // than a confirmed saving. Carrying `excess` in the monthly rollup
+        // (which the audit summary annualizes 12×) inflated the headline
+        // by amounts that may not be recoverable. Keep the dollar figure
+        // in evidence + description so reps can quote it, but zero it for
+        // the rollup.
+        estimated_monthly_savings_cents: 0,
         confidence: 0.5,
         affected_line_indexes: [],
         affected_account_indexes: [accountIndex],
@@ -52,6 +58,7 @@ export const disproportionateTaxesFeesRule: Rule = {
           total_charges_cents: total,
           ratio: Number(ratio.toFixed(3)),
           threshold: HIGH_RATIO_THRESHOLD,
+          potential_monthly_credit_cents: excess,
         },
       });
     });

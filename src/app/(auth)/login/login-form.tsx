@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,6 +23,12 @@ type LoginInput = z.infer<typeof LoginSchema>;
 export function LoginForm() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // M4: forward the `?next=` query the middleware set when bouncing an
+  // unauthenticated user back to login, so we can land them on the page
+  // they originally requested. The server action validates this path
+  // before redirecting.
+  const searchParams = useSearchParams();
+  const nextParam = searchParams?.get('next') ?? undefined;
 
   const {
     register,
@@ -35,7 +42,7 @@ export function LoginForm() {
   const onSubmit = (data: LoginInput) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await signInAction(data);
+      const result = await signInAction({ ...data, next: nextParam });
       if (result && !result.ok) {
         setServerError(result.error);
       }

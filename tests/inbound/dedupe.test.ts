@@ -21,7 +21,10 @@ const storageUploadMock = vi.fn<
 }));
 const storageRemoveMock = vi.fn(async (_paths: string[]) => ({ data: null, error: null }));
 const inngestSendMock = vi.fn(async (..._args: unknown[]) => ({}));
-const decrementMock = vi.fn(async (_uid: string) => ({ remaining: 0 }));
+const decrementMock = vi.fn(async (_uid: string, _auditId: string) => ({
+  remaining: 0,
+  idempotent: false,
+}));
 const gateMock = vi.fn<(uid: string) => Promise<{ ok: true; reason: 'subscription' } | { ok: false; reason: string }>>(async () => ({ ok: true, reason: 'subscription' }));
 
 const fromMock = vi.fn((table: string) => {
@@ -78,7 +81,8 @@ vi.mock('@/lib/access/gate', () => ({
 }));
 
 vi.mock('@/lib/access/decrement', () => ({
-  decrementAuditCreditAtomically: (uid: string) => decrementMock(uid),
+  consumeAuditCreditForAudit: (uid: string, auditId: string) =>
+    decrementMock(uid, auditId),
 }));
 
 vi.mock('@/env', () => ({

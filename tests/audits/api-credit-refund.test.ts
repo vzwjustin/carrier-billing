@@ -58,9 +58,15 @@ vi.mock('@/lib/access/gate', () => ({
   assertCanRunAudit: () => gateMock(),
 }));
 
-const decrementMock = vi.fn(async () => ({ remaining: 0 }));
+const decrementMock = vi.fn<
+  (
+    userId: string,
+    auditId: string,
+  ) => Promise<{ remaining: number; idempotent: boolean }>
+>();
 vi.mock('@/lib/access/decrement', () => ({
-  decrementAuditCreditAtomically: () => decrementMock(),
+  consumeAuditCreditForAudit: (userId: string, auditId: string) =>
+    decrementMock(userId, auditId),
 }));
 
 const adminRpcMock =
@@ -104,7 +110,8 @@ beforeEach(() => {
   fromMock.mockClear();
   storageFromMock.mockClear();
   gateMock.mockReset();
-  decrementMock.mockClear();
+  decrementMock.mockReset();
+  decrementMock.mockResolvedValue({ remaining: 0, idempotent: false });
   adminRpcMock.mockReset();
   sentryCaptureMock.mockReset();
 
