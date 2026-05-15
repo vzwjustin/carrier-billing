@@ -234,7 +234,11 @@ export async function replayBillingEvent(
 
   try {
     await handleStripeEvent(event, supabase, {
-      previousStatus: row.processed_status === null ? 'failed' : row.processed_status,
+      // M-8 — pass the row's actual processed_status through. The previous
+      // `null → 'failed'` collapse was a lie left over from the pre-C1 design;
+      // the credit grant now keys off `billing_events.credit_granted`, so any
+      // future handler branch that reads previousStatus should see the truth.
+      previousStatus: row.processed_status ?? null,
       billingEventId: row.id,
     });
   } catch (handlerErr) {
