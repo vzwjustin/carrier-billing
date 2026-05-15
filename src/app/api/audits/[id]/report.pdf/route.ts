@@ -29,6 +29,7 @@ import {
   consumeRateLimit,
   rateLimitedResponse,
 } from '@/lib/security/rate-limit';
+import { SHARE_TOKEN_REGEX } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -63,7 +64,7 @@ function pdfFilename(auditId: string): string {
   return `carrieraudit-${auditId.slice(0, 8)}.pdf`;
 }
 
-function pdfResponse(bytes: Uint8Array, auditId: string): Response {
+function pdfResponse(bytes: Uint8Array, auditId: string, isPublic = false): Response {
   // ArrayBuffer is universally accepted by Response; avoids the
   // Uint8Array<ArrayBufferLike> vs BodyInit lib mismatch on newer @types/node.
   const body = bytes.buffer.slice(
@@ -75,7 +76,11 @@ function pdfResponse(bytes: Uint8Array, auditId: string): Response {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${pdfFilename(auditId)}"`,
-      'Cache-Control': 'private, max-age=0, must-revalidate',
+      // L-5: share-token (public) downloads must not be cached by intermediaries
+      // or the browser disk cache — a revoked share link should stop working
+      // immediately. The authenticated path keeps the existing private cache
+      // semantics since the audit owner has ongoing access.
+      'Cache-Control': isPublic ? 'no-store' : 'private, max-age=0, must-revalidate',
       // The public URL for this route can carry `?token=<share_token>`.
       // `no-referrer` keeps that token out of the Referer header on any
       // outbound navigation triggered from the PDF (e.g. clickable links).
@@ -99,7 +104,7 @@ export async function GET(
 
   const url = new URL(request.url);
   const rawToken = url.searchParams.get('token');
-  const token = rawToken && /^[A-Za-z0-9_-]{32}$/.test(rawToken) ? rawToken : null;
+  const token = rawToken && SHARE_TOKEN_REGEX.test(rawToken) ? rawToken : null;
 
   // ---- Resolve & authorize the audit ------------------------------------
   let audit: AuditFullRow | null = null;
@@ -193,7 +198,7 @@ export async function GET(
   if (cached.data) {
     const arrayBuf = await cached.data.arrayBuffer();
     await trackPdfDownload(auditId, audit.user_id, token);
-    return pdfResponse(new Uint8Array(arrayBuf), auditId);
+    return pdfResponse(new Uint8Array(arrayBuf), auditId, token !== null);
   }
   if (cached.error && cached.error.message !== 'The resource was not found') {
     Sentry.captureException(cached.error, {

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ReportView } from '@/components/audits/report-view';
 import { trackServer } from '@/lib/analytics/events';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
+import { SHARE_TOKEN_REGEX } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { buildReportData } from '@/reports/builder';
 import type {
@@ -48,9 +49,9 @@ interface AuditRow {
   share_token_expires_at: string | null;
 }
 
-// Tokens are `randomBytes(24).toString('base64url')`, which is exactly 32 chars.
-// Anything else is a probe and we 404 before touching the DB.
-const SHARE_TOKEN_LENGTH = 32;
+// Tokens are `randomBytes(SHARE_TOKEN_BYTES).toString('base64url')`, which is
+// exactly SHARE_TOKEN_LENGTH chars in the base64url alphabet. Anything else is
+// a probe and we 404 before touching the DB.
 
 function isExpired(expiresAt: string | null): boolean {
   if (!expiresAt) return false;
@@ -66,9 +67,9 @@ export default async function ShareReportPage({
 }): Promise<React.JSX.Element> {
   const { token } = await params;
 
-  // Token sanity. The generator emits exactly 32 chars (randomBytes(24)
-  // base64url). Reject anything else before issuing a DB query.
-  if (typeof token !== 'string' || token.length !== SHARE_TOKEN_LENGTH) {
+  // Token sanity. Reject anything that doesn't match the strict generator shape
+  // before issuing a DB query.
+  if (typeof token !== 'string' || !SHARE_TOKEN_REGEX.test(token)) {
     notFound();
   }
 
