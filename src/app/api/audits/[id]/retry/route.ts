@@ -154,7 +154,7 @@ export async function POST(
 
     try {
       await inngest.send({
-        id: `${auditId}-uploaded-retry-${retryCount}`,
+        id: `${auditId}-uploaded-retry-${retryCount}-${Date.now()}`,
         name: 'bill.uploaded',
         data: {
           auditId: data.id,
