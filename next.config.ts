@@ -20,6 +20,7 @@ const SECURITY_HEADERS = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=()',
   },
+  { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
 ];
 
 // Routes whose URL embeds a share token (either in the path, like /share/<token>,
