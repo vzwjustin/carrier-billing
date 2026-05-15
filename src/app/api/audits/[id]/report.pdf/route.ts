@@ -269,7 +269,7 @@ export async function GET(
   }
 
   await trackPdfDownload(auditId, audit.user_id, token);
-  return pdfResponse(pdfBytes, auditId);
+  return pdfResponse(pdfBytes, auditId, token !== null);
 }
 
 /**
