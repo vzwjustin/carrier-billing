@@ -43,6 +43,7 @@ import { inngest } from '@/inngest/client';
 import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { parseInboundRecipient, verifyHmac } from '@/lib/inbound/token';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
@@ -234,6 +235,20 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ ok: true, skipped: 'unknown_token' });
     }
     const userId = (profile as { id: string }).id;
+
+    // H-3: per-user rate limit on the inbound email path. The HTTP
+    // POST /api/audits route is rate-limited at 20/hr/user; this surface
+    // must mirror it so a subscription user (no per-audit credit cost)
+    // can't be used as a vector to DOS the Inngest workers / burn LLM
+    // credits by spamming the inbound provider.
+    const limit = await consumeRateLimit({
+      key: `inbound:${userId}`,
+      limit: 20,
+      windowSeconds: 60 * 60,
+    });
+    if (!limit.ok) {
+      return rateLimitedResponse(limit.resetAt);
+    }
 
     // Find first PDF attachment. Carriers occasionally email a body-only
     // notification with the bill linked but not attached; skip those.
