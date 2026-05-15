@@ -73,12 +73,26 @@ function isAcceptedFilename(filename: string): boolean {
   return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+/** Pick a fallback when safeFilename's character-class scrub leaves us with an
+ *  empty base. M-4 — previously this defaulted to `bill.pdf`, which mislabelled
+ *  EDI uploads as PDFs and broke downstream content-type sniffing. Prefer the
+ *  original filename's own extension when it's one of our accepted types;
+ *  otherwise probe the MIME-typeish suffix, then fall back to `bill.bin`. */
+function fallbackFilename(originalFilename: string): string {
+  const lower = originalFilename.toLowerCase();
+  for (const ext of ACCEPTED_EXTENSIONS) {
+    if (lower.endsWith(ext)) return `bill${ext}`;
+  }
+  return 'bill.bin';
+}
+
 function safeFilename(input: string): string {
   // Strip any directory components and unsafe characters.
   const base = input.split(/[\\/]/).pop() ?? input;
   const cleaned = base.replace(SAFE_FILENAME_RE, '_');
   // Cap length so the path can't blow past Postgres limits.
-  return cleaned.slice(0, 200) || 'bill.pdf';
+  const capped = cleaned.slice(0, 200);
+  return capped || fallbackFilename(input);
 }
 
 export async function POST(request: Request): Promise<Response> {

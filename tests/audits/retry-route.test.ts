@@ -246,8 +246,10 @@ describe('POST /api/audits/[id]/retry', () => {
     const res = await POST(req, makeContext());
     expect(res.status).toBe(200);
 
-    // Idempotency key tracks the new count.
+    // Idempotency key tracks the new count (and includes Date.now() suffix per M-9).
     const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
-    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-3`);
+    expect(sent?.id).toMatch(
+      new RegExp(`^${TEST_AUDIT_ID}-uploaded-retry-3-\\d+$`),
+    );
   });
 });
