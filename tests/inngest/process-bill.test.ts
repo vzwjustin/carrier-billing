@@ -128,3 +128,68 @@ describe('processBillFn — H6 mark-analyzing status guard', () => {
     expect(block).toMatch(/id:\s*`\$\{auditId\}-completed`/);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// (C1) Inngest step-replay self-recognition
+//
+// If a step.run body commits its DB UPDATE but the worker dies before
+// Inngest persists the step result, the retry re-executes the body. With
+// `WHERE status='pending'`-style guards the retry observes the row already
+// advanced and bails — stranding the audit in `extracting` or `analyzing`
+// forever. The fix: each guard fetches `inngest_run_id` and, on a 0-rows-
+// affected bail, recognizes its own run id and proceeds. Downstream steps
+// either replay cached results or self-recognize via the same pattern.
+//
+// Mirroring the H6/H7 assertion style above: pin the substring of the
+// closure source so a future refactor that removes the check fails loudly.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('processBillFn — C1 Inngest step-replay self-recognition', () => {
+  function getHandlerSource(): string {
+    const fn = processBillFn as unknown as { fn?: unknown };
+    if (typeof fn.fn === 'function') {
+      return (fn.fn as () => unknown).toString();
+    }
+    return String(processBillFn);
+  }
+
+  it('mark-extracting SELECT includes inngest_run_id', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-extracting');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 2500);
+    // The bail branch needs the run id to recognize self-replay.
+    expect(block).toMatch(/['"]id, user_id, status, inngest_run_id['"]/);
+  });
+
+  it('mark-extracting bail branch checks inngest_run_id against event.id', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-extracting');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 3500);
+    // On affected===0, the bail must short-circuit with proceed:true when
+    // the row's run id matches this run's event id.
+    expect(block).toMatch(/inngest_run_id\s*===?\s*event\.id/);
+    expect(block).toMatch(/proceed:\s*true/);
+  });
+
+  it('mark-analyzing probes status + inngest_run_id on 0-rows-affected', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-analyzing');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 4000);
+    // The follow-up probe must read both columns and the closure must
+    // accept analyzing OR completed as a self-replay terminal state.
+    expect(block).toMatch(/['"]status, inngest_run_id['"]/);
+    expect(block).toMatch(/inngest_run_id\s*===?\s*event\.id/);
+  });
+
+  it('mark-completed probes status + inngest_run_id on 0-rows-affected', () => {
+    const src = getHandlerSource();
+    const idx = src.indexOf('mark-completed');
+    expect(idx).toBeGreaterThan(-1);
+    const block = src.slice(idx, idx + 4000);
+    expect(block).toMatch(/['"]status, inngest_run_id['"]/);
+    expect(block).toMatch(/inngest_run_id\s*===?\s*event\.id/);
+  });
+});

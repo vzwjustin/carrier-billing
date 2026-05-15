@@ -384,7 +384,7 @@ async function onInvoicePaymentFailed(
 
   const { data: profiles, error: selectErr } = await supabase
     .from('profiles')
-    .select('id, subscription_event_at')
+    .select('id, subscription_event_at, subscription_status')
     .eq('stripe_customer_id', customerId);
 
   if (selectErr) {
@@ -392,7 +392,11 @@ async function onInvoicePaymentFailed(
   }
 
   const matchedForGuard = assertExactlyOneProfileMatched(
-    profiles as Array<{ id: string; subscription_event_at?: string | null }> | null,
+    profiles as Array<{
+      id: string;
+      subscription_event_at?: string | null;
+      subscription_status?: string | null;
+    }> | null,
     customerId,
     'invoice.payment_failed',
   );
@@ -445,6 +449,27 @@ async function onInvoicePaymentFailed(
 
   const profile = rows[0]!;
   const customerEmail = profile.email ?? null;
+
+  // H1: only dispatch the past-due email when the subscription_status
+  // actually transitioned INTO past_due. Stripe sends a fresh
+  // invoice.payment_failed event on every dunning retry (default schedule
+  // is 1 retry then 3/5/7 days), each carrying a newer `created` timestamp
+  // that passes the CAS guard above — without this gate, one declined card
+  // produced 3–4 separate emails over a week. The previous status is read
+  // from the SELECT above (pre-UPDATE), so the comparison is reliable. If
+  // the profile was already past_due (set by a prior invoice.payment_failed
+  // or a subscription.updated→past_due that crossed the wire first), skip
+  // the email; the user has already been notified about this dunning cycle.
+  const previousStatus = matchedForGuard.subscription_status ?? null;
+  if (previousStatus === 'past_due') {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'invoice.payment_failed: profile already past_due, suppressing duplicate email',
+      level: 'info',
+      data: { customerId, userId: profile.id },
+    });
+    return;
+  }
 
   if (!customerEmail) {
     Sentry.captureMessage('payment_failed: profile has no email', {

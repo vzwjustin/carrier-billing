@@ -438,7 +438,14 @@ describe('handleStripeEvent', () => {
     // Production now does ONE select (the H9 guard) and the email comes back
     // from the UPDATE's .select('id, email') clause — no second SELECT.
     client.__nextSelectRows = [
-      { id: profileId, subscription_event_at: subscriptionEventAt },
+      {
+        id: profileId,
+        subscription_event_at: subscriptionEventAt,
+        // H1: handler reads subscription_status from the pre-UPDATE row to
+        // decide whether to dispatch the email. Stage as null (the typical
+        // first-failure shape) so the email path fires.
+        subscription_status: null,
+      },
     ];
     client.__nextUpdateRows = [{ id: profileId, email }];
   }
@@ -464,8 +471,12 @@ describe('handleStripeEvent', () => {
     expect(update?.or).toMatch(/subscription_event_at\.lt\./);
     // One SELECT — the H9 guard. The email comes back from the UPDATE's
     // own `.select('id, email')` clause, eliminating the post-CAS re-fetch.
+    // H1: also reads `subscription_status` so the email-dispatch gate can
+    // suppress duplicate emails on Stripe's dunning retries.
     expect(client.__selects).toHaveLength(1);
-    expect(client.__selects[0]?.cols).toBe('id, subscription_event_at');
+    expect(client.__selects[0]?.cols).toBe(
+      'id, subscription_event_at, subscription_status',
+    );
     expect(update?.select).toBe('id, email');
   });
 
@@ -536,6 +547,47 @@ describe('handleStripeEvent', () => {
     // The profile update still ran.
     expect(client.__updates).toHaveLength(1);
     expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
+  });
+
+  it('invoice.payment_failed suppresses email when profile was already past_due (H1 — dunning retry guard)', async () => {
+    // Stripe sends a fresh invoice.payment_failed on every dunning retry
+    // (default schedule: 1 retry then 3/5/7 days), each carrying a newer
+    // event.created timestamp that passes the CAS. Without the H1 gate,
+    // one declined card produced 3-4 separate emails. The pre-UPDATE
+    // subscription_status is what decides whether a transition into
+    // past_due happened — if it was already past_due, the email is
+    // suppressed.
+    client.__nextSelectRows = [
+      {
+        id: 'profile_already_pd',
+        subscription_event_at: new Date(
+          Date.UTC(2026, 4, 9, 11, 0, 0),
+        ).toISOString(),
+        subscription_status: 'past_due',
+      },
+    ];
+    client.__nextUpdateRows = [
+      { id: 'profile_already_pd', email: 'spam-me-not@example.com' },
+    ];
+
+    const retryEvent = makeEvent(
+      'invoice.payment_failed',
+      {
+        id: 'in_dunning_retry',
+        customer: 'cus_already_pd',
+        amount_due: 1500,
+      },
+      Math.floor(Date.UTC(2026, 4, 12, 12, 0, 0) / 1000), // 3 days later
+    );
+
+    await handleStripeEvent(retryEvent, client as unknown as never);
+
+    // The past_due UPDATE still ran (advances subscription_event_at so
+    // the CAS marker stays current).
+    expect(client.__updates).toHaveLength(1);
+    expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
+    // But NO Inngest dispatch — user already knows their card is declined.
+    expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
   it('invoice.payment_failed swallows inngest.send errors so past_due update sticks', async () => {

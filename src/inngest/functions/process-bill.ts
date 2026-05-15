@@ -329,11 +329,14 @@ export const processBillFn = inngest.createFunction(
           const supabase = getAdminClient();
 
           // 1. Fetch the row (no filters except id) so we can distinguish
-          //    "not found" / "wrong owner" / "already advanced" from each
-          //    other for accurate failure reasons.
+          //    "not found" / "wrong owner" / "already advanced" / "self-
+          //    replay" from each other for accurate failure reasons.
+          //    `inngest_run_id` is selected so the bail branch can detect
+          //    an Inngest step-replay (this run already committed but the
+          //    step result wasn't persisted before the worker crashed).
           const { data: rowData, error: fetchErr } = await supabase
             .from('audits')
-            .select('id, user_id, status')
+            .select('id, user_id, status, inngest_run_id')
             .eq('id', auditId)
             .maybeSingle();
           if (fetchErr) {
@@ -344,7 +347,12 @@ export const processBillFn = inngest.createFunction(
           if (!rowData) {
             return { proceed: false, reason: 'not-found' };
           }
-          const row = rowData as { id: string; user_id: string; status: string };
+          const row = rowData as {
+            id: string;
+            user_id: string;
+            status: string;
+            inngest_run_id: string | null;
+          };
 
           // 2. (I1) Ownership re-check. If the event payload's userId does
           //    not match the audit's owner, the event is bad — flip the row
@@ -388,6 +396,17 @@ export const processBillFn = inngest.createFunction(
           }
           const affected = (updatedRows ?? []).length;
           if (affected === 0) {
+            // C1: Inngest step-replay self-recognition. If this run already
+            // stamped its run id on the row (a prior body execution committed
+            // the UPDATE but the step result wasn't persisted before the
+            // worker crashed), treat the bail as success — downstream steps
+            // will replay their own cached results or re-converge via their
+            // own self-replay checks. Without this branch, a rare worker
+            // crash between DB commit and Inngest result-write strands the
+            // audit in `extracting` forever.
+            if (event.id && row.inngest_run_id === event.id) {
+              return { proceed: true };
+            }
             return {
               proceed: false,
               reason: 'already-advanced',
@@ -533,6 +552,29 @@ export const processBillFn = inngest.createFunction(
           }
           const affected = (rows ?? []).length;
           if (affected === 0) {
+            // C1: distinguish Inngest step-replay (this run already
+            // advanced the row past 'extracting') from a real status
+            // race. The UPDATE matched 0 rows because the row is no
+            // longer 'extracting' — fetch its current state and check
+            // ownership. If WE wrote the run id and the row sits at our
+            // target ('analyzing') or a downstream terminal state
+            // ('completed'), accept the step as already done.
+            const { data: probeData } = await supabase
+              .from('audits')
+              .select('status, inngest_run_id')
+              .eq('id', auditId)
+              .maybeSingle();
+            const probe = probeData as
+              | { status: string; inngest_run_id: string | null }
+              | null;
+            if (
+              probe &&
+              event.id &&
+              probe.inngest_run_id === event.id &&
+              (probe.status === 'analyzing' || probe.status === 'completed')
+            ) {
+              return { ok: true };
+            }
             // Lost the status race. Drop a Sentry breadcrumb so the divergence
             // is visible during triage but never throw — a stale retry losing
             // the race is not an error condition.
@@ -734,6 +776,29 @@ export const processBillFn = inngest.createFunction(
           );
         }
         if ((rows ?? []).length === 0) {
+          // C1: same self-replay detection as mark-analyzing. If WE
+          // stamped the run id and the row already sits at 'completed',
+          // treat the step as already done so downstream analytics +
+          // Inngest dispatch can run (both are dedupe-keyed and safe to
+          // re-fire). Without this, a worker crash after committing
+          // mark-completed but before persisting the step result would
+          // strand the audit at `completed` but skip the email dispatch.
+          const { data: probeData } = await supabase
+            .from('audits')
+            .select('status, inngest_run_id')
+            .eq('id', auditId)
+            .maybeSingle();
+          const probe = probeData as
+            | { status: string; inngest_run_id: string | null }
+            | null;
+          if (
+            probe &&
+            event.id &&
+            probe.inngest_run_id === event.id &&
+            probe.status === 'completed'
+          ) {
+            return { ok: true as const };
+          }
           // Lost the status race — another runner already completed or failed
           // this audit. Do not throw; the audit is in a terminal state.
           return { ok: false as const, reason: 'status-guard' as const };
