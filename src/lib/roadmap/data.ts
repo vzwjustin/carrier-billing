@@ -141,7 +141,7 @@ export const ROADMAP: RoadmapSection[] = [
       d('Add carriers router to tRPC'),
       p('Implement real carrier authentication flow'),
       p('Build direct bill retrieval from carriers'),
-      p('Persist carrier connections in database'),
+      d('Persist carrier connections in database'),
     ],
   },
   {
