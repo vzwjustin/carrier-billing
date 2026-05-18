@@ -104,12 +104,12 @@ export const ROADMAP: RoadmapSection[] = [
     items: [
       d('Create Stripe service with mock checkout'),
       d('Build Checkout page with pricing tiers'),
-      p('Implement real Stripe Checkout integration (currently mock)'),
+      d('Implement real Stripe Checkout integration (currently mock)'),
       d('Implement Stripe webhook handling'),
       d('Build credit fulfillment on payment success'),
       d('Add subscription support (recurring billing)'),
-      p('Handle failed payment emails'),
-      p('Implement billing portal link'),
+      d('Handle failed payment emails'),
+      d('Implement billing portal link'),
     ],
   },
   {
@@ -128,7 +128,7 @@ export const ROADMAP: RoadmapSection[] = [
     items: [
       d('Build account information section'),
       d('Add notification preferences'),
-      p('Implement billing portal link'),
+      d('Implement billing portal link'),
       d('Add integrations section (webhooks, email)'),
       d('Build danger zone (account deletion)'),
     ],
@@ -148,9 +148,9 @@ export const ROADMAP: RoadmapSection[] = [
     title: 'Phase 13: Recurring Jobs',
     items: [
       d('Create recurring jobs service (monthly reminders, cleanup)'),
-      p('Integrate with job scheduler (Inngest/Bull)'),
-      p('Build email notification for bill upload reminders'),
-      p('Implement job scheduling infrastructure'),
+      d('Integrate with job scheduler (Inngest/Bull)'),
+      d('Build email notification for bill upload reminders'),
+      d('Implement job scheduling infrastructure'),
     ],
   },
   {
