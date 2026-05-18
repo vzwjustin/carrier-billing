@@ -189,7 +189,7 @@ export const ROADMAP: RoadmapSection[] = [
     title: 'Final Delivery',
     items: [
       d('Run full TypeScript and build check (TypeScript clean, build successful)'),
-      p('Test all major user flows (signup, upload, report, checkout)'),
+      d('Test all major user flows (signup, upload, report, checkout)'),
       p('Verify responsive design on mobile'),
       p('Create final checkpoint for delivery'),
     ],
