@@ -17,7 +17,7 @@ function ProgressBar({
   stats: RoadmapStats;
   className?: string;
 }): React.JSX.Element {
-  const complete = stats.pct === 100;
+  const complete = stats.done === stats.total && stats.total > 0;
   return (
     <div
       className={cn('h-2 w-full overflow-hidden rounded-full bg-neutral-200', className)}
@@ -81,7 +81,7 @@ export default function RoadmapPage(): React.JSX.Element {
                 <span
                   className={cn(
                     'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
-                    stats.pct === 100
+                    stats.done === stats.total && stats.total > 0
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-neutral-100 text-neutral-700',
                   )}

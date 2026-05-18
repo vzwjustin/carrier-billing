@@ -130,7 +130,7 @@ export const ROADMAP: RoadmapSection[] = [
       d('Add notification preferences'),
       p('Implement billing portal link'),
       d('Add integrations section (webhooks, email)'),
-      p('Build danger zone (account deletion)'),
+      d('Build danger zone (account deletion)'),
     ],
   },
   {
@@ -229,23 +229,31 @@ export interface RoadmapStats {
 
 export function sectionStats(section: RoadmapSection): RoadmapStats {
   const total = section.items.length;
-  const done = section.items.filter((i) => i.done).length;
+  let done = 0;
+  for (const item of section.items) {
+    if (item.done) done += 1;
+  }
   return {
     total,
     done,
     pending: total - done,
-    pct: total === 0 ? 0 : Math.round((done / total) * 100),
+    pct: total === 0 ? 0 : Math.floor((done / total) * 100),
   };
 }
 
 export function overallStats(): RoadmapStats {
-  const all = ROADMAP.flatMap((s) => s.items);
-  const total = all.length;
-  const done = all.filter((i) => i.done).length;
+  let total = 0;
+  let done = 0;
+  for (const section of ROADMAP) {
+    total += section.items.length;
+    for (const item of section.items) {
+      if (item.done) done += 1;
+    }
+  }
   return {
     total,
     done,
     pending: total - done,
-    pct: total === 0 ? 0 : Math.round((done / total) * 100),
+    pct: total === 0 ? 0 : Math.floor((done / total) * 100),
   };
 }
