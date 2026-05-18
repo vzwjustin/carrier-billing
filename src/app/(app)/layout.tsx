@@ -21,6 +21,7 @@ const NAV_ITEMS = [
 interface ProfileRow {
   audit_credits: number | null;
   subscription_status: string | null;
+  role: string | null;
 }
 
 function isProfileRow(value: unknown): value is ProfileRow {
@@ -29,7 +30,8 @@ function isProfileRow(value: unknown): value is ProfileRow {
   return (
     (v.audit_credits === null || typeof v.audit_credits === 'number') &&
     (v.subscription_status === null ||
-      typeof v.subscription_status === 'string')
+      typeof v.subscription_status === 'string') &&
+    (v.role === null || typeof v.role === 'string')
   );
 }
 
@@ -87,12 +89,16 @@ export default async function AppLayout({
 
   const { data: profileData } = await supabase
     .from('profiles')
-    .select('audit_credits,subscription_status')
+    .select('audit_credits,subscription_status,role')
     .eq('id', user.id)
     .maybeSingle();
 
   const profile = isProfileRow(profileData) ? profileData : null;
   const badge = getBadgeState(profile);
+  const navItems =
+    profile?.role === 'admin'
+      ? [...NAV_ITEMS, { href: '/admin', label: 'Admin' }]
+      : NAV_ITEMS;
 
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-950">
@@ -106,7 +112,7 @@ export default async function AppLayout({
               CarrierAudit
             </Link>
             <nav className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex dark:text-neutral-400">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -150,7 +156,7 @@ export default async function AppLayout({
                 Sign out
               </Button>
             </form>
-            <MobileNav items={NAV_ITEMS} email={user.email ?? null} />
+            <MobileNav items={navItems} email={user.email ?? null} />
           </div>
         </div>
       </header>

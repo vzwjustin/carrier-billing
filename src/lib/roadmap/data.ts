@@ -120,7 +120,7 @@ export const ROADMAP: RoadmapSection[] = [
       d('Add database record browser/editor'),
       d('Build role promotion interface'),
       d('Add audit activity monitoring'),
-      p('Implement data export functionality (currently placeholder toast)'),
+      d('Implement data export functionality (currently placeholder toast)'),
     ],
   },
   {
