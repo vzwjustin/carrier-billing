@@ -11,6 +11,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { billTotals, type CarrierBill, type LineItem } from '@/lib/carriers/bill-schema';
+import {
+  optimizeBill,
+  type OptimizationResult,
+} from '@/lib/carriers/optimize';
 import { CARRIERS, CARRIER_LABELS, type Carrier } from '@/lib/carriers/types';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -59,6 +63,8 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
   const [newCarrier, setNewCarrier] = useState<Carrier>('verizon');
   const [newLabel, setNewLabel] = useState('');
   const [pending, startTransition] = useTransition();
+  const [analysis, setAnalysis] = useState<OptimizationResult | null>(null);
+  const [rev, setRev] = useState(0);
 
   const selected = bills.find((b) => b.id === selectedId) ?? null;
   const totals = useMemo(
@@ -128,6 +134,29 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
       setSelectedId((cur) => (cur === id ? null : cur));
       toast.success('Bill deleted.');
     });
+  }
+
+  function onAnalyze(): void {
+    if (!selected) return;
+    setAnalysis(optimizeBill(selected.carrier, selected.lineItems));
+  }
+
+  function applySuggestions(): void {
+    if (!selected || !analysis) return;
+    const map = new Map(
+      analysis.suggestions.map((s) => [s.lineItemId, s.suggestedCents]),
+    );
+    patchSelected((b) => ({
+      ...b,
+      lineItems: b.lineItems.map((x) =>
+        map.has(x.id)
+          ? { ...x, optimizedCents: map.get(x.id) as number }
+          : x,
+      ),
+    }));
+    setAnalysis(null);
+    setRev((r) => r + 1);
+    toast.success('Suggestions applied. Review, then Save to persist.');
   }
 
   function onExport(): void {
@@ -222,6 +251,14 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                 type="button"
                 variant="outline"
                 size="sm"
+                onClick={onAnalyze}
+              >
+                Analyze &amp; optimize
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={onExport}
               >
                 Export CSV
@@ -264,6 +301,15 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
             optimizedCents={totals.optimizedCents}
           />
 
+          {analysis ? (
+            <AnalysisPanel
+              result={analysis}
+              lineItems={selected.lineItems}
+              onApply={applySuggestions}
+              onDismiss={() => setAnalysis(null)}
+            />
+          ) : null}
+
           <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
             <table className="w-full text-sm">
               <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
@@ -274,7 +320,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
-              <tbody>
+              <tbody key={rev}>
                 {selected.lineItems.map((li) => (
                   <tr
                     key={li.id}
@@ -462,5 +508,127 @@ function ComparisonBar({
         </div>
       </div>
     </div>
+  );
+}
+
+const SEVERITY_BADGE: Record<string, string> = {
+  high: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  medium:
+    'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  low: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
+};
+
+function AnalysisPanel({
+  result,
+  lineItems,
+  onApply,
+  onDismiss,
+}: {
+  result: OptimizationResult;
+  lineItems: LineItem[];
+  onApply: () => void;
+  onDismiss: () => void;
+}): React.JSX.Element {
+  const descById = new Map(lineItems.map((li) => [li.id, li.description]));
+  const errorCount = result.issues.filter((i) => i.level === 'error').length;
+
+  return (
+    <section className="space-y-4 rounded-xl border border-emerald-300 bg-emerald-50 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Optimization preview
+          </h3>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            Projected savings:{' '}
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+              {formatCents(result.projectedSavingsCents)}/mo
+            </span>{' '}
+            · {result.suggestions.length} suggestion
+            {result.suggestions.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onDismiss}
+          >
+            Dismiss
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={result.suggestions.length === 0}
+            onClick={onApply}
+          >
+            Apply suggestions
+          </Button>
+        </div>
+      </div>
+
+      {result.issues.length > 0 ? (
+        <ul className="space-y-1 text-xs">
+          {result.issues.map((iss, idx) => (
+            <li
+              key={`${iss.ruleId}-${idx}`}
+              className={
+                iss.level === 'error'
+                  ? 'text-red-700 dark:text-red-400'
+                  : 'text-amber-700 dark:text-amber-400'
+              }
+            >
+              {iss.level === 'error' ? '✗' : '⚠'} {iss.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {result.suggestions.length === 0 ? (
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          No optimization opportunities found.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {result.suggestions.map((s, idx) => (
+            <li
+              key={`${s.ruleId}-${s.lineItemId}-${idx}`}
+              className="rounded-lg border border-neutral-200 bg-white p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {descById.get(s.lineItemId) ?? 'Line item'}
+                </span>
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
+                    SEVERITY_BADGE[s.severity],
+                  )}
+                >
+                  {s.severity}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+                {s.rationale}
+              </p>
+              <p className="mt-1 text-xs tabular-nums text-neutral-700 dark:text-neutral-300">
+                {formatCents(s.currentCents)} →{' '}
+                <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                  {formatCents(s.suggestedCents)}
+                </span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {errorCount > 0 ? (
+        <p className="text-xs text-red-700 dark:text-red-400">
+          Resolve {errorCount} validation error
+          {errorCount === 1 ? '' : 's'} before relying on these numbers.
+        </p>
+      ) : null}
+    </section>
   );
 }
