@@ -179,7 +179,7 @@ export const ROADMAP: RoadmapSection[] = [
       d('Polish PasswordUpdate page with premium layout and validation feedback'),
       d('Polish Checkout page with premium pricing/CTA styling'),
       d('Polish Admin page tables with responsive layout and action rows'),
-      p('Add error state handling to Auth, Settings, Checkout, Admin pages'),
+      d('Add error state handling to Auth, Settings, Checkout, Admin pages'),
       d('Fix nested anchor tags in Home footer'),
       d('Implement dark mode support'),
       d('Add visual feedback for all interactions'),
