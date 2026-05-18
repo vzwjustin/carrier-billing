@@ -37,10 +37,12 @@ export default async function AccountSettingsPage(): Promise<React.ReactElement>
 
   return (
     <div className="space-y-6">
-      <section className="space-y-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <section className="space-y-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <header className="space-y-1">
-          <h2 className="text-lg font-semibold text-neutral-900">Account</h2>
-          <p className="text-sm text-neutral-600">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+            Account
+          </h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
             Information that appears in your reports and email greetings.
           </p>
         </header>

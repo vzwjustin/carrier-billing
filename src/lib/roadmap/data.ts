@@ -181,7 +181,7 @@ export const ROADMAP: RoadmapSection[] = [
       d('Polish Admin page tables with responsive layout and action rows'),
       p('Add error state handling to Auth, Settings, Checkout, Admin pages'),
       d('Fix nested anchor tags in Home footer'),
-      p('Implement dark mode support'),
+      d('Implement dark mode support'),
       d('Add visual feedback for all interactions'),
     ],
   },

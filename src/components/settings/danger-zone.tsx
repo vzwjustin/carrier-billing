@@ -32,10 +32,12 @@ export function DangerZone({ email }: DangerZoneProps): React.JSX.Element {
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-red-200 bg-white p-6 shadow-sm">
+    <section className="space-y-4 rounded-xl border border-red-200 bg-white p-6 shadow-sm dark:border-red-900/60 dark:bg-neutral-900">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold text-red-700">Danger zone</h2>
-        <p className="text-sm text-neutral-600">
+        <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">
+          Danger zone
+        </h2>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
           Permanently delete your account and all associated data. This action
           cannot be undone.
         </p>

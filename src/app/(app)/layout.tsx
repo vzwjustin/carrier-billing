@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { MobileNav } from '@/components/app-nav/mobile-nav';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
@@ -92,22 +93,22 @@ export default async function AppLayout({
   const badge = getBadgeState(profile);
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50">
-      <header className="relative border-b border-neutral-200 bg-white">
+    <div className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-950">
+      <header className="relative border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-6">
             <Link
               href="/dashboard"
-              className="text-base font-semibold tracking-tight text-neutral-900"
+              className="text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100"
             >
               CarrierAudit
             </Link>
-            <nav className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex">
+            <nav className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex dark:text-neutral-400">
               {NAV_ITEMS.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="hover:text-neutral-900"
+                  className="hover:text-neutral-900 dark:hover:text-neutral-100"
                 >
                   {item.label}
                 </Link>
@@ -115,6 +116,9 @@ export default async function AppLayout({
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
             {badge.href ? (
               <Link
                 href={badge.href}

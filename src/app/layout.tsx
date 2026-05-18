@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 import './globals.css';
 
 import { PostHogProvider } from '@/components/posthog-provider';
+import { ThemeScript } from '@/components/theme/theme-script';
 
 export const metadata: Metadata = {
   title: 'CarrierAudit — Wireless Bill Audits in Minutes',
@@ -17,6 +18,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body className="min-h-screen antialiased">
         <PostHogProvider>{children}</PostHogProvider>
         <Toaster richColors position="top-center" closeButton />
