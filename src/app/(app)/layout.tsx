@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/roadmap', label: 'Roadmap' },
   { href: '/carriers', label: 'Carriers' },
+  { href: '/carriers/bills', label: 'Bill editor' },
   { href: '/audits/new', label: 'New audit' },
   { href: '/settings', label: 'Settings' },
   { href: '/settings/billing', label: 'Billing' },
