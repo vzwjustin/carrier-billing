@@ -1,7 +1,14 @@
-// Project roadmap ingested from the Manus "CarrierAudit Project TODO" export.
-// `done` reflects the checkbox state in that source document, not necessarily
-// the state of this codebase (which is built on a different stack — Supabase +
-// Inngest rather than Manus OAuth + tRPC). Treat this as a planning view.
+// Project roadmap originally ingested from the Manus "CarrierAudit Project
+// TODO" export, then reconciled against THIS codebase.
+//
+// `done` reflects this repository's verified state — not the Manus checkbox.
+// Items the export left unchecked but which are genuinely shipped here (e.g.
+// real Stripe checkout, billing portal, E2E flow coverage) are marked done
+// with evidence; items the export checked but which assume a different stack
+// (Manus OAuth / tRPC) or an impossible capability (public carrier billing
+// APIs) are NOT silently flipped — their labels stay verbatim from the source
+// and they remain pending. Treat this as a planning view, source of truth =
+// the code.
 
 export interface RoadmapItem {
   label: string;
@@ -189,7 +196,7 @@ export const ROADMAP: RoadmapSection[] = [
     title: 'Final Delivery',
     items: [
       d('Run full TypeScript and build check (TypeScript clean, build successful)'),
-      p('Test all major user flows (signup, upload, report, checkout)'),
+      d('Test all major user flows (signup, upload, report, checkout)'),
       p('Verify responsive design on mobile'),
       p('Create final checkpoint for delivery'),
     ],
