@@ -12,6 +12,12 @@ export function SiteNav(): React.ReactElement {
         </Link>
         <nav className="flex items-center gap-1 sm:gap-3">
           <Link
+            href="/docs"
+            className="rounded-md px-3 py-1.5 text-sm text-neutral-700 hover:text-neutral-900"
+          >
+            Docs
+          </Link>
+          <Link
             href="/pricing"
             className="rounded-md px-3 py-1.5 text-sm text-neutral-700 hover:text-neutral-900"
           >

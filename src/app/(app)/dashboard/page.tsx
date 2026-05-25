@@ -2,12 +2,15 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
+import { FindingsOverTimeChart } from '@/components/dashboard/findings-over-time-chart';
+import { SpendByCarrierChart } from '@/components/dashboard/spend-by-carrier-chart';
 import { Button } from '@/components/ui/button';
 import {
   aggregateCostCenters,
   type CostCenterLineInput,
   type CostCenterRollupRow,
 } from '@/lib/cost-centers/aggregate';
+import { DEFAULT_WINDOW as FINDINGS_WINDOW } from '@/lib/dashboard/findings-over-time';
 import {
   findExpiringContracts,
   type ContractRow as RenewalContractRow,
@@ -31,8 +34,17 @@ interface DashboardAuditRow {
 }
 
 interface CompletedAggregateRow {
+  id: string;
+  created_at: string;
+  carrier: string | null;
+  total_charges_cents: number | null;
   estimated_annual_savings_cents: number | null;
   high_severity_count: number | null;
+}
+
+interface FindingSeverityRow {
+  audit_id: string;
+  severity: string;
 }
 
 interface LatestAutopsyRow {
@@ -128,8 +140,11 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       .returns<DashboardAuditRow[]>(),
     supabase
       .from('audits')
-      .select('estimated_annual_savings_cents,high_severity_count')
+      .select(
+        'id,created_at,carrier,total_charges_cents,estimated_annual_savings_cents,high_severity_count',
+      )
       .eq('status', 'completed')
+      .order('created_at', { ascending: false })
       .returns<CompletedAggregateRow[]>(),
     // Most recent Bill Increase Autopsy across all of the user's audits.
     // RLS scopes to the owning user; null if no autopsy has been run yet.
@@ -197,6 +212,34 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     }
   }
   const mostRecentCompletedAuditId = completedAuditIds[0] ?? null;
+
+  // Spend-by-carrier chart input — derived from `completedRes`, no extra
+  // query. We pass the full mini-row shape so the aggregator can strip null
+  // totals itself (keeps the carrier bucket out of the chart entirely).
+  const carrierSpendInput = completed.map((row) => ({
+    carrier: row.carrier,
+    total_charges_cents: row.total_charges_cents,
+  }));
+
+  // Findings-over-time chart input. The completed audits are already ordered
+  // newest-first; we slice to the chart window and look up findings only for
+  // those audit IDs so we don't drag back severity rows for older audits.
+  const findingsWindowAudits = completed.slice(0, FINDINGS_WINDOW).map((row) => ({
+    id: row.id,
+    created_at: row.created_at,
+  }));
+  let findingsSeverityRows: FindingSeverityRow[] = [];
+  if (findingsWindowAudits.length >= 2) {
+    const findingsRes = await supabase
+      .from('findings')
+      .select('audit_id,severity')
+      .in(
+        'audit_id',
+        findingsWindowAudits.map((a) => a.id),
+      )
+      .returns<FindingSeverityRow[]>();
+    findingsSeverityRows = findingsRes.data ?? [];
+  }
 
   // Upcoming renewals: contracts expiring in the next RENEWAL_WINDOW_DAYS.
   // The tile is hidden when zero so we don't add visual noise.
@@ -295,6 +338,18 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           />
         </section>
       ) : null}
+
+      {/* Mini visualizations sit between the stat tiles and the autopsy card
+          so the most important info (lifetime savings, high-sev count) stays
+          at the top of the page. Each chart self-hides when its threshold
+          isn't met, so this region collapses gracefully for new accounts. */}
+      {totalAudits > 0 ? (
+        <SpendByCarrierChart audits={carrierSpendInput} />
+      ) : null}
+      <FindingsOverTimeChart
+        audits={findingsWindowAudits}
+        findings={findingsSeverityRows}
+      />
 
       {expiringRenewalCount > 0 ? (
         <UpcomingRenewalsTile count={expiringRenewalCount} />
