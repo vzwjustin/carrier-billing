@@ -17,6 +17,8 @@ import {
   disproportionateTaxesFeesRule,
   activationFeeOnExistingLineRule,
   strandedCloudStorageRule,
+  zeroUsagePhoneLineRule,
+  redundantHotspotAddonRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -35,6 +37,8 @@ export const ALL_RULES: Rule[] = [
   disproportionateTaxesFeesRule,
   activationFeeOnExistingLineRule,
   strandedCloudStorageRule,
+  zeroUsagePhoneLineRule,
+  redundantHotspotAddonRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);

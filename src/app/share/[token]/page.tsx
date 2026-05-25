@@ -188,7 +188,7 @@ export default async function ShareReportPage({
         </h1>
         <p className="mt-1 text-sm text-neutral-600">Read-only shared report.</p>
       </div>
-      <ReportView report={report} isPublic />
+      <ReportView report={report} isPublic shareToken={token} />
     </div>
   );
 }

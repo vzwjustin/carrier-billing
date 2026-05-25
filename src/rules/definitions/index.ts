@@ -13,3 +13,5 @@ export { underutilizedPhoneOnPremiumPlanRule } from './underutilized-phone-on-pr
 export { disproportionateTaxesFeesRule } from './disproportionate-taxes-fees';
 export { activationFeeOnExistingLineRule } from './activation-fee-on-existing-line';
 export { strandedCloudStorageRule } from './stranded-cloud-storage';
+export { zeroUsagePhoneLineRule } from './zero-usage-phone-line';
+export { redundantHotspotAddonRule } from './redundant-hotspot-addon';
