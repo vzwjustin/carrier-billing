@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: '/inventory', label: 'Inventory' },
   { href: '/audits/new', label: 'New audit' },
   { href: '/contracts', label: 'Contracts' },
+  { href: '/renewal-advisor', label: 'Renewal Advisor' },
   { href: '/assistant', label: 'Assistant' },
   { href: '/settings', label: 'Settings' },
   { href: '/settings/billing', label: 'Billing' },

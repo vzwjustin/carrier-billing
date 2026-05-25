@@ -56,6 +56,44 @@ export type Events = {
       userId: string;
     };
   };
+  'finding.created': {
+    // Fired when a high-severity finding is created via the autopsy escalate
+    // route. (Rule-runner persistence does NOT currently emit this event —
+    // the starter scope intentionally keeps the chokepoint to a single
+    // user-initiated site. See HANDOFF + send-slack-notification.ts.)
+    //
+    // The Slack notifier listens on this event and skips when
+    // `severity !== 'high'` or the user has Slack disabled.
+    //
+    // PII: rule_id / severity / title / cents only.
+    data: {
+      auditId: string;
+      findingId: string;
+      userId: string;
+      severity: string;
+      ruleId: string;
+      title: string;
+      estimatedMonthlySavingsCents: number | null;
+    };
+  };
+  'bill.comparison_persisted': {
+    // Fired after `persistComparison` succeeds in src/autopsy/persist.ts.
+    // The Slack notifier listens for this and skips when the comparison has
+    // no disputable cents (the gate is: notify only when there's actually
+    // something to act on).
+    //
+    // PII: cent totals + driver counts only. No driver titles in the event
+    // (the dispatcher loads them from the DB fresh).
+    data: {
+      comparisonId: string;
+      userId: string;
+      previousAuditId: string;
+      currentAuditId: string;
+      disputableCents: number;
+      netChangeCents: number;
+      driversCount: number;
+    };
+  };
 };
 
 export const inngest = new Inngest({

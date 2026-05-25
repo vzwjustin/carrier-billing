@@ -34,6 +34,14 @@ export interface FindingsBulkToolbarProps {
    * badge). Fired once per finding id, NOT once per bulk action.
    */
   onStatusApplied?: (findingId: string, status: FindingStatus) => void;
+  /**
+   * Parallel array of `{id, status}` for the currently selected findings.
+   * Used by the "Generate dispute letter" affordance to filter the
+   * selection down to the approved subset. Optional so the legacy
+   * mark-as-X buttons keep working even if the parent hasn't been updated
+   * yet.
+   */
+  selectedFindings?: readonly { id: string; status: FindingStatus }[];
 }
 
 export function FindingsBulkToolbar({
@@ -41,11 +49,38 @@ export function FindingsBulkToolbar({
   selectedIds,
   onClear,
   onStatusApplied,
+  selectedFindings,
 }: FindingsBulkToolbarProps): React.JSX.Element | null {
   const [busy, setBusy] = React.useState(false);
 
   const count = selectedIds.length;
   if (count === 0) return null;
+
+  // Compute the approved subset of the current selection for the dispute-
+  // letter affordance. Only ids that are in BOTH selectedIds and
+  // selectedFindings (with status === 'approved') count, so a stale parent
+  // can never expose ids that aren't visually selected.
+  const approvedSelected: string[] = (() => {
+    if (!selectedFindings || selectedFindings.length === 0) return [];
+    const selectedSet = new Set(selectedIds);
+    const out: string[] = [];
+    for (const f of selectedFindings) {
+      if (selectedSet.has(f.id) && f.status === 'approved') out.push(f.id);
+    }
+    return out;
+  })();
+
+  const openDisputeLetter = (): void => {
+    if (approvedSelected.length === 0) return;
+    const params = new URLSearchParams({
+      finding_ids: approvedSelected.join(','),
+    });
+    window.open(
+      `/api/audits/${auditId}/dispute-letter.pdf?${params.toString()}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  };
 
   const runBulk = async (status: FindingStatus): Promise<void> => {
     if (busy) return;
@@ -120,6 +155,16 @@ export function FindingsBulkToolbar({
             Mark {count} as {action.label}
           </button>
         ))}
+        {approvedSelected.length > 0 ? (
+          <button
+            type="button"
+            onClick={openDisputeLetter}
+            disabled={busy}
+            className="rounded-md border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
+          >
+            Generate dispute letter ({approvedSelected.length})
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClear}

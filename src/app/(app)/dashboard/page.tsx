@@ -8,6 +8,10 @@ import {
   type CostCenterLineInput,
   type CostCenterRollupRow,
 } from '@/lib/cost-centers/aggregate';
+import {
+  findExpiringContracts,
+  type ContractRow as RenewalContractRow,
+} from '@/lib/renewals/expiring-contracts';
 import { createClient } from '@/lib/supabase/server';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -51,6 +55,16 @@ interface CostCenterLineRow {
   cost_center: string | null;
   plan_base_cents: number | null;
 }
+
+interface DashboardContractRow {
+  id: string;
+  original_filename: string;
+  carrier: string | null;
+  ban_last4: string | null;
+  expiration_date: string | null;
+}
+
+const RENEWAL_WINDOW_DAYS = 90;
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-neutral-100 text-neutral-700',
@@ -101,6 +115,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     completedRes,
     latestAutopsyRes,
     completedIdsRes,
+    contractsRes,
   ] = await Promise.all([
     supabase.from('audits').select('id', { head: true, count: 'exact' }),
     supabase
@@ -135,6 +150,14 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       .eq('status', 'completed')
       .order('created_at', { ascending: false })
       .returns<CompletedAuditIdRow[]>(),
+    // Contracts with a non-null expiration_date — we filter the window in
+    // memory via findExpiringContracts so the dashboard tile and the
+    // /renewal-advisor page share one source of truth.
+    supabase
+      .from('contracts')
+      .select('id,original_filename,carrier,ban_last4,expiration_date')
+      .not('expiration_date', 'is', null)
+      .returns<DashboardContractRow[]>(),
   ]);
 
   const latest = latestRes.data ?? [];
@@ -174,6 +197,24 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     }
   }
   const mostRecentCompletedAuditId = completedAuditIds[0] ?? null;
+
+  // Upcoming renewals: contracts expiring in the next RENEWAL_WINDOW_DAYS.
+  // The tile is hidden when zero so we don't add visual noise.
+  const expiringRenewalRows: RenewalContractRow[] = (
+    contractsRes.data ?? []
+  ).map((row) => ({
+    id: row.id,
+    original_filename: row.original_filename,
+    carrier: row.carrier,
+    ban_last4: row.ban_last4,
+    expiration_date: row.expiration_date,
+    contracted_monthly_rate_cents: null,
+  }));
+  const expiringRenewalCount = findExpiringContracts(
+    expiringRenewalRows,
+    new Date(),
+    RENEWAL_WINDOW_DAYS,
+  ).length;
 
   return (
     <div className="space-y-8">
@@ -253,6 +294,10 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
             }
           />
         </section>
+      ) : null}
+
+      {expiringRenewalCount > 0 ? (
+        <UpcomingRenewalsTile count={expiringRenewalCount} />
       ) : null}
 
       {latestAutopsy ? <AutopsyCard autopsy={latestAutopsy} /> : null}
@@ -540,6 +585,39 @@ function CostCenterTile({
             })}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+function UpcomingRenewalsTile({
+  count,
+}: {
+  count: number;
+}): React.JSX.Element {
+  return (
+    <section
+      aria-label="Upcoming renewals"
+      className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Upcoming renewals
+          </p>
+          <p className="mt-1 text-3xl font-semibold tracking-tight text-neutral-900 tabular-nums">
+            {count.toLocaleString('en-US')}
+          </p>
+          <p className="mt-2 text-xs text-neutral-500">
+            Contract{count === 1 ? '' : 's'} expiring in the next 90 days.
+          </p>
+        </div>
+        <Link
+          href="/renewal-advisor"
+          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-50"
+        >
+          Open renewal advisor →
+        </Link>
       </div>
     </section>
   );

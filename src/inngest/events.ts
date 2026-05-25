@@ -72,6 +72,45 @@ export type FindingStatusChangedData = z.infer<
 >;
 
 /**
+ * Severity domain mirrors `findings.severity` CHECK in migration 0001.
+ * Repeated as a tuple here so the schema can validate without importing
+ * the type-only enum module (Zod needs runtime literals).
+ */
+export const FINDING_SEVERITY_ENUM = [
+  'high',
+  'medium',
+  'low',
+  'info',
+] as const;
+
+export const FindingCreatedDataSchema = z.object({
+  auditId: z.string().uuid(),
+  findingId: z.string().uuid(),
+  userId: z.string().uuid(),
+  severity: z.enum(FINDING_SEVERITY_ENUM),
+  // rule_id is a stable identifier (e.g. "autopsy_escalated_<category>") —
+  // bounded to a sane length so a misconfigured caller can't push an
+  // unbounded string into Inngest event history.
+  ruleId: z.string().min(1).max(120),
+  title: z.string().min(1).max(500),
+  estimatedMonthlySavingsCents: z.number().int().nullable(),
+});
+export type FindingCreatedData = z.infer<typeof FindingCreatedDataSchema>;
+
+export const BillComparisonPersistedDataSchema = z.object({
+  comparisonId: z.string().uuid(),
+  userId: z.string().uuid(),
+  previousAuditId: z.string().uuid(),
+  currentAuditId: z.string().uuid(),
+  disputableCents: z.number().int(),
+  netChangeCents: z.number().int(),
+  driversCount: z.number().int().min(0),
+});
+export type BillComparisonPersistedData = z.infer<
+  typeof BillComparisonPersistedDataSchema
+>;
+
+/**
  * Convenience: parse + throw with a stable error name so the Inngest
  * function's top-level catch can surface the event shape issue distinctly
  * from any other error in the pipeline.

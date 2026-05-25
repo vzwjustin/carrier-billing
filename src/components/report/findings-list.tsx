@@ -141,6 +141,25 @@ export function FindingsList({
 
   const visibleCount = filteredWithOverrides.length;
 
+  // Build a {id, status} projection of the selected findings for the bulk
+  // toolbar's dispute-letter affordance. Pull from the full unfiltered
+  // `allFindings` (with overrides applied) so a selection made before a
+  // filter change still shows the right approved count.
+  const selectedFindings = React.useMemo<
+    ReadonlyArray<{ id: string; status: FindingStatus }>
+  >(() => {
+    if (selectedIds.length === 0) return [];
+    const selectedSet = new Set(selectedIds);
+    const out: { id: string; status: FindingStatus }[] = [];
+    for (const f of allFindings) {
+      if (!f.id || !selectedSet.has(f.id)) continue;
+      const override = statusOverrides[f.id];
+      const status: FindingStatus = override ?? f.status ?? 'new';
+      out.push({ id: f.id, status });
+    }
+    return out;
+  }, [allFindings, selectedIds, statusOverrides]);
+
   return (
     <div className="space-y-4">
       <FindingsFilterBar
@@ -152,6 +171,7 @@ export function FindingsList({
         <FindingsBulkToolbar
           auditId={auditId}
           selectedIds={selectedIds}
+          selectedFindings={selectedFindings}
           onClear={handleClearSelection}
           onStatusApplied={handleStatusApplied}
         />

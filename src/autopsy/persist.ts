@@ -10,6 +10,7 @@
 
 import * as Sentry from '@sentry/nextjs';
 
+import { inngest } from '@/inngest/client';
 import { getAdminClient } from '@/lib/supabase/admin';
 import type { AutopsyResult } from './types';
 
@@ -108,6 +109,35 @@ export async function persistComparison(
       });
       throw new Error(`failed to persist change drivers: ${driversErr.message}`);
     }
+  }
+
+  // Fire `bill.comparison_persisted` so the Slack notifier (and any future
+  // listener) can react. PII-safe: cents + counts + UUIDs only — no driver
+  // titles, summaries, or evidence. The dispatcher decides whether to
+  // notify based on the user's `slack_notify_on_autopsy` flag and the
+  // disputable amount.
+  //
+  // Best-effort: an event-send failure must not block the persisted-
+  // comparison response, since the rows are already in the DB.
+  try {
+    await inngest.send({
+      id: `comparison-persisted-${inserted.id}`,
+      name: 'bill.comparison_persisted',
+      data: {
+        comparisonId: inserted.id,
+        userId: input.userId,
+        previousAuditId: input.previousAuditId,
+        currentAuditId: input.currentAuditId,
+        disputableCents: input.result.disputable_cents,
+        netChangeCents: input.result.net_change_cents,
+        driversCount: input.result.drivers.length,
+      },
+    });
+  } catch (sendErr) {
+    Sentry.captureException(sendErr, {
+      tags: { surface: 'autopsy.persist.event_send' },
+      extra: { comparisonId: inserted.id },
+    });
   }
 
   return { id: inserted.id };

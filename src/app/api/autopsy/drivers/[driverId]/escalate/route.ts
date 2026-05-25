@@ -29,6 +29,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
 
+import { inngest } from '@/inngest/client';
 import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
@@ -198,6 +199,40 @@ export async function POST(
   }
 
   await logTrailEvent({ userId: user.id, eventType: 'finding_escalated', entityType: 'driver', entityId: driverId, metadata: { audit_id: auditId, finding_id: findingId, category: driver.category, comparison_id: driver.bill_comparison_id }, actorEmail: user.email ?? null });
+
+  // Fire `finding.created` so the Slack dispatcher (and any future
+  // listeners) can react. This route is the SINGLE starter emit site for
+  // the event — we deliberately do NOT also fire from the rules-runner
+  // persist path (process-bill.ts) or the CSV persist path because that
+  // would multiply the surface area. The autopsy-escalate route is the
+  // cleanest starting point because the user explicitly initiates the
+  // action, so a one-message-per-click contract is intuitive.
+  //
+  // Best-effort: a Slack/Inngest hiccup must not block the response since
+  // the finding row is already persisted.
+  try {
+    await inngest.send({
+      id: `finding-created-${findingId}`,
+      name: 'finding.created',
+      data: {
+        auditId,
+        findingId,
+        userId: user.id,
+        severity,
+        ruleId,
+        // PII discipline: the autopsy LLM is prompted to keep driver
+        // titles free of MDNs/account numbers. We forward the title only,
+        // never the summary (which can carry richer context).
+        title: driver.title,
+        estimatedMonthlySavingsCents: savings,
+      },
+    });
+  } catch (sendErr) {
+    Sentry.captureException(sendErr, {
+      tags: { surface: 'autopsy.escalate.event_send' },
+      extra: { auditId, findingId },
+    });
+  }
 
   return NextResponse.json({ ok: true, findingId });
 }

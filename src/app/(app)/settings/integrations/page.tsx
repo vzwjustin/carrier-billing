@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { InboundEmailCard } from '@/components/settings/inbound-email-card';
 import { InboundWebhookCard } from '@/components/settings/inbound-webhook-card';
 import { OutboundWebhookCard } from '@/components/settings/outbound-webhook-card';
+import { SlackCard } from '@/components/settings/slack-card';
 import { env } from '@/env';
 import { getOrCreateInboundToken } from '@/lib/inbound/token';
 import { getAdminClient } from '@/lib/supabase/admin';
@@ -20,6 +21,9 @@ interface ProfileRow {
   outbound_webhook_secret: string | null;
   // secret stays server-side: only a boolean flag crosses the RSC boundary
   inbound_webhook_token: string | null;
+  slack_webhook_url: string | null;
+  slack_notify_on_high_finding: boolean | null;
+  slack_notify_on_autopsy: boolean | null;
 }
 
 export default async function IntegrationsSettingsPage(): Promise<React.ReactElement> {
@@ -43,7 +47,7 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
   const { data } = await admin
     .from('profiles')
     .select(
-      'outbound_webhook_url, outbound_webhook_secret, inbound_webhook_token',
+      'outbound_webhook_url, outbound_webhook_secret, inbound_webhook_token, slack_webhook_url, slack_notify_on_high_finding, slack_notify_on_autopsy',
     )
     .eq('id', user.id)
     .maybeSingle();
@@ -61,6 +65,11 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
       />
       <InboundWebhookCard
         initialToken={profile?.inbound_webhook_token ?? null}
+      />
+      <SlackCard
+        initialWebhookUrl={profile?.slack_webhook_url ?? null}
+        initialNotifyOnHighFinding={profile?.slack_notify_on_high_finding ?? true}
+        initialNotifyOnAutopsy={profile?.slack_notify_on_autopsy ?? true}
       />
     </div>
   );
