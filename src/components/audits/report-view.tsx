@@ -9,16 +9,22 @@ import type { ReportData } from '@/reports/types';
 export interface ReportViewProps {
   report: ReportData;
   isPublic?: boolean;
+  shareToken?: string;
 }
 
 export function ReportView({
   report,
   isPublic = false,
+  shareToken,
 }: ReportViewProps): React.JSX.Element {
   return (
     <div className="space-y-6">
       <SavingsHero audit={report.audit} />
-      <ReportActions auditId={report.audit.id} isPublic={isPublic} />
+      <ReportActions
+        auditId={report.audit.id}
+        isPublic={isPublic}
+        shareToken={shareToken}
+      />
       <BillSummary audit={report.audit} />
       <FindingsList
         findingsBySeverity={report.findingsBySeverity}

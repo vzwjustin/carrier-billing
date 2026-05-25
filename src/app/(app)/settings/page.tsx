@@ -26,11 +26,14 @@ export default async function AccountSettingsPage(): Promise<React.ReactElement>
   }
 
   const admin = getAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('profiles')
     .select('full_name, company_name')
     .eq('id', user.id)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Failed to load account profile: ${error.message}`);
+  }
 
   const profile = (data ?? null) as ProfileRow | null;
 

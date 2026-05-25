@@ -11,6 +11,7 @@ type GetUserResult = {
 };
 
 type InsertResult = { data: unknown; error: null | { message: string } };
+type DeleteResult = { data: null; error: null | { message: string } };
 type SignedUrlResult = {
   data: { signedUrl: string; token: string; path: string } | null;
   error: null | { message: string };
@@ -23,7 +24,10 @@ type GateResult =
 
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditsInsertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
-const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
+const auditsDeleteEqMock = vi.fn<() => Promise<DeleteResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const createSignedUploadUrlMock =
   vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
@@ -159,6 +163,30 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     // Subscription users never consumed a credit, so neither path runs.
     expect(decrementMock).not.toHaveBeenCalled();
     expect(adminRpcMock).not.toHaveBeenCalled();
+  });
+
+  it('reports returned delete errors while cleaning up a signed-URL orphan', async () => {
+    gateMock.mockResolvedValue({ ok: true, reason: 'subscription' });
+    auditsDeleteEqMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'delete denied' },
+    });
+
+    const res = await POST(
+      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
+    );
+
+    expect(res.status).toBe(500);
+    expect(sentryCaptureMock).toHaveBeenCalledTimes(1);
+    const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+      Error,
+      { tags?: Record<string, unknown>; extra?: Record<string, unknown> },
+    ];
+    expect(err.message).toBe('delete denied');
+    expect(ctx.tags?.['surface']).toBe(
+      'audits.create.rollback_signed_url_orphan',
+    );
+    expect(ctx.extra?.['userId']).toBe('user-uuid-1');
   });
 
   it('returns 500 and reports to Sentry when refund itself fails', async () => {

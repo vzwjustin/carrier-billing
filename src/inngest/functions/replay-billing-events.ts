@@ -23,9 +23,9 @@ import { getAdminClient } from '@/lib/supabase/admin';
  *   - not attempted in the last 60 seconds (cooldown so we don't race
  *     Stripe's own delivery retry)
  *
- * Handler invocations from this cron always pass `previousStatus = 'failed'`
- * so non-idempotent operations (the credit grant) skip on retry. See the
- * tradeoff comment in `handlers.ts:onCheckoutSessionCompleted`.
+ * Handler invocations from this cron pass the row's prior processed_status
+ * (with null coerced to failed) so non-idempotent operations can distinguish
+ * first delivery from replay. See `handlers.ts:onCheckoutSessionCompleted`.
  */
 
 export const REPLAY_LOOKBACK_HOURS = 24;
@@ -157,9 +157,9 @@ export type ReplayOutcome = 'success' | 'failed' | 'invalid_payload' | 'skipped'
 /**
  * Replay a single billing_events row. Exported for testing.
  *
- * Always treats the invocation as a retry (`previousStatus = 'failed'`) so
- * non-idempotent ops in handlers short-circuit. See the credit-grant
- * tradeoff comment in `handlers.ts`.
+ * Claims the row as `in_flight`, then invokes handlers with the row's prior
+ * processed status (null coerced to failed for safety). Checkout credit grants
+ * are idempotent through `grant_credit_once`, keyed by this billing event row.
  */
 export async function replayBillingEvent(
   supabase: SupabaseClient,
@@ -170,21 +170,24 @@ export async function replayBillingEvent(
   //
   // Two cron ticks (or a tick racing with a Stripe redelivery in flight)
   // can both pick the same row with `findReplayCandidates`. Without a CAS
-  // claim, both would call the handler concurrently. We make the
-  // `last_attempted_at` UPDATE conditional on the value we observed during
-  // the candidate select: if another worker already moved the timestamp,
-  // our UPDATE matches 0 rows and we skip without invoking the handler.
-  // `.select('id')` lets us read the row count.
+  // claim, both would call the handler concurrently. We make the UPDATE
+  // conditional on the status/timestamp observed during candidate selection:
+  // if another worker already claimed the row, our UPDATE matches 0 rows and
+  // we skip without invoking the handler. `.select('id')` lets us read the row
+  // count.
   //
   // R1-F3 — also CAS on processed_status. `markSuccess` in the webhook route
   // flips processed_status without touching last_attempted_at, so a row that
   // the webhook completed AFTER our SELECT can still pass the timestamp CAS.
-  // previousStatus='failed' (below) protects the credit grant, but other
-  // handler side effects (subscription_status writes, past_due flip,
-  // inngest.send) would otherwise fire twice. CAS-on-status closes that.
+  // Setting processed_status='in_flight' on the successful claim mirrors the
+  // live webhook route's markInFlight path so Stripe redeliveries dedupe while
+  // this replay attempt is running.
   const claimBase = supabase
     .from('billing_events')
-    .update({ last_attempted_at: now.toISOString() })
+    .update({
+      processed_status: 'in_flight',
+      last_attempted_at: now.toISOString(),
+    })
     .eq('id', row.id)
     .is('last_attempted_at', row.last_attempted_at);
   const claimWithStatus =

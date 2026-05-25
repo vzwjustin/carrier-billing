@@ -1,11 +1,14 @@
+import { createHmac } from 'node:crypto';
+
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 
 import {
   generateInboundToken,
+  getOrCreateInboundToken,
   parseInboundRecipient,
   verifyHmac,
 } from '@/lib/inbound/token';
-import { createHmac } from 'node:crypto';
 
 describe('generateInboundToken', () => {
   it('returns a 16-char base32 string', () => {
@@ -125,5 +128,60 @@ describe('verifyHmac', () => {
     expect(
       verifyHmac(body, undefined as unknown as string, secret),
     ).toBe(false);
+  });
+});
+
+describe('getOrCreateInboundToken', () => {
+  type SelectResult = {
+    data: { inbound_email_token: string | null } | null;
+    error: { message: string } | null;
+  };
+  type UpdateResult = {
+    data: Array<{ inbound_email_token: string | null }> | null;
+    error: { message: string; code?: string } | null;
+  };
+
+  function makeAdmin(
+    selectResults: SelectResult[],
+    updateResults: UpdateResult[],
+  ): SupabaseClient {
+    return {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () =>
+              selectResults.shift() ?? {
+                data: null,
+                error: { message: 'unexpected select' },
+              },
+          }),
+        }),
+        update: () => ({
+          eq: () => ({
+            is: () => ({
+              select: async () =>
+                updateResults.shift() ?? {
+                  data: null,
+                  error: { message: 'unexpected update' },
+                },
+            }),
+          }),
+        }),
+      }),
+    } as unknown as SupabaseClient;
+  }
+
+  it('surfaces race-path reread errors instead of mislabeling them as collisions', async () => {
+    const admin = makeAdmin(
+      [
+        { data: { inbound_email_token: null }, error: null },
+        { data: null, error: { message: 'database unavailable' } },
+      ],
+      [{ data: [], error: null }],
+    );
+
+    await expect(getOrCreateInboundToken(admin, 'user_1')).rejects.toThrow(
+      'inbound token reread failed: database unavailable',
+    );
   });
 });

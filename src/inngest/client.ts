@@ -14,6 +14,7 @@ export type Events = {
       auditId: string;
       userId: string;
       storagePath: string;
+      retryCount: number;
     };
   };
   'audit.completed': {

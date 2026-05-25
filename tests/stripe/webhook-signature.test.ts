@@ -50,7 +50,10 @@ const maybeSingleMock = vi.fn(async () => ({
   data: null as { id: string; processed_status: 'success' | 'failed' | null } | null,
   error: null,
 }));
-const updateMock = vi.fn(async (_patch: unknown) => ({ error: null }));
+const updateMock = vi.fn(async (_patch: unknown) => ({
+  data: [{ id: 'be_signed' }],
+  error: null,
+}));
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
@@ -63,9 +66,23 @@ vi.mock('@/lib/supabase/admin', () => ({
           maybeSingle: async () => insertMock(row),
         }),
       }),
-      update: (patch: unknown) => ({
-        eq: () => updateMock(patch),
-      }),
+      update: (patch: unknown) => {
+        const builder = {
+          eq: () => builder,
+          is: () => builder,
+          or: () => builder,
+          select: () => updateMock(patch),
+          then: (
+            onFulfilled: (value: { error: null }) => unknown,
+            onRejected?: (reason: unknown) => unknown,
+          ) =>
+            updateMock(patch).then(
+              (value) => onFulfilled({ error: value.error }),
+              onRejected,
+            ),
+        };
+        return builder;
+      },
     }),
   }),
 }));
@@ -106,7 +123,10 @@ beforeEach(() => {
   maybeSingleMock.mockClear();
   maybeSingleMock.mockImplementation(async () => ({ data: null, error: null }));
   updateMock.mockClear();
-  updateMock.mockImplementation(async () => ({ error: null }));
+  updateMock.mockImplementation(async () => ({
+    data: [{ id: 'be_signed' }],
+    error: null,
+  }));
 });
 
 describe('POST /api/stripe/webhook — real Stripe signature verification (C2)', () => {

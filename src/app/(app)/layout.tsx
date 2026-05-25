@@ -81,32 +81,45 @@ export default async function AppLayout({
     redirect('/login');
   }
 
-  const { data: profileData } = await supabase
+  const { data: profileData, error: profileError } = await supabase
     .from('profiles')
     .select('audit_credits,subscription_status')
     .eq('id', user.id)
     .maybeSingle();
+  if (profileError) {
+    throw new Error(`Failed to load profile navigation state: ${profileError.message}`);
+  }
 
   const profile = isProfileRow(profileData) ? profileData : null;
   const badge = getBadgeState(profile);
 
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2"
+      >
+        Skip to main content
+      </a>
       <header className="relative border-b border-neutral-200 bg-white">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-6">
             <Link
               href="/dashboard"
-              className="text-base font-semibold tracking-tight text-neutral-900"
+              aria-label="CarrierAudit dashboard"
+              className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
             >
               CarrierAudit
             </Link>
-            <nav className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex">
+            <nav
+              aria-label="Primary navigation"
+              className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex"
+            >
               {NAV_ITEMS.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="hover:text-neutral-900"
+                  className="rounded-md px-1 py-0.5 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                 >
                   {item.label}
                 </Link>
@@ -147,7 +160,7 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main id="main-content" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         {profile?.subscription_status === 'past_due' ? (
           <div className="mb-6">
             <Banner

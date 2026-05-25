@@ -45,6 +45,10 @@ export type RotateInboundTokenResult =
   | { ok: true; token: string }
   | { ok: false; error: string };
 
+function matchedExactlyOneProfile(data: unknown): boolean {
+  return Array.isArray(data) && data.length === 1;
+}
+
 export async function updateProfileAction(
   input: unknown,
 ): Promise<UpdateProfileResult> {
@@ -62,7 +66,7 @@ export async function updateProfileAction(
   }
 
   const admin = getAdminClient();
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('profiles')
     .update({
       full_name: parsed.data.full_name?.length ? parsed.data.full_name : null,
@@ -71,9 +75,10 @@ export async function updateProfileAction(
         : null,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
-  if (error) {
+  if (error || !matchedExactlyOneProfile(updated)) {
     return { ok: false, error: 'Could not save profile. Please try again.' };
   }
 
@@ -101,15 +106,18 @@ export async function updateOutboundWebhookAction(
 
   if (url === '') {
     // Clear webhook config + secret entirely.
-    const { error } = await admin
+    const { data: updated, error } = await admin
       .from('profiles')
       .update({
         outbound_webhook_url: null,
         outbound_webhook_secret: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
-    if (error) return { ok: false, error: 'Could not save webhook.' };
+      .eq('id', user.id)
+      .select('id');
+    if (error || !matchedExactlyOneProfile(updated)) {
+      return { ok: false, error: 'Could not save webhook.' };
+    }
     revalidatePath('/settings');
     return { ok: true };
   }
@@ -140,6 +148,8 @@ export async function updateOutboundWebhookAction(
     .select('outbound_webhook_secret')
     .eq('id', user.id)
     .maybeSingle();
+  if (existing.error) return { ok: false, error: 'Could not save webhook.' };
+
   const currentSecret = (
     existing.data as { outbound_webhook_secret?: string | null } | null
   )?.outbound_webhook_secret;
@@ -148,16 +158,19 @@ export async function updateOutboundWebhookAction(
       ? currentSecret
       : `whs_${randomBytes(24).toString('hex')}`;
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('profiles')
     .update({
       outbound_webhook_url: url,
       outbound_webhook_secret: secret,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
-  if (error) return { ok: false, error: 'Could not save webhook.' };
+  if (error || !matchedExactlyOneProfile(updated)) {
+    return { ok: false, error: 'Could not save webhook.' };
+  }
   revalidatePath('/settings');
   return { ok: true };
 }
@@ -203,10 +216,15 @@ export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecr
     }
   }
 
-  await admin
+  const { data: updated, error: revealError } = await admin
     .from('profiles')
     .update({ last_secret_reveal_at: new Date().toISOString() })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
+
+  if (revealError || !matchedExactlyOneProfile(updated)) {
+    return { ok: false, error: 'Could not retrieve secret.' };
+  }
 
   return { ok: true, secret };
 }
@@ -224,20 +242,21 @@ export async function rotateInboundTokenAction(): Promise<RotateInboundTokenResu
   // but we'd rather fail loud + retry than corrupt the user's token.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const fresh = generateInboundToken();
-    const { error } = await admin
+    const { data: updated, error } = await admin
       .from('profiles')
       .update({
         inbound_email_token: fresh,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq('id', user.id)
+      .select('id');
 
-    if (!error) {
+    if (!error && matchedExactlyOneProfile(updated)) {
       revalidatePath('/settings');
       return { ok: true, token: fresh };
     }
 
-    if ((error as { code?: string }).code !== '23505') {
+    if ((error as { code?: string } | null)?.code !== '23505') {
       return { ok: false, error: 'Could not rotate token.' };
     }
     // 23505 → token collision; loop for another attempt.

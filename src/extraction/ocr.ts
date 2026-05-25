@@ -156,7 +156,10 @@ async function runAsync(buffer: Buffer): Promise<string> {
     // Steps 3-4: poll and aggregate.
     return await pollJob(jobId);
   } finally {
-    // TODO(launch): non-rethrow — bucket lifecycle (`scripts/configure-textract-bucket.ts`) reaps orphans; surface to Sentry so accumulation is visible.
+    // Cleanup is best-effort: bucket lifecycle from
+    // `scripts/configure-textract-bucket.ts` reaps orphans daily. We swallow
+    // errors here so a cleanup failure doesn't mask an OCR result the caller
+    // is awaiting, but we surface them to Sentry so persistent leaks show up.
     try {
       await s3.send(
         new DeleteObjectCommand({ Bucket: bucket, Key: key }),

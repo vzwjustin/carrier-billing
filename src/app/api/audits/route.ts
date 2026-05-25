@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
+import { scrubString } from '@/lib/observability/redact';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -42,6 +43,25 @@ async function refundConsumedCredit(
     Sentry.captureException(err, {
       tags: { surface },
       extra: { userId, auditId },
+    });
+  }
+}
+
+async function deleteAuditRowBestEffort(
+  admin: ReturnType<typeof getAdminClient>,
+  userId: string,
+  auditId: string,
+  surface: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.from('audits').delete().eq('id', auditId);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { auditId, userId },
     });
   }
 }
@@ -127,7 +147,7 @@ export async function POST(request: Request): Promise<Response> {
     const admin = getAdminClient();
 
     let creditConsumed = false;
-    const { error: insertError } = await admin.from('audits').insert({
+    const auditRow: Record<string, unknown> = {
       id: auditId,
       user_id: user.id,
       status: 'pending',
@@ -135,9 +155,44 @@ export async function POST(request: Request): Promise<Response> {
       storage_path: storagePath,
       original_filename: filename,
       file_size_bytes: fileSize,
-    });
+    };
+    let { error: insertError } = await admin.from('audits').insert(auditRow);
+
+    // Dev-only safety: migration 0016 adds `audits.credit_consumed`. If that
+    // migration hasn't been applied yet, PostgREST returns PGRST204 ("column
+    // not found in schema cache") and Postgres direct returns 42703. Retry
+    // once without the field so local dev can keep moving; production keeps
+    // the strict error path so a real schema drift surfaces — unless the
+    // operator opts in via ALLOW_PARTIAL_SCHEMA=1 (demo environments).
+    const allowPartialSchema =
+      process.env.NODE_ENV !== 'production' || process.env.ALLOW_PARTIAL_SCHEMA === '1';
+    if (
+      insertError &&
+      allowPartialSchema &&
+      String((insertError as { message?: string }).message ?? '').includes('credit_consumed') &&
+      ((insertError as { code?: string }).code === '42703' ||
+        (insertError as { code?: string }).code === 'PGRST204')
+    ) {
+      console.warn(
+        '[audits.create] `audits.credit_consumed` column missing — retrying insert ' +
+          'without it (dev only). Apply migration 0016 to restore strict mode.',
+      );
+      const { credit_consumed: _omit, ...withoutFlag } = auditRow;
+      void _omit;
+      const retry = await admin.from('audits').insert(withoutFlag);
+      insertError = retry.error;
+    }
 
     if (insertError) {
+      console.error('[audits.create] insert failed:', {
+        code: (insertError as { code?: string }).code,
+        message: scrubString(
+          (insertError as { message?: string }).message ?? 'unknown',
+        ),
+        details: scrubString(
+          (insertError as { details?: string }).details ?? 'unknown',
+        ),
+      });
       return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
     }
 
@@ -170,14 +225,12 @@ export async function POST(request: Request): Promise<Response> {
           // The RPC ran and definitively refused — user has 0 credits,
           // or audit row state was wrong. Roll back the audit row; no
           // credit was decremented so no refund is needed.
-          try {
-            await admin.from('audits').delete().eq('id', auditId);
-          } catch (rollbackErr) {
-            Sentry.captureException(rollbackErr, {
-              tags: { surface: 'audits.create.rollback_orphan' },
-              extra: { auditId, userId: user.id },
-            });
-          }
+          await deleteAuditRowBestEffort(
+            admin,
+            user.id,
+            auditId,
+            'audits.create.rollback_orphan',
+          );
         }
         // For transient errors (network drop between RPC commit and
         // response, PostgREST 5xx, etc.) we deliberately LEAVE the audit
@@ -214,17 +267,24 @@ export async function POST(request: Request): Promise<Response> {
       .createSignedUploadUrl(storagePath, signedUploadOptions);
 
     if (signError || !signed) {
+      console.error('[audits.create] signed URL failed:', {
+        code: (signError as { code?: string } | null)?.code,
+        message: scrubString(
+          (signError as { message?: string } | null)?.message ?? 'unknown',
+        ),
+        name: scrubString(
+          (signError as { name?: string } | null)?.name ?? 'unknown',
+        ),
+      });
       // Clean up the orphaned audit row so the user can retry cleanly.
       // R2-F11 — match the decrement-rollback pattern at L121-141 so a
       // failed rollback surfaces in Sentry instead of being silently lost.
-      try {
-        await admin.from('audits').delete().eq('id', auditId);
-      } catch (rollbackErr) {
-        Sentry.captureException(rollbackErr, {
-          tags: { surface: 'audits.create.rollback_signed_url_orphan' },
-          extra: { auditId, userId: user.id },
-        });
-      }
+      await deleteAuditRowBestEffort(
+        admin,
+        user.id,
+        auditId,
+        'audits.create.rollback_signed_url_orphan',
+      );
       // If we consumed a credit on this request, refund it. The orphan-cleanup
       // cron only sees rows that survive — since we just deleted the row, the
       // credit would otherwise be lost. Subscription users never spent a
@@ -245,6 +305,10 @@ export async function POST(request: Request): Promise<Response> {
       token: signed.token,
     });
   } catch (err) {
+    console.error(
+      '[audits.create] caught:',
+      scrubString(err instanceof Error ? err.message : String(err)),
+    );
     // L — surface unhandled errors instead of swallowing. Tag the surface so
     // /api/audits noise is filterable from the rest of the audits namespace.
     Sentry.captureException(err, { tags: { surface: 'audits.create' } });

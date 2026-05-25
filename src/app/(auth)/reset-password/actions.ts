@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { env } from '@/env';
+import { consumeRateLimit } from '@/lib/security/rate-limit';
 import { createClient } from '@/lib/supabase/server';
 
 const ResetSchema = z.object({
@@ -25,6 +26,15 @@ export async function requestPasswordResetAction(
   const parsed = ResetSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: 'Enter a valid email address.' };
+  }
+
+  const limit = await consumeRateLimit({
+    key: `auth:password-reset:${parsed.data.email.toLowerCase()}`,
+    limit: 5,
+    windowSeconds: 60 * 60,
+  });
+  if (!limit.ok) {
+    return { ok: true };
   }
 
   const supabase = await createClient();
@@ -52,6 +62,18 @@ export async function resendSignupConfirmationAction(
     return { ok: false, error: 'Invalid email.' };
   }
 
+  const limit = await consumeRateLimit({
+    key: `auth:signup-resend:${parsed.data.email.toLowerCase()}`,
+    limit: 3,
+    windowSeconds: 60 * 60,
+  });
+  if (!limit.ok) {
+    return {
+      ok: false,
+      error: 'Please wait before requesting another confirmation email.',
+    };
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.auth.resend({
     type: 'signup',
@@ -62,7 +84,10 @@ export async function resendSignupConfirmationAction(
   });
 
   if (error) {
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: 'Could not send confirmation email. Please try again.',
+    };
   }
   return { ok: true };
 }

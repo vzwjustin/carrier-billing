@@ -38,8 +38,8 @@ import { functions } from '@/inngest/functions';
  * Two layers, mirroring the cleanup-orphan-audits pattern:
  *   1. Structural — cron exists, registered, scheduled.
  *   2. Behavioral — `findReplayCandidates` respects lookback / cooldown,
- *      `replayBillingEvent` re-invokes the handler with previousStatus='failed'
- *      and writes the right bookkeeping.
+ *      `replayBillingEvent` claims rows as in_flight, passes retry context, and
+ *      writes the right bookkeeping.
  */
 
 describe('replayBillingEventsFn (structural)', () => {
@@ -428,9 +428,12 @@ describe('replayBillingEvent', () => {
     const outcome = await replayBillingEvent(supabase, makeRow(VALID_PAYLOAD), NOW);
     expect(outcome).toBe('success');
 
-    // Two updates expected: mark attempt + mark success.
+    // Two updates expected: claim in-flight + mark success.
     expect(updates).toHaveLength(2);
-    expect(updates[0]?.patch).toEqual({ last_attempted_at: NOW.toISOString() });
+    expect(updates[0]?.patch).toEqual({
+      processed_status: 'in_flight',
+      last_attempted_at: NOW.toISOString(),
+    });
     expect(updates[1]?.patch.processed_status).toBe('success');
     expect(updates[1]?.patch.processed_at).toBe(NOW.toISOString());
     expect(updates[1]?.patch.last_error).toBeNull();

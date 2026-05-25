@@ -38,11 +38,14 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
     inboundToken = await getOrCreateInboundToken(admin, user.id);
   }
 
-  const { data } = await admin
+  const { data, error } = await admin
     .from('profiles')
     .select('outbound_webhook_url, outbound_webhook_secret')
     .eq('id', user.id)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Failed to load integrations profile: ${error.message}`);
+  }
   const profile = (data ?? null) as ProfileRow | null;
 
   return (

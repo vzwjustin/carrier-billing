@@ -52,6 +52,7 @@ const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB — same cap as /api/audits
 // Allow base64 overhead (~33%) plus JSON/headers slack on top of the PDF cap.
 // Anything larger than this in raw bytes is rejected before we even read it.
 const MAX_REQUEST_BYTES = 40 * 1024 * 1024;
+const PDF_MAGIC = Buffer.from('%PDF', 'ascii');
 
 const InboundAttachmentSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -101,6 +102,21 @@ function isPdfAttachment(att: { content_type: string; filename: string }): boole
   return att.filename.toLowerCase().endsWith('.pdf');
 }
 
+function decodeBase64Attachment(value: string): Buffer | null {
+  const normalized = value.replace(/\s/g, '');
+  if (normalized.length === 0) return Buffer.alloc(0);
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) return null;
+  const remainder = normalized.length % 4;
+  if (remainder === 1) return null;
+  const padded =
+    remainder === 0 ? normalized : `${normalized}${'='.repeat(4 - remainder)}`;
+  return Buffer.from(padded, 'base64');
+}
+
+function hasPdfMagic(bytes: Buffer): boolean {
+  return bytes.length >= PDF_MAGIC.length && bytes.subarray(0, PDF_MAGIC.length).equals(PDF_MAGIC);
+}
+
 /**
  * Stable dedupe hash over the *PDF content* (not the wrapping email payload).
  * Hashing the raw HTTP body would let a forger flip a whitespace byte to
@@ -138,6 +154,67 @@ async function releaseDedupeClaim(eventHash: string): Promise<void> {
   } catch (err) {
     Sentry.captureException(err, {
       tags: { surface: 'inbound.email.dedupe_release' },
+    });
+  }
+}
+
+async function failPendingAuditAndRefundIfNeeded(
+  admin: ReturnType<typeof getAdminClient>,
+  {
+    auditId,
+    userId,
+    reason,
+  }: {
+    auditId: string;
+    userId: string;
+    reason: string;
+  },
+): Promise<void> {
+  const { error } = await admin.rpc('refund_orphan_audit', {
+    p_audit_id: auditId,
+    p_user_id: userId,
+    p_reason: reason,
+  });
+  if (error) {
+    throw new Error(`refund_orphan_audit failed: ${error.message}`);
+  }
+}
+
+async function deleteAuditRowBestEffort(
+  admin: ReturnType<typeof getAdminClient>,
+  auditId: string,
+  userId: string,
+  surface: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.from('audits').delete().eq('id', auditId);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { auditId, userId },
+    });
+  }
+}
+
+async function removeBillObjectBestEffort(
+  admin: ReturnType<typeof getAdminClient>,
+  storagePath: string,
+  auditId: string,
+  userId: string,
+  surface: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.storage.from('bills').remove([storagePath]);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { auditId, userId },
     });
   }
 }
@@ -245,12 +322,18 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ ok: true, skipped: 'no_pdf' });
     }
 
-    const bytes = Buffer.from(pdf.content_base64, 'base64');
+    const bytes = decodeBase64Attachment(pdf.content_base64);
+    if (!bytes) {
+      return NextResponse.json({ ok: true, skipped: 'invalid_attachment' });
+    }
     if (bytes.length === 0) {
       return NextResponse.json({ ok: true, skipped: 'empty_attachment' });
     }
     if (bytes.length > MAX_PDF_BYTES) {
       return NextResponse.json({ ok: true, skipped: 'attachment_too_large' });
+    }
+    if (!hasPdfMagic(bytes)) {
+      return NextResponse.json({ ok: true, skipped: 'non_pdf_attachment' });
     }
 
     // Gate the user. past_due / no_plan → log + skip rather than ingest a
@@ -309,17 +392,21 @@ export async function POST(request: Request): Promise<Response> {
       if (isUniqueViolation(dedupeInsert.error)) {
         // Concurrent duplicate beat us. Roll back the audits row we just
         // created — no storage object exists yet so nothing else to clean.
-        const rollback = await admin.from('audits').delete().eq('id', auditId);
-        if (rollback.error) {
-          Sentry.captureException(rollback.error, {
-            tags: { surface: 'inbound.email.rollback_orphan_audit' },
-            extra: { auditId, userId },
-          });
-        }
+        await deleteAuditRowBestEffort(
+          admin,
+          auditId,
+          userId,
+          'inbound.email.rollback_orphan_audit',
+        );
         return NextResponse.json({ ok: true, deduped: true });
       }
       // Non-23505: roll back and surface to outer catch.
-      await admin.from('audits').delete().eq('id', auditId);
+      await deleteAuditRowBestEffort(
+        admin,
+        auditId,
+        userId,
+        'inbound.email.rollback_dedupe_insert_failed',
+      );
       throw new Error(`inbound dedupe insert failed: ${dedupeInsert.error.message}`);
     }
 
@@ -332,7 +419,12 @@ export async function POST(request: Request): Promise<Response> {
     if (uploadErr) {
       // Roll back audit row; releaseDedupeClaim in the outer catch frees
       // the dedupe row.
-      await admin.from('audits').delete().eq('id', auditId);
+      await deleteAuditRowBestEffort(
+        admin,
+        auditId,
+        userId,
+        'inbound.email.rollback_storage_upload_failed',
+      );
       throw new Error(`storage upload failed: ${uploadErr.message}`);
     }
 
@@ -357,16 +449,41 @@ export async function POST(request: Request): Promise<Response> {
           extra: { userId, auditId },
         });
         if (isDefinitiveRefusal) {
-          await admin.from('audits').delete().eq('id', auditId);
-          await admin.storage.from('bills').remove([storagePath]);
+          await deleteAuditRowBestEffort(
+            admin,
+            auditId,
+            userId,
+            'inbound.email.rollback_credit_race_audit',
+          );
+          await removeBillObjectBestEffort(
+            admin,
+            storagePath,
+            auditId,
+            userId,
+            'inbound.email.rollback_credit_race_storage',
+          );
           await releaseDedupeClaim(eventHash);
           claimedDedupeHash = null;
           return NextResponse.json({ ok: true, skipped: 'credit_race' });
         }
-        // Transient: leave audit row + storage + dedupe claim in place;
-        // orphan-cleanup will reap if credit_consumed=true; if the RPC
-        // never committed, the row remains pending and no credit was
-        // spent. Return ok so the provider doesn't retry.
+        // Transient / unknown: do not keep the dedupe claim without
+        // dispatching work. Atomically fail the pending audit and refund if
+        // the credit RPC committed, then remove storage and release the
+        // content hash so the user can forward the same bill again.
+        await failPendingAuditAndRefundIfNeeded(admin, {
+          auditId,
+          userId,
+          reason: 'inbound-credit-decrement-failed',
+        });
+        await removeBillObjectBestEffort(
+          admin,
+          storagePath,
+          auditId,
+          userId,
+          'inbound.email.rollback_decrement_transient_storage',
+        );
+        await releaseDedupeClaim(eventHash);
+        claimedDedupeHash = null;
         return NextResponse.json({ ok: true, skipped: 'decrement_transient' });
       }
     }
@@ -381,13 +498,24 @@ export async function POST(request: Request): Promise<Response> {
       await inngest.send({
         id: `${auditId}-uploaded`,
         name: 'bill.uploaded',
-        data: { auditId, userId, storagePath },
+        data: { auditId, userId, storagePath, retryCount: 0 },
       });
     } catch (sendErr) {
       // Roll back in reverse order. Each step is best-effort; we surface
       // the original error via the outer catch.
-      await admin.from('audits').delete().eq('id', auditId);
-      await admin.storage.from('bills').remove([storagePath]);
+      await deleteAuditRowBestEffort(
+        admin,
+        auditId,
+        userId,
+        'inbound.email.rollback_dispatch_audit',
+      );
+      await removeBillObjectBestEffort(
+        admin,
+        storagePath,
+        auditId,
+        userId,
+        'inbound.email.rollback_dispatch_storage',
+      );
       if (gate.reason === 'credit') {
         try {
           const { error: refundErr } = await admin.rpc(

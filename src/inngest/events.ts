@@ -19,6 +19,7 @@ export const BillUploadedDataSchema = z.object({
   auditId: z.string().uuid(),
   userId: z.string().uuid(),
   storagePath: z.string().min(1),
+  retryCount: z.number().int().nonnegative().default(0),
 });
 export type BillUploadedData = z.infer<typeof BillUploadedDataSchema>;
 

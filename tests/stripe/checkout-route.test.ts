@@ -108,7 +108,7 @@ vi.mock('@/lib/stripe/client', () => ({
 
 vi.mock('@/env', () => ({
   env: {
-    NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+    NEXT_PUBLIC_APP_URL: 'http://localhost:3000///',
     STRIPE_PRICE_ID_ONE_TIME: 'price_one_time_test',
     STRIPE_PRICE_ID_SUBSCRIPTION: 'price_sub_test',
   },
@@ -198,6 +198,8 @@ describe('POST /api/stripe/checkout', () => {
     expect(params['mode']).toBe('payment');
     expect(params['customer']).toBe('cus_new');
     expect(params['client_reference_id']).toBe('user_1');
+    expect(params['success_url']).toBe('http://localhost:3000/dashboard?checkout=success');
+    expect(params['cancel_url']).toBe('http://localhost:3000/pricing');
     expect(params['line_items']).toEqual([
       { price: 'price_one_time_test', quantity: 1 },
     ]);

@@ -1,7 +1,9 @@
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { scrubString } from '@/lib/observability/redact';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -16,6 +18,7 @@ interface AuditRow {
   user_id: string;
   status: string;
   storage_path: string;
+  retry_count: number;
 }
 
 function isAuditRow(value: unknown): value is AuditRow {
@@ -25,7 +28,8 @@ function isAuditRow(value: unknown): value is AuditRow {
     typeof v.id === 'string' &&
     typeof v.user_id === 'string' &&
     typeof v.status === 'string' &&
-    typeof v.storage_path === 'string'
+    typeof v.storage_path === 'string' &&
+    typeof v.retry_count === 'number'
   );
 }
 
@@ -52,7 +56,7 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('audits')
-      .select('id,user_id,status,storage_path')
+      .select('id,user_id,status,storage_path,retry_count')
       .eq('id', auditId)
       .maybeSingle();
 
@@ -80,18 +84,46 @@ export async function POST(
     // must not enqueue the worker twice. Inngest dedupes events with the same
     // `id` for ~24h, so anchoring to the audit id ensures a single bill.uploaded
     // event ever fires for this audit.
-    await inngest.send({
-      id: `${auditId}-uploaded`,
-      name: 'bill.uploaded',
-      data: {
-        auditId: data.id,
-        userId: data.user_id,
-        storagePath: data.storage_path,
-      },
+    try {
+      await inngest.send({
+        id: `${auditId}-uploaded`,
+        name: 'bill.uploaded',
+        data: {
+          auditId: data.id,
+          userId: data.user_id,
+          storagePath: data.storage_path,
+          retryCount: data.retry_count,
+        },
     });
+    } catch (sendErr) {
+      const safeMessage = scrubString(
+        sendErr instanceof Error ? sendErr.message : String(sendErr),
+      );
+      console.error(
+        '[audits.start] inngest.send failed:',
+        safeMessage,
+      );
+      Sentry.captureException(new Error(safeMessage), {
+        tags: { surface: 'audits.start.inngest_send' },
+        extra: { auditId },
+      });
+      return NextResponse.json(
+        { error: 'Failed to enqueue background job. Is the Inngest dev server running?' },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    const safeMessage = scrubString(err instanceof Error ? err.message : String(err));
+    console.error(
+      '[audits.start] unhandled error:',
+      safeMessage,
+    );
+    Sentry.captureException(new Error(safeMessage), {
+      tags: { surface: 'audits.start' },
+      extra: { auditId },
+    });
     return NextResponse.json(
       { error: 'Internal server error.' },
       { status: 500 },

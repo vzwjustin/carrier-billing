@@ -24,6 +24,18 @@ describe('auth/callback next param redirect guard', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3000/dashboard');
   });
 
+  it('ignores forwarded host headers when building redirect origins', async () => {
+    const req = new NextRequest('http://internal.local/auth/callback?code=abc', {
+      headers: {
+        host: 'evil.example',
+        'x-forwarded-host': 'evil.example',
+        'x-forwarded-proto': 'https',
+      },
+    });
+    const res = await GET(req as Parameters<typeof GET>[0]);
+    expect(res.headers.get('location')).toBe('http://localhost:3000/dashboard');
+  });
+
   it('redirects to next path when it starts with /', async () => {
     const req = makeRequest('http://localhost:3000/auth/callback?code=abc&next=/audits/123');
     const res = await GET(req as Parameters<typeof GET>[0]);
@@ -43,6 +55,26 @@ describe('auth/callback next param redirect guard', () => {
   it('rejects backslash-relative /\\evil.com and falls back to /dashboard', async () => {
     const req = makeRequest(
       'http://localhost:3000/auth/callback?code=abc&next=%2F%5Cevil.com%2Fsteal',
+    );
+    const res = await GET(req as Parameters<typeof GET>[0]);
+    const location = res.headers.get('location') ?? '';
+    expect(location).not.toContain('evil.com');
+    expect(location).toBe('http://localhost:3000/dashboard');
+  });
+
+  it('rejects colon-bearing paths and falls back to /dashboard', async () => {
+    const req = makeRequest(
+      'http://localhost:3000/auth/callback?code=abc&next=/safe:https://evil.com',
+    );
+    const res = await GET(req as Parameters<typeof GET>[0]);
+    const location = res.headers.get('location') ?? '';
+    expect(location).not.toContain('evil.com');
+    expect(location).toBe('http://localhost:3000/dashboard');
+  });
+
+  it('rejects control characters and falls back to /dashboard', async () => {
+    const req = makeRequest(
+      'http://localhost:3000/auth/callback?code=abc&next=/ok%0d%0aLocation:%20https://evil.com',
     );
     const res = await GET(req as Parameters<typeof GET>[0]);
     const location = res.headers.get('location') ?? '';

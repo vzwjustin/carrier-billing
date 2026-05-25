@@ -94,17 +94,19 @@ describe('scrubSentryEvent', () => {
     // Share-route URLs leak the anonymous bearer token in the query string,
     // and crash-report URLs sometimes embed a contact email. scrubString
     // collapses both via the email regex and the phone/digit-run regex.
+    const shareToken = 'AbCdEfGhIjKlMnOpQrStUvWxYz012345';
     const event: ErrorEvent = {
       type: undefined,
       request: {
-        url: 'https://carrieraudit.com/share/abc?token=share-987654321&contact=jane@example.com',
+        url: `https://carrieraudit.com/share/${shareToken}?token=${shareToken}&contact=jane@example.com`,
       },
     };
     const out = scrubSentryEvent(event);
     expect(out?.request?.url).not.toContain('jane@example.com');
+    expect(out?.request?.url).not.toContain(shareToken);
     expect(out?.request?.url).toContain('[email]');
-    // 9-digit run within the share token gets caught by DIGIT_RUN.
-    expect(out?.request?.url).not.toContain('987654321');
+    expect(out?.request?.url).toContain('/share/[REDACTED]');
+    expect(out?.request?.url).toContain('token=[REDACTED]');
   });
 
   it('drops Cookie / Authorization / Referer request headers', () => {

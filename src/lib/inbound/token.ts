@@ -96,6 +96,9 @@ export async function getOrCreateInboundToken(
       .select('inbound_email_token')
       .eq('id', userId)
       .maybeSingle();
+    if (reread.error) {
+      throw new Error(`inbound token reread failed: ${reread.error.message}`);
+    }
     const persisted = (
       reread.data as { inbound_email_token?: string | null } | null
     )?.inbound_email_token;

@@ -11,7 +11,16 @@ export function SiteFooter(): React.ReactElement {
             &copy; {year} CarrierAudit. All rights reserved.
           </span>
         </div>
-        <nav className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <nav
+          aria-label="Footer"
+          className="flex flex-wrap items-center gap-x-5 gap-y-2"
+        >
+          <Link
+            href="/share/verizon_business_large_sample_v1"
+            className="hover:text-neutral-900"
+          >
+            Sample report
+          </Link>
           <Link href="/pricing" className="hover:text-neutral-900">
             Pricing
           </Link>

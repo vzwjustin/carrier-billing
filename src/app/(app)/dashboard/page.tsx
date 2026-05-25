@@ -159,15 +159,35 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
 
         {latest.length === 0 ? (
           <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
-            <p className="text-sm text-neutral-700">
-              You haven&apos;t run any audits yet.
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
+              <svg
+                aria-hidden
+                className="h-6 w-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z"
+                />
+              </svg>
+            </div>
+            <p className="mt-4 text-sm font-medium text-neutral-900">
+              You haven&apos;t run any audits yet
             </p>
             <p className="mt-1 text-sm text-neutral-500">
-              Upload your first bill to see findings here.
+              Upload a Verizon, AT&amp;T, or T-Mobile business wireless bill to
+              see findings here.
             </p>
-            <div className="mt-4">
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
               <Link href="/audits/new">
-                <Button>Upload a bill</Button>
+                <Button>Upload your first bill</Button>
+              </Link>
+              <Link href="/share/verizon_business_large_sample_v1">
+                <Button variant="outline">See a sample report</Button>
               </Link>
             </div>
           </div>

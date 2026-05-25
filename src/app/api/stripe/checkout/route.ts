@@ -203,7 +203,7 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
 
     const sharedParams = {
       customer: stripeCustomerId,
@@ -239,7 +239,10 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ url: session.url });
   } catch (err) {
-    console.error('[stripe.checkout] unexpected error', err instanceof Error ? err.message : 'unknown');
+    console.error(
+      '[stripe.checkout] unexpected error',
+      scrubString(err instanceof Error ? err.message : String(err)),
+    );
     Sentry.captureException(err, { tags: { area: 'stripe.checkout' } });
     return Response.json({ error: 'internal_error' }, { status: 500 });
   }

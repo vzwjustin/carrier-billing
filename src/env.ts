@@ -90,6 +90,12 @@ export const env = createEnv({
     // Anthropic
     ANTHROPIC_API_KEY: z.string().min(1),
 
+    // OpenRouter (optional; enables alt LLM provider — e.g. Gemini Flash via
+    // OpenAI-compatible API). Activated by `USE_OPENROUTER=1`. Model name is
+    // configurable via `OPENROUTER_MODEL` (defaults to google/gemini-3.5-flash).
+    OPENROUTER_API_KEY: z.string().min(1).optional(),
+    OPENROUTER_MODEL: z.string().min(1).default('google/gemini-3.5-flash'),
+
     // AWS Textract (optional — only needed for OCR on scanned PDFs)
     AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
     AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
@@ -153,6 +159,8 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
     AWS_REGION: process.env.AWS_REGION,

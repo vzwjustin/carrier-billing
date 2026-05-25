@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { request as httpsRequest } from 'node:https';
 
 import { inngest } from '../client';
 import { AuditCompletedDataSchema, parseEventData } from '../events';
@@ -62,6 +63,51 @@ interface FindingRow {
   recommended_action: string;
   estimated_monthly_savings_cents: number | null;
   confidence: number | null;
+}
+
+function postPinnedHttps({
+  url,
+  resolvedIp,
+  family,
+  headers,
+  body,
+  timeoutMs,
+}: {
+  url: URL;
+  resolvedIp: string;
+  family: 4 | 6;
+  headers: Record<string, string>;
+  body: string;
+  timeoutMs: number;
+}): Promise<{ status: number }> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      {
+        protocol: 'https:',
+        hostname: url.hostname,
+        port: url.port ? Number(url.port) : 443,
+        path: `${url.pathname}${url.search}`,
+        method: 'POST',
+        headers,
+        servername: url.hostname,
+        timeout: timeoutMs,
+        lookup: (_hostname, _options, callback) => {
+          callback(null, resolvedIp, family);
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        res.resume();
+        res.on('end', () => resolve({ status }));
+      },
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('webhook timeout'));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
 }
 
 export const dispatchOutboundWebhookFn = inngest.createFunction(
@@ -201,44 +247,30 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
         original.port.length > 0
           ? `${original.hostname}:${original.port}`
           : original.hostname;
-      // Wrap IPv6 literal in brackets for URL syntax.
-      const ipForUrl =
-        target.family === 6 ? `[${target.resolvedIp}]` : target.resolvedIp;
-      const portSuffix = original.port.length > 0 ? `:${original.port}` : '';
-      const pinnedUrl = `https://${ipForUrl}${portSuffix}${original.pathname}${original.search}`;
 
-      // Bound the round-trip so a slow consumer doesn't park a worker.
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
+      const response = await postPinnedHttps({
+        url: original,
+        resolvedIp: target.resolvedIp,
+        family: target.family,
+        headers: {
+          'Content-Type': 'application/json',
+          Host: host,
+          'X-CarrierAudit-Timestamp': String(timestamp),
+          'X-CarrierAudit-Signature': signatureHeader,
+          'X-CarrierAudit-Event': 'audit.completed',
+          'X-CarrierAudit-Audit-Id': ctx.audit.id,
+          'User-Agent': 'CarrierAudit-Webhook/1.0',
+        },
+        body,
+        timeoutMs: 15_000,
+      });
 
-      try {
-        const response = await fetch(pinnedUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Host: host,
-            'X-CarrierAudit-Timestamp': String(timestamp),
-            'X-CarrierAudit-Signature': signatureHeader,
-            'X-CarrierAudit-Event': 'audit.completed',
-            'X-CarrierAudit-Audit-Id': ctx.audit.id,
-            'User-Agent': 'CarrierAudit-Webhook/1.0',
-          },
-          body,
-          signal: controller.signal,
-          // No redirects — receivers should expose a stable URL, and silently
-          // following a 30x to a different host opens a small SSRF surface.
-          redirect: 'error',
-        });
-
-        if (!response.ok) {
-          // Throw so Inngest retries; only surface the status code, not the
-          // body, to keep PII out of logs.
-          throw new Error(`webhook ${response.status}`);
-        }
-        return { status: response.status };
-      } finally {
-        clearTimeout(timeout);
+      if (response.status < 200 || response.status >= 300) {
+        // Throw so Inngest retries; only surface the status code, not the
+        // body, to keep PII out of logs.
+        throw new Error(`webhook ${response.status}`);
       }
+      return { status: response.status };
     })) as { status: number };
 
     logger.info('dispatchOutboundWebhook: delivered', {

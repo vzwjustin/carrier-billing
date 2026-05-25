@@ -39,6 +39,8 @@ const ParamsSchema = z.object({ id: z.string().uuid() });
 
 const AUDIT_COLUMNS =
   'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token,share_token_expires_at';
+const AUDIT_COLUMNS_WITHOUT_SHARE_EXPIRY =
+  'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token';
 
 interface AuditFullRow extends ReportAuditRow {
   user_id: string;
@@ -57,6 +59,11 @@ function isShareTokenExpired(expiresAt: string | null): boolean {
   const ts = Date.parse(expiresAt);
   if (Number.isNaN(ts)) return false;
   return ts <= Date.now();
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === '42703' || code === 'PGRST204';
 }
 
 function pdfFilename(auditId: string): string {
@@ -123,12 +130,28 @@ export async function GET(
       return rateLimitedResponse(limited.resetAt);
     }
     const admin = getAdminClient();
-    const { data, error } = await admin
+    const result = await admin
       .from('audits')
       .select(AUDIT_COLUMNS)
       .eq('id', auditId)
       .eq('share_token', token)
       .maybeSingle<AuditFullRow>();
+    let data = result.data;
+    let error = result.error;
+
+    if (error && isMissingColumnError(error)) {
+      const retry = await admin
+        .from('audits')
+        .select(AUDIT_COLUMNS_WITHOUT_SHARE_EXPIRY)
+        .eq('id', auditId)
+        .eq('share_token', token)
+        .maybeSingle<Omit<AuditFullRow, 'share_token_expires_at'>>();
+      data = retry.data
+        ? { ...retry.data, share_token_expires_at: null }
+        : null;
+      error = retry.error;
+    }
+
     // Public token surface — collapse all lookup failures (no row, transient
     // DB error) into a uniform 404. This matches `notFound()` shape used by
     // the share page and prevents differential leaks (e.g. "this audit id
@@ -264,10 +287,19 @@ export async function GET(
     // L5: some upload failure modes leave a zero-byte/partial object
     // behind. A subsequent request would hit the cache path, download
     // the empty body, and serve a 0-byte PDF. Best-effort scrub so the
-    // next miss re-renders cleanly. Swallow remove errors — the cache
-    // is only an optimization.
+    // next miss re-renders cleanly. Report remove failures; the cache is
+    // only an optimization, but a stuck corrupt object is operationally
+    // meaningful.
     try {
-      await admin.storage.from('reports').remove([storagePath]);
+      const { error: removeError } = await admin.storage
+        .from('reports')
+        .remove([storagePath]);
+      if (removeError) {
+        Sentry.captureException(removeError, {
+          tags: { surface: 'pdf.cache_scrub' },
+          extra: { auditId, storagePath },
+        });
+      }
     } catch (removeErr) {
       Sentry.captureException(removeErr, {
         tags: { surface: 'pdf.cache_scrub' },

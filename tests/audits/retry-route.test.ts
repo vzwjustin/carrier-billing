@@ -20,6 +20,7 @@ type AuditRow = {
   status: string;
   storage_path: string;
   retry_count: number;
+  failure_reason: string | null;
 };
 
 type AuditRowResp =
@@ -30,6 +31,8 @@ type UpdateResp =
   | { data: { retry_count: number }[]; error: null }
   | { data: never[]; error: null }
   | { data: null; error: { message: string } };
+type NoSelectUpdateResp = { data: null; error: null | { message: string } };
+type StorageRemoveResp = { data: null; error: null | { message: string } };
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
@@ -38,9 +41,14 @@ const inngestSendMock = vi.fn(async (_event: unknown) => undefined);
 
 // admin: update().eq().eq().eq().select()
 const adminUpdateSelectMock = vi.fn<() => Promise<UpdateResp>>();
+const adminUpdateNoSelectMock = vi.fn<() => Promise<NoSelectUpdateResp>>();
+const adminUpdateRows: Record<string, unknown>[] = [];
+const adminUpdateFilters: Array<Array<[string, unknown]>> = [];
 
 // admin: storage.from('reports').remove([...])
-const storageRemoveMock = vi.fn(async (_paths: string[]) => ({ data: null, error: null }));
+const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<StorageRemoveResp>>(
+  async () => ({ data: null, error: null }),
+);
 
 const sentryCaptureMock = vi.fn();
 
@@ -60,15 +68,23 @@ function makeServerFromChain() {
 //  2. storage.from('reports').remove([...])
 function makeAdminFromChain() {
   return {
-    update: (_row: Record<string, unknown>) => ({
-      eq: (_c1: string, _v1: unknown) => ({
-        eq: (_c2: string, _v2: unknown) => ({
-          eq: (_c3: string, _v3: unknown) => ({
-            select: (_cols: string) => adminUpdateSelectMock(),
-          }),
-        }),
-      }),
-    }),
+    update: (row: Record<string, unknown>) => {
+      adminUpdateRows.push(row);
+      const filters: Array<[string, unknown]> = [];
+      adminUpdateFilters.push(filters);
+      const builder = {
+        eq: (column: string, value: unknown) => {
+          filters.push([column, value]);
+          return builder;
+        },
+        select: (_cols: string) => adminUpdateSelectMock(),
+        then: (
+          resolve: (value: NoSelectUpdateResp) => unknown,
+          reject?: (reason: unknown) => unknown,
+        ) => adminUpdateNoSelectMock().then(resolve, reject),
+      };
+      return builder;
+    },
   };
 }
 
@@ -122,6 +138,7 @@ function makeFailedAudit(over: Partial<AuditRow> = {}): AuditRow {
     status: 'failed',
     storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
     retry_count: 0,
+    failure_reason: 'extraction-timeout: 720000ms',
     ...over,
   };
 }
@@ -131,6 +148,9 @@ beforeEach(() => {
   auditsSelectMock.mockReset();
   inngestSendMock.mockReset();
   adminUpdateSelectMock.mockReset();
+  adminUpdateNoSelectMock.mockReset();
+  adminUpdateRows.length = 0;
+  adminUpdateFilters.length = 0;
   storageRemoveMock.mockClear();
   sentryCaptureMock.mockReset();
 
@@ -142,6 +162,7 @@ beforeEach(() => {
   auditsSelectMock.mockResolvedValue({ data: makeFailedAudit(), error: null });
   // CAS update wins by default.
   adminUpdateSelectMock.mockResolvedValue({ data: [{ retry_count: 1 }], error: null });
+  adminUpdateNoSelectMock.mockResolvedValue({ data: null, error: null });
 });
 
 describe('POST /api/audits/[id]/retry', () => {
@@ -151,9 +172,14 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(res.status).toBe(200);
 
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
-    const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string; name?: string };
+    const sent = inngestSendMock.mock.calls[0]?.[0] as {
+      id?: string;
+      name?: string;
+      data?: { retryCount?: unknown };
+    };
     expect(sent?.name).toBe('bill.uploaded');
     expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-1`);
+    expect(sent?.data?.retryCount).toBe(1);
   });
 
   it('two retry POSTs racing → CAS loser returns 409 and does NOT enqueue', async () => {
@@ -195,6 +221,67 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(sentryCaptureMock).toHaveBeenCalledTimes(1);
     // And the Inngest event must still fire.
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports returned storage errors during PDF invalidation', async () => {
+    storageRemoveMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'storage remove failed' },
+    });
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(200);
+
+    const storageCall = sentryCaptureMock.mock.calls.find(
+      ([, ctx]) =>
+        (ctx as { tags?: { surface?: string } } | undefined)?.tags?.surface ===
+        'audits.retry.storage_invalidate',
+    );
+    expect(storageCall).toBeTruthy();
+    expect((storageCall?.[0] as { message?: string }).message).toBe(
+      'storage remove failed',
+    );
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back to failed with the original failure reason when enqueue fails', async () => {
+    inngestSendMock.mockRejectedValueOnce(new Error('inngest unavailable'));
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    const res = await POST(req, makeContext());
+
+    expect(res.status).toBe(500);
+    expect(adminUpdateRows).toHaveLength(2);
+    expect(adminUpdateRows[0]?.['status']).toBe('pending');
+    expect(adminUpdateRows[0]?.['failure_reason']).toBeNull();
+    expect(adminUpdateRows[1]?.['status']).toBe('failed');
+    expect(adminUpdateRows[1]?.['failure_reason']).toBe('extraction-timeout: 720000ms');
+    expect(adminUpdateRows[1]?.['retry_count']).toBe(0);
+    expect(adminUpdateFilters[1]).toContainEqual(['status', 'pending']);
+    expect(adminUpdateFilters[1]).toContainEqual(['retry_count', 1]);
+  });
+
+  it('reports returned rollback errors after enqueue fails', async () => {
+    inngestSendMock.mockRejectedValueOnce(new Error('inngest unavailable'));
+    adminUpdateNoSelectMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'rollback write failed' },
+    });
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    const res = await POST(req, makeContext());
+
+    expect(res.status).toBe(500);
+    const rollbackCall = sentryCaptureMock.mock.calls.find(
+      ([, ctx]) =>
+        (ctx as { tags?: { surface?: string } } | undefined)?.tags?.surface ===
+        'audits.retry.rollback',
+    );
+    expect(rollbackCall).toBeTruthy();
+    expect((rollbackCall?.[0] as Error).message).toBe(
+      'Audit retry rollback failed: rollback write failed',
+    );
   });
 
   it('returns 401 when there is no authenticated user', async () => {
@@ -243,7 +330,11 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(res.status).toBe(200);
 
     // Idempotency key tracks the new count.
-    const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
+    const sent = inngestSendMock.mock.calls[0]?.[0] as {
+      id?: string;
+      data?: { retryCount?: unknown };
+    };
     expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-3`);
+    expect(sent?.data?.retryCount).toBe(3);
   });
 });

@@ -20,6 +20,7 @@ interface AuditRow {
   status: string;
   storage_path: string;
   retry_count: number;
+  failure_reason: string | null;
 }
 
 function isAuditRow(value: unknown): value is AuditRow {
@@ -30,7 +31,8 @@ function isAuditRow(value: unknown): value is AuditRow {
     typeof v.user_id === 'string' &&
     typeof v.status === 'string' &&
     typeof v.storage_path === 'string' &&
-    typeof v.retry_count === 'number'
+    typeof v.retry_count === 'number' &&
+    (typeof v.failure_reason === 'string' || v.failure_reason === null)
   );
 }
 
@@ -67,7 +69,7 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('audits')
-      .select('id,user_id,status,storage_path,retry_count')
+      .select('id,user_id,status,storage_path,retry_count,failure_reason')
       .eq('id', auditId)
       .maybeSingle();
 
@@ -104,7 +106,15 @@ export async function POST(
     // result. A storage outage shouldn't block retry — capture and continue.
     const admin = getAdminClient();
     try {
-      await admin.storage.from('reports').remove([`${auditId}.pdf`]);
+      const { error: storageError } = await admin.storage
+        .from('reports')
+        .remove([`${auditId}.pdf`]);
+      if (storageError) {
+        Sentry.captureException(storageError, {
+          tags: { surface: 'audits.retry.storage_invalidate' },
+          extra: { auditId },
+        });
+      }
     } catch (storageErr) {
       Sentry.captureException(storageErr, {
         tags: { surface: 'audits.retry.storage_invalidate' },
@@ -160,6 +170,7 @@ export async function POST(
           auditId: data.id,
           userId: data.user_id,
           storagePath: data.storage_path,
+          retryCount,
         },
       });
     } catch (sendErr) {
@@ -170,15 +181,20 @@ export async function POST(
       // Best-effort rollback: reset audit to failed with original retry_count so
       // the user can attempt again rather than being stuck in pending forever.
       try {
-        await admin
+        const { error: rollbackError } = await admin
           .from('audits')
           .update({
             status: 'failed',
+            failure_reason: data.failure_reason,
             retry_count: data.retry_count,
             updated_at: new Date().toISOString(),
           })
           .eq('id', auditId)
+          .eq('status', 'pending')
           .eq('retry_count', nextRetryCount);
+        if (rollbackError) {
+          throw new Error(`Audit retry rollback failed: ${rollbackError.message}`);
+        }
       } catch (rollbackErr) {
         Sentry.captureException(rollbackErr, {
           tags: { surface: 'audits.retry.rollback' },

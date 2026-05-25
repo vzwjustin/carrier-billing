@@ -21,7 +21,8 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  * Throwing from here surfaces a 5xx out of the webhook route so Stripe
  * automatically retries (H8). Each branch is written to be safe under retry:
  * subscription updates are timestamp-guarded upserts, the past_due update is
- * idempotent, and the credit grant is gated on `previousStatus === null`.
+ * idempotent, and the credit grant is keyed to `billingEventId` through
+ * `grant_credit_once`.
  */
 export type HandlerContext = {
   /** processed_status of the billing_events row at the start of this attempt. */
