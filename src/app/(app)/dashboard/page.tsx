@@ -198,9 +198,19 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                   {totalAudits} audit{totalAudits === 1 ? '' : 's'} so far
                 </p>
               </div>
-              <Link href="/audits/new">
-                <Button size="lg">Run an audit</Button>
-              </Link>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <a
+                  href="/api/reports/executive.pdf?n=3"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-50"
+                >
+                  Download executive summary
+                </a>
+                <Link href="/audits/new">
+                  <Button size="lg">Run an audit</Button>
+                </Link>
+              </div>
             </div>
           </section>
           {/* Still surface the checklist for partially-onboarded users

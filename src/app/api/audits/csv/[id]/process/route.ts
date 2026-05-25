@@ -32,6 +32,7 @@ import { z } from 'zod';
 
 import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { assertCanRunAudit } from '@/lib/access/gate';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -360,6 +361,8 @@ export async function POST(
       // 'completed'. Return success-ish so the user isn't left wondering
       // — they'll see the row in their dashboard either way.
     }
+
+    await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'csv', account_count: bill.accounts.length, line_count: lineCount, finding_count: findings.length }, actorEmail: user.email ?? null });
 
     return NextResponse.json({
       ok: true,

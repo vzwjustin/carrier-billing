@@ -41,6 +41,21 @@ export type Events = {
       storagePath: string;
     };
   };
+  'finding.status_changed': {
+    // Fired when a finding's status transitions, either via the authed
+    // /api/audits/[id]/findings/[findingId]/status route or the
+    // /api/inbound/finding-status callback. The dispatch-finding-webhook
+    // consumer POSTs to the user's outbound webhook URL if configured.
+    //
+    // PII: rule_id / severity / title / cents only. No MDNs, no emails.
+    data: {
+      auditId: string;
+      findingId: string;
+      status: string;
+      previousStatus: string | null;
+      userId: string;
+    };
+  };
 };
 
 export const inngest = new Inngest({

@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { ContractTermsSchema } from '@/contracts/schema';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -140,6 +141,8 @@ export async function PATCH(
         );
       }
     }
+
+    await logTrailEvent({ userId: user.id, eventType: 'contract_terms_edited', entityType: 'contract', entityId: contractId, metadata: { fields_updated: Object.keys(patch) }, actorEmail: user.email ?? null });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

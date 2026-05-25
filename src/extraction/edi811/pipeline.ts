@@ -134,6 +134,15 @@ function pickHooks(carrier: Carrier): CarrierMapHooks {
       return ATT_HOOKS;
     case 'tmobile':
       return TMOBILE_HOOKS;
+    // US MVNOs / regional carriers do not ship EDI 811 to their end customers
+    // — those are MNO-only enterprise feeds. If a bill from one of these
+    // carriers ever reaches the EDI 811 pipeline (vanishingly unlikely),
+    // fall through to the empty-hook default so the generic mapper handles
+    // it instead of throwing an exhaustiveness error at compile time.
+    case 'uscellular':
+    case 'spectrum':
+    case 'xfinity':
+    case 'cricket':
     case 'unknown':
       return {};
   }

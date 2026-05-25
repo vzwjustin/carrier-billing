@@ -3,6 +3,8 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { FINDING_STATUS_VALUES } from '@/components/report/finding-status-meta';
+import { inngest } from '@/inngest/client';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -36,6 +38,7 @@ const BodySchema = z.object({
 interface FindingOwnershipRow {
   id: string;
   audit_id: string;
+  status: FindingStatus;
   audits: { id: string; user_id: string } | null;
 }
 
@@ -78,9 +81,12 @@ export async function POST(
     // user. RLS hides findings that aren't reachable via the user's audits,
     // but we still belt-and-suspenders both joins below — matches the
     // pattern in share/route.ts and retry/route.ts.
+    // Select `status` too so we can include the previous value in the
+    // `finding.status_changed` event payload below — useful for receivers
+    // that want to surface the transition (e.g. "approved → resolved").
     const { data: finding, error: fetchError } = await supabase
       .from('findings')
-      .select('id,audit_id,audits!inner(id,user_id)')
+      .select('id,audit_id,status,audits!inner(id,user_id)')
       .eq('id', findingId)
       .eq('audit_id', auditId)
       .maybeSingle<FindingOwnershipRow>();
@@ -132,6 +138,32 @@ export async function POST(
       });
       return NextResponse.json({ error: 'Failed to update finding.' }, { status: 500 });
     }
+
+    // Fire `finding.status_changed` so any outbound webhook fires + so future
+    // event consumers (Slack/Linear/etc.) can subscribe. Failure here MUST NOT
+    // fail the response — the DB update already succeeded and the webhook
+    // dispatch is best-effort. Idempotency key collapses retries against the
+    // same (findingId, status) tuple within Inngest's ~24h window.
+    try {
+      await inngest.send({
+        id: `finding-${findingId}-${status}-${Date.now()}`,
+        name: 'finding.status_changed',
+        data: {
+          auditId,
+          findingId,
+          status,
+          previousStatus: finding.status ?? null,
+          userId: user.id,
+        },
+      });
+    } catch (sendErr) {
+      Sentry.captureException(sendErr, {
+        tags: { surface: 'finding_status.event_send' },
+        extra: { auditId, findingId, status },
+      });
+    }
+
+    await logTrailEvent({ userId: user.id, eventType: 'finding_status_changed', entityType: 'finding', entityId: findingId, metadata: { audit_id: auditId, status, previous_status: finding.status ?? null }, actorEmail: user.email ?? null });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

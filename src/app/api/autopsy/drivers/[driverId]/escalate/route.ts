@@ -29,6 +29,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
 
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -195,6 +196,8 @@ export async function POST(
       })
       .eq('id', auditId);
   }
+
+  await logTrailEvent({ userId: user.id, eventType: 'finding_escalated', entityType: 'driver', entityId: driverId, metadata: { audit_id: auditId, finding_id: findingId, category: driver.category, comparison_id: driver.bill_comparison_id }, actorEmail: user.email ?? null });
 
   return NextResponse.json({ ok: true, findingId });
 }

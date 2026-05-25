@@ -45,6 +45,32 @@ export const ContractUploadedDataSchema = z.object({
 });
 export type ContractUploadedData = z.infer<typeof ContractUploadedDataSchema>;
 
+// FindingStatus values mirror the CHECK constraint in
+// supabase/migrations/0023_finding_status_workflow.sql and the literal union
+// at src/rules/types.ts. Repeated here as a tuple so the schema can validate
+// without importing types from a 'use client'-adjacent module.
+export const FINDING_STATUS_ENUM = [
+  'new',
+  'in_review',
+  'approved',
+  'rejected',
+  'disputed',
+  'resolved',
+] as const;
+
+export const FindingStatusChangedDataSchema = z.object({
+  auditId: z.string().uuid(),
+  findingId: z.string().uuid(),
+  status: z.enum(FINDING_STATUS_ENUM),
+  // null when the previous value is unknown (e.g. defensive write where the
+  // pre-image SELECT failed). Receivers should treat null as "indeterminate".
+  previousStatus: z.enum(FINDING_STATUS_ENUM).nullable(),
+  userId: z.string().uuid(),
+});
+export type FindingStatusChangedData = z.infer<
+  typeof FindingStatusChangedDataSchema
+>;
+
 /**
  * Convenience: parse + throw with a stable error name so the Inngest
  * function's top-level catch can surface the event shape issue distinctly

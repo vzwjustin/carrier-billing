@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { ContractUploadedDataSchema, parseEventData } from '../events';
 import { extractContract } from '@/contracts/extract';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { scrubString } from '@/lib/observability/redact';
 
@@ -205,6 +206,8 @@ export const processContractFn = inngest.createFunction(
         }
         return { ok: true };
       });
+
+      await logTrailEvent({ userId, eventType: 'contract_uploaded', entityType: 'contract', entityId: contractId, metadata: { carrier: contract.header.carrier ?? null } });
 
       logger.info('processContract: parsed', { contractId });
       return { contractId, status: 'parsed' };

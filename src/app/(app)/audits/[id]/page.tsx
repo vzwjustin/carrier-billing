@@ -232,7 +232,7 @@ export default async function AuditDetailPage({
         <FirstAuditBanner auditId={data.id} userId={currentUserId} />
       ) : null}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <Link href="/audits" className="text-xs text-neutral-500 hover:text-neutral-900">
             ← All audits
@@ -240,6 +240,20 @@ export default async function AuditDetailPage({
           <h1 className="mt-2 max-w-xl truncate text-2xl font-semibold tracking-tight text-neutral-900">
             {data.original_filename}
           </h1>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-3 text-xs">
+          <Link
+            href={`/audits/${data.id}/autopsy`}
+            className="text-neutral-500 hover:text-neutral-900"
+          >
+            Bill Increase Autopsy →
+          </Link>
+          <Link
+            href={`/audits/${data.id}/activity`}
+            className="text-neutral-500 hover:text-neutral-900"
+          >
+            Activity →
+          </Link>
         </div>
       </div>
 

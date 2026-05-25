@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 
 import { InboundEmailCard } from '@/components/settings/inbound-email-card';
+import { InboundWebhookCard } from '@/components/settings/inbound-webhook-card';
 import { OutboundWebhookCard } from '@/components/settings/outbound-webhook-card';
 import { env } from '@/env';
 import { getOrCreateInboundToken } from '@/lib/inbound/token';
@@ -18,6 +19,7 @@ interface ProfileRow {
   outbound_webhook_url: string | null;
   outbound_webhook_secret: string | null;
   // secret stays server-side: only a boolean flag crosses the RSC boundary
+  inbound_webhook_token: string | null;
 }
 
 export default async function IntegrationsSettingsPage(): Promise<React.ReactElement> {
@@ -40,7 +42,9 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
 
   const { data } = await admin
     .from('profiles')
-    .select('outbound_webhook_url, outbound_webhook_secret')
+    .select(
+      'outbound_webhook_url, outbound_webhook_secret, inbound_webhook_token',
+    )
     .eq('id', user.id)
     .maybeSingle();
   const profile = (data ?? null) as ProfileRow | null;
@@ -54,6 +58,9 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
       <OutboundWebhookCard
         initialUrl={profile?.outbound_webhook_url ?? null}
         hasSecret={typeof profile?.outbound_webhook_secret === 'string' && profile.outbound_webhook_secret.length > 0}
+      />
+      <InboundWebhookCard
+        initialToken={profile?.inbound_webhook_token ?? null}
       />
     </div>
   );

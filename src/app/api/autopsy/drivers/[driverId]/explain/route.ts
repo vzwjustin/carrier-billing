@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
 
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -100,6 +101,8 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  await logTrailEvent({ userId: user.id, eventType: 'driver_marked_explained', entityType: 'driver', entityId: driverId, metadata: { comparison_id: ownership.bill_comparison_id, explained: bodyParsed.data.explained }, actorEmail: user.email ?? null });
 
   return NextResponse.json({ ok: true });
 }

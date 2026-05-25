@@ -33,6 +33,8 @@ import {
   featureAppearsOnMajorityOfLinesUnderOneDollarRule,
   highCostLowUsagePhoneRule,
   contractRateMismatchRule,
+  duplicateChargeWithinAuditRule,
+  duplicateChargeAcrossAccountsRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -67,6 +69,8 @@ export const ALL_RULES: Rule[] = [
   featureAppearsOnMajorityOfLinesUnderOneDollarRule,
   highCostLowUsagePhoneRule,
   contractRateMismatchRule,
+  duplicateChargeWithinAuditRule,
+  duplicateChargeAcrossAccountsRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);

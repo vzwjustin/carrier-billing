@@ -1,7 +1,23 @@
 import { z } from 'zod';
 
 // Carriers we support. Anything we can't classify is 'unknown'.
-export const CarrierSchema = z.enum(['verizon', 'att', 'tmobile', 'unknown']);
+//
+// `uscellular`, `spectrum`, `xfinity`, `cricket` were added alongside
+// migration 0032: regional carriers + US MVNOs that show up on real
+// SignalAudit deployments. Spectrum/Xfinity ride Verizon's network and
+// Cricket rides AT&T's, but the bills print distinctive headers and have
+// MVNO-specific plan SKUs — see `detect.ts` for the tie-breaker (prefer
+// the MVNO match over the underlying-network match).
+export const CarrierSchema = z.enum([
+  'verizon',
+  'att',
+  'tmobile',
+  'uscellular',
+  'spectrum',
+  'xfinity',
+  'cricket',
+  'unknown',
+]);
 export type Carrier = z.infer<typeof CarrierSchema>;
 
 // Feature classification. Keeps the rules engine surface small and stable.

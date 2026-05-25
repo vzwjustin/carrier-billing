@@ -69,6 +69,12 @@ vi.mock('@/env', () => ({
   },
 }));
 
+// The route fires a `finding.status_changed` Inngest event after a successful
+// update. Stub it so tests don't try to talk to a real Inngest endpoint.
+vi.mock('@/inngest/client', () => ({
+  inngest: { send: vi.fn().mockResolvedValue(undefined) },
+}));
+
 // Import after mocks.
 import { POST } from '@/app/api/audits/[id]/findings/[findingId]/status/route';
 

@@ -18,6 +18,7 @@ import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
 import type { ContractWithTerms, ContractTerms } from '@/contracts/schema';
 import { trackServer } from '@/lib/analytics/events';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { BillUploadedDataSchema, parseEventData } from '../events';
 
 /**
@@ -855,6 +856,8 @@ export const processBillFn = inngest.createFunction(
               : 'unknown analytics error',
         });
       }
+
+      await logTrailEvent({ userId, eventType: 'audit_completed', entityType: 'audit', entityId: auditId, metadata: { carrier: bill.carrier, finding_count: findings.length } });
 
       // ─────────────────────────────────────────────────────────────────────
       // Phase 3: send-trigger — fire `audit.completed` so the email pipeline

@@ -20,6 +20,7 @@ import * as Sentry from '@sentry/nextjs';
 
 import { FINDING_STATUS_VALUES } from '@/components/report/finding-status-meta';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { toCsv } from '@/lib/csv';
 import {
   consumeRateLimit,
@@ -323,5 +324,9 @@ export async function GET(
   }
 
   const csv = findingsToCsv((findings ?? []) as FindingCsvRow[]);
+  // Auth-only audit trail; public-token exports aren't attributable to a user.
+  if (token === null) {
+    await logTrailEvent({ userId: audit.user_id, eventType: 'csv_exported', entityType: 'audit', entityId: auditId, metadata: { kind: 'findings', filtered_status: statusFilter.values, filtered_severity: severityFilter.values } });
+  }
   return csvResponse(csv, auditId);
 }
