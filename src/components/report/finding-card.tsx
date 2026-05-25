@@ -34,23 +34,56 @@ export interface FindingCardProps {
    * read-only and the dropdown is omitted. Defaults to false.
    */
   isPublic?: boolean;
+  /**
+   * Selection state for the bulk-status toolbar. Only rendered when all
+   * three of `!isPublic`, `auditId`, and `finding.id` are set AND the
+   * parent threads `onToggleSelected` through (i.e. the parent opted into
+   * selection mode). Keeping it opt-in lets the same card render on
+   * surfaces (like the PDF) that have no notion of selection.
+   */
+  selected?: boolean;
+  onToggleSelected?: (findingId: string, next: boolean) => void;
 }
 
 export function FindingCard({
   finding,
   auditId,
   isPublic = false,
+  selected = false,
+  onToggleSelected,
 }: FindingCardProps): React.JSX.Element {
   const vm: FindingViewModel = buildFindingViewModel(finding);
   // Status defaults to 'new' for any finding loaded without a hydrated value.
   // The DB default already guarantees a value on persisted rows; this fallback
   // covers the pre-persisted (rules-engine-only) and missing-column cases.
   const status: FindingStatus = finding.status ?? 'new';
+  const showCheckbox =
+    !isPublic && Boolean(auditId) && Boolean(finding.id) && Boolean(onToggleSelected);
 
   return (
-    <article className="rounded-lg border border-neutral-200 bg-white p-5 sm:p-6">
+    <article
+      className={
+        selected
+          ? 'rounded-lg border border-neutral-900 bg-white p-5 ring-1 ring-neutral-900 sm:p-6'
+          : 'rounded-lg border border-neutral-200 bg-white p-5 sm:p-6'
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
+          {showCheckbox && finding.id ? (
+            <label className="inline-flex cursor-pointer items-center">
+              <span className="sr-only">Select finding for bulk action</span>
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={(event) => {
+                  onToggleSelected?.(finding.id as string, event.target.checked);
+                }}
+                className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                aria-label="Select finding"
+              />
+            </label>
+          ) : null}
           <span
             className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${SEVERITY_BADGE[vm.severity]}`}
           >

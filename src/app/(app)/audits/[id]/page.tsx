@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 
 import { AuditViewer, type AuditStatusPayload } from '@/components/audits/audit-viewer';
+import { FirstAuditBanner } from '@/components/audits/first-audit-banner';
 import { trackServer } from '@/lib/analytics/events';
 import { createClient } from '@/lib/supabase/server';
 import { buildReportData } from '@/reports/builder';
@@ -112,6 +113,22 @@ export default async function AuditDetailPage({
     page_count: data.page_count,
   };
 
+  // First-audit tour banner: show only when this audit is completed AND it
+  // is the user's only audit. Cheap HEAD count via RLS — no second roundtrip
+  // unless we're rendering a completed audit.
+  let showFirstAuditBanner = false;
+  let currentUserId: string | null = null;
+  if (data.status === 'completed') {
+    const [{ count: auditCount }, userRes] = await Promise.all([
+      supabase.from('audits').select('id', { head: true, count: 'exact' }),
+      supabase.auth.getUser(),
+    ]);
+    if (auditCount === 1 && userRes.data.user) {
+      showFirstAuditBanner = true;
+      currentUserId = userRes.data.user.id;
+    }
+  }
+
   // For completed audits, fetch the rest of the report data.
   let report: ReportData | undefined;
   if (data.status === 'completed') {
@@ -211,6 +228,10 @@ export default async function AuditDetailPage({
 
   return (
     <div className="space-y-8">
+      {showFirstAuditBanner && currentUserId ? (
+        <FirstAuditBanner auditId={data.id} userId={currentUserId} />
+      ) : null}
+
       <div className="flex items-center justify-between">
         <div>
           <Link href="/audits" className="text-xs text-neutral-500 hover:text-neutral-900">

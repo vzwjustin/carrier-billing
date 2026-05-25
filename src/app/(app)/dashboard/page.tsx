@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
 import { Button } from '@/components/ui/button';
 import {
   aggregateCostCenters,
@@ -83,6 +85,15 @@ function formatDate(value: string): string {
 
 export default async function DashboardPage(): Promise<React.JSX.Element> {
   const supabase = await createClient();
+  // `(app)/layout.tsx` already redirects unauthenticated users to /login, but
+  // we re-fetch here to get a typed `user.id` for the OnboardingChecklist
+  // join. If the layout's session expired between requests, redirect again.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
 
   const [
     { count },
@@ -166,25 +177,38 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-lg border border-neutral-200 bg-white p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              Welcome to CarrierAudit
-            </h1>
-            <p className="mt-1 text-sm text-neutral-500">
-              Upload a business wireless bill and we&apos;ll find your wasted
-              spend.
-            </p>
-            <p className="mt-3 text-xs text-neutral-500">
-              {totalAudits} audit{totalAudits === 1 ? '' : 's'} so far
-            </p>
-          </div>
-          <Link href="/audits/new">
-            <Button size="lg">Run an audit</Button>
-          </Link>
-        </div>
-      </section>
+      {totalAudits === 0 ? (
+        // Brand-new user — replace the generic welcome with the onboarding
+        // checklist. The checklist hides itself once every detectable step
+        // is complete, so power users won't see it.
+        <OnboardingChecklist userId={user.id} />
+      ) : (
+        <>
+          <section className="rounded-lg border border-neutral-200 bg-white p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+                  Welcome to CarrierAudit
+                </h1>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Upload a business wireless bill and we&apos;ll find your
+                  wasted spend.
+                </p>
+                <p className="mt-3 text-xs text-neutral-500">
+                  {totalAudits} audit{totalAudits === 1 ? '' : 's'} so far
+                </p>
+              </div>
+              <Link href="/audits/new">
+                <Button size="lg">Run an audit</Button>
+              </Link>
+            </div>
+          </section>
+          {/* Still surface the checklist for partially-onboarded users
+              (e.g. one audit but no cost-center tags or contract uploaded).
+              It returns null once everything detectable is done. */}
+          <OnboardingChecklist userId={user.id} />
+        </>
+      )}
 
       {totalAudits > 0 ? (
         <section

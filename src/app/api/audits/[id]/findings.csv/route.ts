@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
 
+import { FINDING_STATUS_VALUES } from '@/components/report/finding-status-meta';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
 import { toCsv } from '@/lib/csv';
 import {
@@ -26,6 +27,7 @@ import {
 } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import type { FindingStatus, Severity } from '@/rules/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,6 +51,7 @@ interface AuditAuthRow {
 interface FindingCsvRow {
   rule_id: string;
   severity: string;
+  status: string | null;
   title: string;
   description: string;
   recommended_action: string;
@@ -65,9 +68,12 @@ const SEVERITY_RANK: Record<string, number> = {
   info: 3,
 };
 
+const SEVERITY_VALUES = ['high', 'medium', 'low', 'info'] as const;
+
 const CSV_HEADER = [
   'rule_id',
   'severity',
+  'status',
   'title',
   'description',
   'recommended_action',
@@ -77,6 +83,42 @@ const CSV_HEADER = [
   'affected_line_count',
   'affected_account_count',
 ] as const;
+
+/**
+ * Parse a comma-separated query param like `?status=approved,disputed`
+ * against an allow-list. Returns `null` when the param was absent so the
+ * caller can distinguish "no filter" from "empty filter".
+ *
+ * Returns an `Error` when the param was present but contained a value that
+ * isn't in the allow-list. Callers map that to a 400 — silently dropping a
+ * bad value could mask a typo in an analyst's bookmarked URL.
+ */
+function parseEnumCsv<T extends string>(
+  raw: string | null,
+  allowed: readonly T[],
+): { ok: true; values: T[] | null } | { ok: false; error: string } {
+  if (raw === null) return { ok: true, values: null };
+  const parts = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (parts.length === 0) return { ok: true, values: [] };
+  const allow = allowed as readonly string[];
+  for (const p of parts) {
+    if (!allow.includes(p)) {
+      return { ok: false, error: `Unknown value "${p}".` };
+    }
+  }
+  // Dedupe while preserving order.
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const p of parts) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    out.push(p as T);
+  }
+  return { ok: true, values: out };
+}
 
 function csvFilename(auditId: string): string {
   return `carrieraudit-findings-${auditId.slice(0, 8)}.csv`;
@@ -115,6 +157,9 @@ function findingsToCsv(rows: FindingCsvRow[]): string {
   const body = sorted.map((f) => [
     f.rule_id,
     f.severity,
+    // DB default is 'new' (migration 0023); legacy rows may be null — fall
+    // back to 'new' rather than emitting an empty cell.
+    f.status ?? 'new',
     f.title,
     f.description,
     f.recommended_action,
@@ -157,6 +202,24 @@ export async function GET(
 
   if (rawToken && !token) {
     return new NextResponse('Not found.', { status: 404 });
+  }
+
+  // Optional filter params. Validated against the same enums the UI uses;
+  // unknown values are rejected with a 400 so a bookmarked URL doesn't
+  // silently drop the typo.
+  const statusFilter = parseEnumCsv<FindingStatus>(
+    url.searchParams.get('status'),
+    FINDING_STATUS_VALUES,
+  );
+  const severityFilter = parseEnumCsv<Severity>(
+    url.searchParams.get('severity'),
+    SEVERITY_VALUES,
+  );
+  if (!statusFilter.ok) {
+    return NextResponse.json({ error: statusFilter.error }, { status: 400 });
+  }
+  if (!severityFilter.ok) {
+    return NextResponse.json({ error: severityFilter.error }, { status: 400 });
   }
 
   let audit: AuditAuthRow | null = null;
@@ -222,12 +285,31 @@ export async function GET(
   }
 
   const admin = getAdminClient();
-  const { data: findings, error: findingsErr } = await admin
+  let query = admin
     .from('findings')
     .select(
-      'rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids',
+      'rule_id,severity,status,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids',
     )
     .eq('audit_id', auditId);
+
+  // Push the filter to the DB so we only fetch what the caller asked for —
+  // matters most on audits with hundreds of findings. An empty allow-list
+  // (e.g. `?status=` with no value) means "filter on, no values match" →
+  // return zero rows without burning a DB query.
+  if (statusFilter.values !== null) {
+    if (statusFilter.values.length === 0) {
+      return csvResponse(findingsToCsv([]), auditId);
+    }
+    query = query.in('status', statusFilter.values);
+  }
+  if (severityFilter.values !== null) {
+    if (severityFilter.values.length === 0) {
+      return csvResponse(findingsToCsv([]), auditId);
+    }
+    query = query.in('severity', severityFilter.values);
+  }
+
+  const { data: findings, error: findingsErr } = await query;
 
   if (findingsErr) {
     Sentry.captureException(findingsErr, {

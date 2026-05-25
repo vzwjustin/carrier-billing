@@ -21,6 +21,30 @@ export default function PreviewIndexPage(): React.JSX.Element {
           </Link>{' '}
           — Finding cards across all 6 reviewer statuses + read-only variant
         </li>
+        <li>
+          <Link href="/preview/inventory" className="text-blue-600 underline">
+            /preview/inventory
+          </Link>{' '}
+          — Wireless inventory page with filters + stat tiles
+        </li>
+        <li>
+          <Link href="/preview/assistant" className="text-blue-600 underline">
+            /preview/assistant
+          </Link>{' '}
+          — AI assistant chat with grounded answer + citations
+        </li>
+        <li>
+          <Link href="/preview/contracts" className="text-blue-600 underline">
+            /preview/contracts
+          </Link>{' '}
+          — Contracts library
+        </li>
+        <li>
+          <Link href="/preview/dashboard-card" className="text-blue-600 underline">
+            /preview/dashboard-card
+          </Link>{' '}
+          — Dashboard Bill Increase Autopsy summary tile
+        </li>
       </ul>
     </div>
   );
