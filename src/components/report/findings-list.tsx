@@ -16,11 +16,20 @@ const SEVERITY_HEADING: Record<Severity, string> = {
 export interface FindingsListProps {
   findingsBySeverity: Record<Severity, Finding[]>;
   totalFindingCount: number;
+  /**
+   * Owner-only audit id for the reviewer status control. Threaded down to
+   * `FindingCard`; omit on the public share page.
+   */
+  auditId?: string;
+  /** True on the public share surface — disables the status dropdown. */
+  isPublic?: boolean;
 }
 
 export function FindingsList({
   findingsBySeverity,
   totalFindingCount,
+  auditId,
+  isPublic = false,
 }: FindingsListProps): React.JSX.Element {
   if (totalFindingCount === 0) {
     return (
@@ -52,7 +61,12 @@ export function FindingsList({
             </div>
             <div className="space-y-3">
               {items.map((f, i) => (
-                <FindingCard key={`${sev}-${f.rule_id}-${i}`} finding={f} />
+                <FindingCard
+                  key={`${sev}-${f.rule_id}-${i}`}
+                  finding={f}
+                  auditId={auditId}
+                  isPublic={isPublic}
+                />
               ))}
             </div>
           </section>

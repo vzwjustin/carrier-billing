@@ -35,6 +35,8 @@ export function ReportView({
       <FindingsList
         findingsBySeverity={report.findingsBySeverity}
         totalFindingCount={report.audit.finding_count}
+        auditId={report.audit.id}
+        isPublic={isPublic}
       />
     </div>
   );

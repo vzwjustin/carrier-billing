@@ -15,3 +15,8 @@ export { activationFeeOnExistingLineRule } from './activation-fee-on-existing-li
 export { strandedCloudStorageRule } from './stranded-cloud-storage';
 export { zeroUsagePhoneLineRule } from './zero-usage-phone-line';
 export { redundantHotspotAddonRule } from './redundant-hotspot-addon';
+export { tabletWatchWithZeroUsageRule } from './tablet-watch-with-zero-usage';
+export { featureFirstSeenRule } from './feature-first-seen';
+export { dppExceedsPlanBaseRule } from './dpp-exceeds-plan-base';
+export { accountTaxesFeesLowAnomalyRule } from './account-taxes-fees-low-anomaly';
+export { lineWithOnlyCreditsRule } from './line-with-only-credits';

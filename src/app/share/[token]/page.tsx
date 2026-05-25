@@ -109,7 +109,7 @@ export default async function ShareReportPage({
     supabase
       .from('findings')
       .select(
-        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence,status',
       )
       .eq('audit_id', auditId),
     supabase

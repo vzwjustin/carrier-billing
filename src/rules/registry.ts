@@ -19,6 +19,11 @@ import {
   strandedCloudStorageRule,
   zeroUsagePhoneLineRule,
   redundantHotspotAddonRule,
+  tabletWatchWithZeroUsageRule,
+  featureFirstSeenRule,
+  dppExceedsPlanBaseRule,
+  accountTaxesFeesLowAnomalyRule,
+  lineWithOnlyCreditsRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -39,6 +44,11 @@ export const ALL_RULES: Rule[] = [
   strandedCloudStorageRule,
   zeroUsagePhoneLineRule,
   redundantHotspotAddonRule,
+  tabletWatchWithZeroUsageRule,
+  featureFirstSeenRule,
+  dppExceedsPlanBaseRule,
+  accountTaxesFeesLowAnomalyRule,
+  lineWithOnlyCreditsRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);
