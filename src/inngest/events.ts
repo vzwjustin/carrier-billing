@@ -38,6 +38,13 @@ export type BillingPaymentFailedData = z.infer<
   typeof BillingPaymentFailedDataSchema
 >;
 
+export const ContractUploadedDataSchema = z.object({
+  contractId: z.string().uuid(),
+  userId: z.string().uuid(),
+  storagePath: z.string().min(1),
+});
+export type ContractUploadedData = z.infer<typeof ContractUploadedDataSchema>;
+
 /**
  * Convenience: parse + throw with a stable error name so the Inngest
  * function's top-level catch can surface the event shape issue distinctly

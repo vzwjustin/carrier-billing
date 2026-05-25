@@ -24,6 +24,15 @@ import {
   dppExceedsPlanBaseRule,
   accountTaxesFeesLowAnomalyRule,
   lineWithOnlyCreditsRule,
+  billIncreaseOverThresholdInTotalRule,
+  lineChargeOutlierWithinAccountRule,
+  activationFeeOutsizedRule,
+  unassignedUserLabelRule,
+  duplicateDeviceInstallmentSameLineRule,
+  accountTotalMismatchRule,
+  featureAppearsOnMajorityOfLinesUnderOneDollarRule,
+  highCostLowUsagePhoneRule,
+  contractRateMismatchRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -49,6 +58,15 @@ export const ALL_RULES: Rule[] = [
   dppExceedsPlanBaseRule,
   accountTaxesFeesLowAnomalyRule,
   lineWithOnlyCreditsRule,
+  billIncreaseOverThresholdInTotalRule,
+  lineChargeOutlierWithinAccountRule,
+  activationFeeOutsizedRule,
+  unassignedUserLabelRule,
+  duplicateDeviceInstallmentSameLineRule,
+  accountTotalMismatchRule,
+  featureAppearsOnMajorityOfLinesUnderOneDollarRule,
+  highCostLowUsagePhoneRule,
+  contractRateMismatchRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);

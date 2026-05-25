@@ -70,6 +70,9 @@ interface DriverRow {
   is_unexplained: boolean;
   recommended_action: string | null;
   evidence: Record<string, unknown>;
+  /** Migration 0026 — operator workflow on driver cards. */
+  is_explained?: boolean | null;
+  escalated_finding_id?: string | null;
 }
 
 interface EvidenceLine {
@@ -384,10 +387,86 @@ function DriversList({ drivers }: { drivers: DriverRow[] }): React.JSX.Element {
 }
 
 function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  // Local optimistic state so action buttons reflect changes immediately
+  // without a page round-trip. The router.refresh() on success keeps the
+  // SSR cache in sync.
+  const [isExplained, setIsExplained] = React.useState<boolean>(
+    Boolean(driver.is_explained),
+  );
+  const [escalatedFindingId, setEscalatedFindingId] = React.useState<string | null>(
+    driver.escalated_finding_id ?? null,
+  );
+  const [isWorking, setIsWorking] = React.useState(false);
   const diff = driver.difference_cents;
+
+  const handleExplain = React.useCallback(
+    async (next: boolean): Promise<void> => {
+      setIsWorking(true);
+      const previous = isExplained;
+      setIsExplained(next); // optimistic
+      try {
+        const res = await fetch(
+          `/api/autopsy/drivers/${driver.id}/explain`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ explained: next }),
+          },
+        );
+        if (!res.ok) {
+          setIsExplained(previous);
+          toast.error(next ? 'Could not mark as explained.' : 'Could not undo.');
+          return;
+        }
+        toast.success(next ? 'Marked as explained.' : 'Restored.');
+        router.refresh();
+      } catch {
+        setIsExplained(previous);
+        toast.error('Network error.');
+      } finally {
+        setIsWorking(false);
+      }
+    },
+    [driver.id, isExplained, router],
+  );
+
+  const handleEscalate = React.useCallback(async (): Promise<void> => {
+    setIsWorking(true);
+    try {
+      const res = await fetch(
+        `/api/autopsy/drivers/${driver.id}/escalate`,
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        toast.error('Could not escalate to a finding.');
+        return;
+      }
+      const body = (await res.json()) as { findingId?: string };
+      if (body.findingId) {
+        setEscalatedFindingId(body.findingId);
+        toast.success('Escalated to a finding.');
+        router.refresh();
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setIsWorking(false);
+    }
+  }, [driver.id, router]);
+
+  // Visual treatment: when handled, dim the card so the operator's eye
+  // is drawn to the still-actionable ones.
+  const handled = isExplained || escalatedFindingId !== null;
+
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white">
+    <div
+      className={cn(
+        'rounded-lg border border-neutral-200 bg-white transition-opacity',
+        handled && 'opacity-70',
+      )}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -396,7 +475,21 @@ function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
         <div className="flex flex-1 items-center gap-3">
           <CategoryBadge driver={driver} />
           <div>
-            <p className="text-sm font-medium text-neutral-900">{driver.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-neutral-900">
+                {driver.title}
+              </p>
+              {isExplained ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-800">
+                  Explained
+                </span>
+              ) : null}
+              {escalatedFindingId ? (
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-800">
+                  Escalated
+                </span>
+              ) : null}
+            </div>
             <p className="mt-0.5 text-xs text-neutral-500">
               {driver.affected_lines_count > 0
                 ? `${driver.affected_lines_count} line${driver.affected_lines_count === 1 ? '' : 's'} affected · `
@@ -417,7 +510,16 @@ function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
         </p>
         <span className="text-neutral-400">{open ? '▾' : '▸'}</span>
       </button>
-      {open ? <DriverDetail driver={driver} /> : null}
+      {open ? (
+        <DriverDetail
+          driver={driver}
+          isExplained={isExplained}
+          escalatedFindingId={escalatedFindingId}
+          isWorking={isWorking}
+          onExplain={handleExplain}
+          onEscalate={handleEscalate}
+        />
+      ) : null}
     </div>
   );
 }
@@ -443,7 +545,23 @@ function CategoryBadge({ driver }: { driver: DriverRow }): React.JSX.Element {
   );
 }
 
-function DriverDetail({ driver }: { driver: DriverRow }): React.JSX.Element {
+interface DriverDetailProps {
+  driver: DriverRow;
+  isExplained: boolean;
+  escalatedFindingId: string | null;
+  isWorking: boolean;
+  onExplain: (next: boolean) => Promise<void>;
+  onEscalate: () => Promise<void>;
+}
+
+function DriverDetail({
+  driver,
+  isExplained,
+  escalatedFindingId,
+  isWorking,
+  onExplain,
+  onEscalate,
+}: DriverDetailProps): React.JSX.Element {
   const lines = (driver.evidence?.lines ?? []) as EvidenceLine[];
   const accounts = (driver.evidence?.accounts ?? []) as EvidenceAccount[];
   const notes = (driver.evidence?.notes ?? []) as string[];
@@ -546,6 +664,50 @@ function DriverDetail({ driver }: { driver: DriverRow }): React.JSX.Element {
           ))}
         </div>
       ) : null}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-4">
+        {escalatedFindingId ? (
+          <span className="text-xs text-neutral-600">
+            Escalated to a finding —{' '}
+            <Link
+              href={`/audits/${escalatedFindingId}`}
+              className="font-medium text-violet-700 underline"
+            >
+              view
+            </Link>
+          </span>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => {
+              void onEscalate();
+            }}
+            disabled={isWorking || isExplained}
+          >
+            Escalate to finding
+          </Button>
+        )}
+        {isExplained ? (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              void onExplain(false);
+            }}
+            disabled={isWorking}
+          >
+            Undo &quot;explained&quot;
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              void onExplain(true);
+            }}
+            disabled={isWorking || escalatedFindingId !== null}
+          >
+            Mark as explained
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

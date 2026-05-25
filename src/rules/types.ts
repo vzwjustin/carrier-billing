@@ -1,3 +1,4 @@
+import type { ContractWithTerms } from '@/contracts/schema';
 import type { Carrier, ExtractedBill } from '@/extraction/schema';
 
 /**
@@ -88,6 +89,15 @@ export type RuleContext = {
   /** Always inject "now" — never call `new Date()` inside a rule. */
   today: Date;
   carrier: Carrier;
+  /**
+   * Parsed contracts belonging to the audit's user. Optional so existing
+   * tests / call sites that don't load contracts continue to work
+   * unchanged. Rules that consume this field should skip cleanly when the
+   * array is `undefined` or empty. Loaded by the rule-runner caller
+   * (`src/inngest/functions/process-bill.ts`), NOT inside rules — rules
+   * remain pure functions with no I/O.
+   */
+  contracts?: ContractWithTerms[];
 };
 
 export type Rule = {

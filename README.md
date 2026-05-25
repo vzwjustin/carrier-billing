@@ -80,6 +80,7 @@ Quick summary — see [`SPEC.md` §2](./SPEC.md) for the locked choices and rati
      - `supabase/migrations/0003_reports_storage.sql` — `reports` private bucket for cached PDFs.
      - `supabase/migrations/0004_billing_helpers.sql` — `increment_audit_credits` RPC.
    - If a bucket isn't auto-created by the migration, create `bills` and `reports` as private buckets in **Storage → New bucket**.
+   - Migration `0025_contracts.sql` adds the contract intelligence tables (`contracts`, `contract_terms`) but does **not** create its storage bucket. Create a private bucket named `contracts` in **Storage → New bucket** the same way you create `bills` and `reports`.
    - Copy `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` from **Settings → API** into `.env.local`.
 
 4. **Stripe**
@@ -133,6 +134,35 @@ Quick summary — see [`SPEC.md` §2](./SPEC.md) for the locked choices and rati
 | `pnpm test:e2e` | Playwright end-to-end tests. |
 | `pnpm format` | Prettier write across the repo. |
 | `pnpm format:check` | Prettier check (no write). |
+
+## Demo data
+
+`scripts/seed-demo-data.ts` populates Supabase with a fully-loaded demo
+account so you can browse the dashboard, a report, and a Bill Increase
+Autopsy without uploading a real PDF. Idempotent — running it twice produces
+the same end state.
+
+**Prereqs.** Local Supabase (`supabase start`) OR a remote project.
+`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` must be in your
+shell or `.env.local`. **Never point it at production** — the script wipes
+prior demo rows by user id before re-inserting.
+
+```bash
+pnpm dlx dotenv-cli -e .env.local pnpm exec tsx scripts/seed-demo-data.ts
+```
+
+**Inserts:** demo profile (UUID `00000000-0000-0000-0000-0000000d3000`, email
+`demo@carrieraudit.local`), 2 completed audits (March + April 2026), 3 BANs
+per audit (HQ Operations / Field Sales / Warehouse), ~85 wireless lines, and
+plans / features / credits / DPP rows engineered so the rules engine fires
+findings AND the autopsy reports a ~$843 month-over-month increase across
+new DPP, missing credits, new international features, new lines, taxes/fees,
+and a suspended-still-billed pattern.
+
+**Expected tail:** `[seed] seeded 2 audits, 85 lines (march) / 87 (april), N findings, autopsy <uuid> with $843.01 change`
+
+**Log in:** `demo@carrieraudit.local` / `demo-password-do-not-reuse`
+(constants live in the script). Rotate via Supabase Auth on shared envs.
 
 ## Project layout
 

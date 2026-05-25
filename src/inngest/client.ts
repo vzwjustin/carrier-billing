@@ -34,6 +34,13 @@ export type Events = {
       amountDueCents: number | null;
     };
   };
+  'contract.uploaded': {
+    data: {
+      contractId: string;
+      userId: string;
+      storagePath: string;
+    };
+  };
 };
 
 export const inngest = new Inngest({

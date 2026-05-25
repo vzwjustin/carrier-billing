@@ -1,6 +1,11 @@
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
+import {
+  aggregateCostCenters,
+  type CostCenterLineInput,
+  type CostCenterRollupRow,
+} from '@/lib/cost-centers/aggregate';
 import { createClient } from '@/lib/supabase/server';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -33,6 +38,16 @@ interface LatestAutopsyRow {
   disputable_cents: number;
   unexplained_cents: number;
   created_at: string;
+}
+
+interface CompletedAuditIdRow {
+  id: string;
+  created_at: string;
+}
+
+interface CostCenterLineRow {
+  cost_center: string | null;
+  plan_base_cents: number | null;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -69,7 +84,13 @@ function formatDate(value: string): string {
 export default async function DashboardPage(): Promise<React.JSX.Element> {
   const supabase = await createClient();
 
-  const [{ count }, latestRes, completedRes, latestAutopsyRes] = await Promise.all([
+  const [
+    { count },
+    latestRes,
+    completedRes,
+    latestAutopsyRes,
+    completedIdsRes,
+  ] = await Promise.all([
     supabase.from('audits').select('id', { head: true, count: 'exact' }),
     supabase
       .from('audits')
@@ -94,6 +115,15 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle<LatestAutopsyRow>(),
+    // Completed audit IDs, newest first. Used to (a) fetch cost-center lines
+    // across all completed audits and (b) pick the most-recent audit ID for
+    // the "Export CSV" link on the cost-center tile.
+    supabase
+      .from('audits')
+      .select('id,created_at')
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .returns<CompletedAuditIdRow[]>(),
   ]);
 
   const latest = latestRes.data ?? [];
@@ -108,6 +138,31 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     0,
   );
   const latestAutopsy = latestAutopsyRes.data ?? null;
+
+  // Cost-center roll-up: fetch all bill_lines across the user's completed
+  // audits (RLS-scoped via the audits join) and aggregate in memory. The
+  // tile is hidden entirely if no lines carry a cost_center value, so we
+  // skip the second query when there are no completed audits.
+  const completedAuditIds = (completedIdsRes.data ?? []).map((row) => row.id);
+  let costCenterRollup: CostCenterRollupRow[] = [];
+  let hasAnyCostCenter = false;
+  if (completedAuditIds.length > 0) {
+    const linesRes = await supabase
+      .from('bill_lines')
+      .select('cost_center,plan_base_cents')
+      .in('audit_id', completedAuditIds)
+      .returns<CostCenterLineRow[]>();
+    const lineRows = (linesRes.data ?? []) as CostCenterLineRow[];
+    hasAnyCostCenter = lineRows.some(
+      (row) => row.cost_center !== null && row.cost_center.trim() !== '',
+    );
+    if (hasAnyCostCenter) {
+      costCenterRollup = aggregateCostCenters(
+        lineRows as CostCenterLineInput[],
+      );
+    }
+  }
+  const mostRecentCompletedAuditId = completedAuditIds[0] ?? null;
 
   return (
     <div className="space-y-8">
@@ -167,6 +222,13 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       ) : null}
 
       {latestAutopsy ? <AutopsyCard autopsy={latestAutopsy} /> : null}
+
+      {hasAnyCostCenter && costCenterRollup.length > 0 ? (
+        <CostCenterTile
+          rollup={costCenterRollup}
+          exportAuditId={mostRecentCompletedAuditId}
+        />
+      ) : null}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -357,6 +419,93 @@ function AutopsyCard({
             View autopsy →
           </Link>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function CostCenterTile({
+  rollup,
+  exportAuditId,
+}: {
+  rollup: CostCenterRollupRow[];
+  exportAuditId: string | null;
+}): React.JSX.Element {
+  const totalCents = rollup.reduce(
+    (acc, row) => acc + row.monthly_total_cents,
+    0,
+  );
+  return (
+    <section
+      aria-label="Spend by cost center"
+      className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+    >
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Spend by cost center
+          </p>
+          <p className="mt-1 text-lg font-semibold tracking-tight text-neutral-900">
+            {formatCents(totalCents)}
+            <span className="ml-2 text-xs font-normal text-neutral-500">
+              monthly across completed audits
+            </span>
+          </p>
+        </div>
+        {exportAuditId ? (
+          <Link
+            href={`/api/audits/${exportAuditId}/cost-centers.csv`}
+            className="text-sm font-medium text-neutral-700 hover:text-neutral-900"
+          >
+            Export CSV
+          </Link>
+        ) : null}
+      </div>
+      <div className="overflow-hidden rounded-lg border border-neutral-200">
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <tr>
+              <th className="px-4 py-2">Cost center</th>
+              <th className="px-4 py-2 text-right">Lines</th>
+              <th className="px-4 py-2 text-right">Monthly</th>
+              <th className="px-4 py-2">Share</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-200">
+            {rollup.map((row) => {
+              const pct = Math.round(row.share * 100);
+              return (
+                <tr key={row.cost_center} className="hover:bg-neutral-50">
+                  <td className="px-4 py-2 text-neutral-900">
+                    {row.cost_center}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-neutral-700">
+                    {row.line_count.toLocaleString('en-US')}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-neutral-900">
+                    {formatCents(row.monthly_total_cents)}
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <div
+                        aria-hidden
+                        className="h-2 w-24 overflow-hidden rounded-full bg-neutral-100"
+                      >
+                        <div
+                          className="h-full bg-neutral-700"
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs tabular-nums text-neutral-500">
+                        {pct}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );

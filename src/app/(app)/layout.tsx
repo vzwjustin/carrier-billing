@@ -13,7 +13,10 @@ const NAV_ITEMS = [
   { href: '/roadmap', label: 'Roadmap' },
   { href: '/carriers', label: 'Carriers' },
   { href: '/carriers/bills', label: 'Bill editor' },
+  { href: '/inventory', label: 'Inventory' },
   { href: '/audits/new', label: 'New audit' },
+  { href: '/contracts', label: 'Contracts' },
+  { href: '/assistant', label: 'Assistant' },
   { href: '/settings', label: 'Settings' },
   { href: '/settings/billing', label: 'Billing' },
 ] as const;

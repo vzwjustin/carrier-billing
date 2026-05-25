@@ -202,6 +202,8 @@ interface DriverRow {
   is_unexplained: boolean;
   recommended_action: string | null;
   evidence: Record<string, unknown>;
+  is_explained: boolean | null;
+  escalated_finding_id: string | null;
 }
 
 export async function GET(
@@ -247,7 +249,7 @@ export async function GET(
   const { data: drivers, error: driversErr } = await admin
     .from('bill_change_drivers')
     .select(
-      'id,category,title,summary,previous_cents,current_cents,difference_cents,affected_lines_count,confidence,is_disputable,is_optimization,is_unexplained,recommended_action,evidence',
+      'id,category,title,summary,previous_cents,current_cents,difference_cents,affected_lines_count,confidence,is_disputable,is_optimization,is_unexplained,recommended_action,evidence,is_explained,escalated_finding_id',
     )
     .eq('bill_comparison_id', comparison.id);
   if (driversErr) {
