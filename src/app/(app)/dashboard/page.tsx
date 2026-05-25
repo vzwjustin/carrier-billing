@@ -24,6 +24,17 @@ interface CompletedAggregateRow {
   high_severity_count: number | null;
 }
 
+interface LatestAutopsyRow {
+  id: string;
+  current_audit_id: string;
+  previous_audit_id: string;
+  net_change_cents: number;
+  percent_change_bps: number | null;
+  disputable_cents: number;
+  unexplained_cents: number;
+  created_at: string;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-neutral-100 text-neutral-700',
   extracting: 'bg-blue-100 text-blue-700',
@@ -58,7 +69,7 @@ function formatDate(value: string): string {
 export default async function DashboardPage(): Promise<React.JSX.Element> {
   const supabase = await createClient();
 
-  const [{ count }, latestRes, completedRes] = await Promise.all([
+  const [{ count }, latestRes, completedRes, latestAutopsyRes] = await Promise.all([
     supabase.from('audits').select('id', { head: true, count: 'exact' }),
     supabase
       .from('audits')
@@ -73,6 +84,16 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       .select('estimated_annual_savings_cents,high_severity_count')
       .eq('status', 'completed')
       .returns<CompletedAggregateRow[]>(),
+    // Most recent Bill Increase Autopsy across all of the user's audits.
+    // RLS scopes to the owning user; null if no autopsy has been run yet.
+    supabase
+      .from('bill_comparisons')
+      .select(
+        'id,current_audit_id,previous_audit_id,net_change_cents,percent_change_bps,disputable_cents,unexplained_cents,created_at',
+      )
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle<LatestAutopsyRow>(),
   ]);
 
   const latest = latestRes.data ?? [];
@@ -86,6 +107,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     (acc, row) => acc + (row.high_severity_count ?? 0),
     0,
   );
+  const latestAutopsy = latestAutopsyRes.data ?? null;
 
   return (
     <div className="space-y-8">
@@ -143,6 +165,8 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           />
         </section>
       ) : null}
+
+      {latestAutopsy ? <AutopsyCard autopsy={latestAutopsy} /> : null}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -255,5 +279,85 @@ function StatTile({
       </p>
       <p className="mt-2 text-xs text-neutral-500">{helper}</p>
     </div>
+  );
+}
+
+function signedCents(cents: number): string {
+  if (cents === 0) return formatCents(0);
+  const sign = cents > 0 ? '+' : '-';
+  return `${sign}${formatCents(Math.abs(cents))}`;
+}
+
+function percentLabel(bps: number | null): string {
+  if (bps === null) return 'new account';
+  const pct = (bps / 100).toFixed(1);
+  return `${bps >= 0 ? '+' : ''}${pct}%`;
+}
+
+function AutopsyCard({
+  autopsy,
+}: {
+  autopsy: LatestAutopsyRow;
+}): React.JSX.Element {
+  const direction =
+    autopsy.net_change_cents === 0
+      ? 'unchanged'
+      : autopsy.net_change_cents > 0
+        ? 'up'
+        : 'down';
+  return (
+    <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Latest Bill Increase Autopsy
+          </p>
+          <p
+            className={cn(
+              'mt-1 text-3xl font-semibold tabular-nums',
+              direction === 'up' && 'text-red-700',
+              direction === 'down' && 'text-green-700',
+              direction === 'unchanged' && 'text-neutral-700',
+            )}
+          >
+            {signedCents(autopsy.net_change_cents)}
+            <span className="ml-2 text-sm font-medium text-neutral-500">
+              ({percentLabel(autopsy.percent_change_bps)})
+            </span>
+          </p>
+          <p className="mt-2 text-xs text-neutral-500">
+            Compared with the previous bill period
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {autopsy.disputable_cents > 0 ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900">
+                Potentially disputable
+              </p>
+              <p className="mt-0.5 text-base font-semibold tabular-nums text-amber-900">
+                {formatCents(autopsy.disputable_cents)}
+              </p>
+            </div>
+          ) : null}
+          {autopsy.unexplained_cents > 0 ? (
+            <div className="rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+                Unexplained
+              </p>
+              <p className="mt-0.5 text-base font-semibold tabular-nums text-neutral-700">
+                {formatCents(autopsy.unexplained_cents)}
+              </p>
+            </div>
+          ) : null}
+          <Link
+            href={`/audits/${autopsy.current_audit_id}/autopsy`}
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-50"
+          >
+            View autopsy →
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
