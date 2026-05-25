@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import { trackServer } from '@/lib/analytics/events';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { buildReportData } from '@/reports/builder';
 import type {
   ReportAccountRow,
@@ -214,7 +215,7 @@ export async function GET(
     admin
       .from('findings')
       .select(
-        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence,status',
       )
       .eq('audit_id', auditId),
   ]);
@@ -291,6 +292,11 @@ async function trackPdfDownload(
   userId: string,
   shareToken: string | null,
 ): Promise<void> {
+  // Auth-only audit trail: a public share-token download isn't attributable
+  // to the authenticated user, so we never forge a trail row in that case.
+  if (shareToken === null) {
+    await logTrailEvent({ userId, eventType: 'report_downloaded', entityType: 'audit', entityId: auditId, metadata: { format: 'pdf' } });
+  }
   try {
     await trackServer(
       {

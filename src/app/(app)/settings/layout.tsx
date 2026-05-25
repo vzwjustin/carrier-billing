@@ -6,6 +6,7 @@ const NAV = [
   { href: '/settings', label: 'Account' },
   { href: '/settings/billing', label: 'Billing' },
   { href: '/settings/integrations', label: 'Integrations' },
+  { href: '/settings/digest', label: 'Digest' },
 ] as const;
 
 export default function SettingsLayout({

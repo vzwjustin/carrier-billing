@@ -183,6 +183,55 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
     estimated_monthly_savings_cents: 700,
     source_note: 'phonearena.com/news/t-mobile-legacy-plan-migration-2026',
   },
+
+  // US Cellular — uscellular.com/plans (modern Business Unlimited family
+  // replaces the long-retired Belief / Payback consumer tiers).
+  {
+    carrier: 'uscellular',
+    pattern: /Belief\s+Plan/i,
+    replacement_plan: 'Business Unlimited Everyday',
+    estimated_monthly_savings_cents: 1000,
+    source_note: 'uscellular.com/support/legacy-plans',
+  },
+  {
+    carrier: 'uscellular',
+    pattern: /Unlimited\s+with\s+Payback/i,
+    replacement_plan: 'Business Unlimited Everyday',
+    estimated_monthly_savings_cents: 800,
+    source_note: 'uscellular.com/support/legacy-plans',
+  },
+
+  // Spectrum Mobile — spectrum.com/mobile (consumer-tier "Unlimited Plus"
+  // still appears on small-business accounts that ported in pre-2024).
+  {
+    carrier: 'spectrum',
+    pattern: /Unlimited\s+Plus/i,
+    replacement_plan: 'Spectrum Business Unlimited',
+    estimated_monthly_savings_cents: 700,
+    source_note: 'spectrum.com/mobile/plans',
+  },
+
+  // Xfinity Mobile — xfinity.com/mobile/plan (the "By the Gig" metered tier
+  // is a hold-over from the original 2017 launch — modern Unlimited is
+  // cheaper above ~3 GB/mo of usage).
+  {
+    carrier: 'xfinity',
+    pattern: /By\s+the\s+Gig/i,
+    replacement_plan: 'Xfinity Mobile Unlimited',
+    estimated_monthly_savings_cents: 500,
+    source_note: 'xfinity.com/mobile/plan',
+  },
+
+  // Cricket Wireless — cricketwireless.com/cell-phone-plans (the legacy
+  // "Cricket More" mid-tier was retired in favor of the simpler Core /
+  // Smart / Elite ladder).
+  {
+    carrier: 'cricket',
+    pattern: /Cricket\s+More/i,
+    replacement_plan: 'Cricket Smart',
+    estimated_monthly_savings_cents: 500,
+    source_note: 'cricketwireless.com/cell-phone-plans',
+  },
 ];
 
 function patternsForCarrier(carrier: Carrier): LegacyPlanPattern[] {

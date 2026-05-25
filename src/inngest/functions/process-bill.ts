@@ -16,7 +16,9 @@ import type {
 import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
+import type { ContractWithTerms, ContractTerms } from '@/contracts/schema';
 import { trackServer } from '@/lib/analytics/events';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { BillUploadedDataSchema, parseEventData } from '../events';
 
 /**
@@ -576,6 +578,61 @@ export const processBillFn = inngest.createFunction(
         return result;
       })) as PersistBillResult;
 
+      // Step 4b: load-contracts. Migration 0025 adds a `contracts` library;
+      // the contract_rate_mismatch rule joins bill lines against the user's
+      // parsed contracts. Loaded BEFORE run-rules so rules stay pure (no
+      // I/O). Best-effort: if the table is missing in a stale DB or the
+      // query fails, we log and proceed with an empty array so the rest of
+      // the rules engine still runs.
+      const loadedContracts = (await step.run('load-contracts', async () => {
+        try {
+          const supabase = getAdminClient();
+          const { data, error } = await supabase
+            .from('contracts')
+            .select(
+              'id,carrier,ban_last4,effective_date,expiration_date,status,contract_terms(plan_name,contracted_monthly_rate_cents,discount_percentage_bps,waived_fees,promo_credit_cents,promo_duration_months,device_credit_terms,line_minimums,upgrade_fee_rules,activation_fee_rules,international_package_terms,early_termination_terms,notes)',
+            )
+            .eq('user_id', userId)
+            .eq('status', 'parsed');
+          if (error) {
+            logger.warn('processBill: load-contracts failed (continuing without)', {
+              auditId,
+              message: error.message,
+            });
+            return [] as ContractWithTerms[];
+          }
+          const rows = (data ?? []) as Array<{
+            id: string;
+            carrier: string | null;
+            ban_last4: string | null;
+            effective_date: string | null;
+            expiration_date: string | null;
+            contract_terms: ContractTerms[] | ContractTerms | null;
+          }>;
+          return rows.map<ContractWithTerms>((r) => {
+            const termsField = r.contract_terms;
+            const terms = Array.isArray(termsField)
+              ? (termsField[0] ?? null)
+              : (termsField ?? null);
+            return {
+              id: r.id,
+              carrier: r.carrier,
+              ban_last4: r.ban_last4,
+              effective_date: r.effective_date,
+              expiration_date: r.expiration_date,
+              terms,
+            };
+          });
+        } catch (loadErr) {
+          logger.warn('processBill: load-contracts threw (continuing without)', {
+            auditId,
+            message:
+              loadErr instanceof Error ? loadErr.message : 'unknown error',
+          });
+          return [] as ContractWithTerms[];
+        }
+      })) as ContractWithTerms[];
+
       // ─────────────────────────────────────────────────────────────────────
       // Step 5: run-rules — pure function over the in-memory ExtractedBill.
       // The `bill` is already in scope from `extract`, so this step is
@@ -587,6 +644,7 @@ export const processBillFn = inngest.createFunction(
           bill,
           today: new Date(),
           carrier: bill.carrier,
+          contracts: loadedContracts,
         };
         const out = await runRules(ctx, ALL_RULES);
         const r: RuleStepResult = {
@@ -798,6 +856,8 @@ export const processBillFn = inngest.createFunction(
               : 'unknown analytics error',
         });
       }
+
+      await logTrailEvent({ userId, eventType: 'audit_completed', entityType: 'audit', entityId: auditId, metadata: { carrier: bill.carrier, finding_count: findings.length } });
 
       // ─────────────────────────────────────────────────────────────────────
       // Phase 3: send-trigger — fire `audit.completed` so the email pipeline

@@ -1,4 +1,4 @@
-import type { Finding, Severity } from '@/rules/types';
+import type { Finding, FindingStatus, Severity } from '@/rules/types';
 
 /**
  * Shape of a row from the `audits` table that the report needs.
@@ -73,6 +73,12 @@ export interface ReportFindingRow {
   affected_line_ids: string[] | null;
   affected_account_ids: string[] | null;
   evidence: Record<string, unknown> | null;
+  /**
+   * Reviewer workflow status. Added in migration 0023. Nullable in TS to
+   * tolerate any pre-migration rows; the DB column is `NOT NULL DEFAULT
+   * 'new'` so production rows always have a value.
+   */
+  status?: FindingStatus | null;
 }
 
 /** Sub-shape exposed to the viewer for the audit summary block. */
@@ -120,4 +126,4 @@ export interface ReportData {
 }
 
 /** Convenience export so other modules can use it without re-importing. */
-export type { Finding, Severity } from '@/rules/types';
+export type { Finding, FindingStatus, Severity } from '@/rules/types';

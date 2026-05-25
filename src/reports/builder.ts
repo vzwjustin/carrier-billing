@@ -1,4 +1,17 @@
-import type { Finding, Severity } from '@/rules/types';
+import type { Finding, FindingStatus, Severity } from '@/rules/types';
+
+const FINDING_STATUSES: readonly FindingStatus[] = [
+  'new',
+  'in_review',
+  'approved',
+  'rejected',
+  'disputed',
+  'resolved',
+];
+
+function isFindingStatus(value: unknown): value is FindingStatus {
+  return typeof value === 'string' && FINDING_STATUSES.includes(value as FindingStatus);
+}
 
 import type {
   ReportAccountRow,
@@ -42,6 +55,7 @@ function rowToFinding(row: ReportFindingRow): Finding | null {
   // count via the length of `affected_line_indexes` so downstream
   // components can rely on a single field name.
   return {
+    id: row.id,
     rule_id: row.rule_id,
     severity: row.severity,
     title: row.title,
@@ -52,6 +66,7 @@ function rowToFinding(row: ReportFindingRow): Finding | null {
     affected_line_indexes: lineIds.map((_, i) => i),
     affected_account_indexes: (row.affected_account_ids ?? []).map((_, i) => i),
     evidence: row.evidence ?? {},
+    status: isFindingStatus(row.status) ? row.status : 'new',
   };
 }
 

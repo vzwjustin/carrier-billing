@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { requireAdmin } from '@/lib/admin/guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 
@@ -41,6 +43,23 @@ export default async function AdminOverviewPage(): Promise<React.JSX.Element> {
         <Stat label="Audits" value={audits} />
         <Stat label="Completed audits" value={completed} />
       </div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <ToolCard
+          href="/admin/failed-audits"
+          title="Failed audits"
+          description="Triage failed runs across all users. Inspect the failure reason and trigger a retry."
+        />
+        <ToolCard
+          href="/admin/trail"
+          title="Audit trail"
+          description="Cross-user activity log. Filter by event type, time window, or masked actor email."
+        />
+        <ToolCard
+          href="/admin/rate-limits"
+          title="Rate-limit inspector"
+          description="Top consume_rate_limit buckets. Debug whether a user or surface is being throttled."
+        />
+      </section>
       <section className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
         <h2 className="border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
           Recent audit activity
@@ -84,6 +103,30 @@ export default async function AdminOverviewPage(): Promise<React.JSX.Element> {
         </table>
       </section>
     </div>
+  );
+}
+
+function ToolCard({
+  href,
+  title,
+  description,
+}: {
+  href: string;
+  title: string;
+  description: string;
+}): React.JSX.Element {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+    >
+      <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+        {title}
+      </p>
+      <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+        {description}
+      </p>
+    </Link>
   );
 }
 

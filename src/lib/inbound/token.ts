@@ -3,6 +3,33 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
+ * Inbound HTTP webhook token utilities (separate surface from the
+ * `inbound_email_token` above). These tokens authenticate external callers
+ * (Slack bots, Linear automations, etc.) POSTing to
+ * `/api/inbound/finding-status`.
+ *
+ * Format: 32-char base64url (`randomBytes(24).toString('base64url')` → 24
+ * bytes = 192 bits of entropy, encoded as 32 chars in [A-Za-z0-9_-]). The DB
+ * CHECK constraint in `0029_inbound_finding_webhook.sql` enforces the shape.
+ *
+ * Tokens are minted lazily (operator clicks "Generate" in the settings UI)
+ * and revoked by setting the column to NULL. Rotation = revoke + mint.
+ */
+
+const INBOUND_WEBHOOK_TOKEN_BYTES = 24;
+export const INBOUND_WEBHOOK_TOKEN_LENGTH = 32;
+
+export function generateInboundWebhookToken(): string {
+  return randomBytes(INBOUND_WEBHOOK_TOKEN_BYTES).toString('base64url');
+}
+
+const INBOUND_WEBHOOK_TOKEN_RE = /^[A-Za-z0-9_-]{32}$/;
+
+export function isInboundWebhookTokenShape(value: unknown): value is string {
+  return typeof value === 'string' && INBOUND_WEBHOOK_TOKEN_RE.test(value);
+}
+
+/**
  * Inbound email token utilities.
  *
  * Each user gets an opaque 16-char base32 token stored on `profiles`. The

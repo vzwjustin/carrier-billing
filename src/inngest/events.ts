@@ -38,6 +38,78 @@ export type BillingPaymentFailedData = z.infer<
   typeof BillingPaymentFailedDataSchema
 >;
 
+export const ContractUploadedDataSchema = z.object({
+  contractId: z.string().uuid(),
+  userId: z.string().uuid(),
+  storagePath: z.string().min(1),
+});
+export type ContractUploadedData = z.infer<typeof ContractUploadedDataSchema>;
+
+// FindingStatus values mirror the CHECK constraint in
+// supabase/migrations/0023_finding_status_workflow.sql and the literal union
+// at src/rules/types.ts. Repeated here as a tuple so the schema can validate
+// without importing types from a 'use client'-adjacent module.
+export const FINDING_STATUS_ENUM = [
+  'new',
+  'in_review',
+  'approved',
+  'rejected',
+  'disputed',
+  'resolved',
+] as const;
+
+export const FindingStatusChangedDataSchema = z.object({
+  auditId: z.string().uuid(),
+  findingId: z.string().uuid(),
+  status: z.enum(FINDING_STATUS_ENUM),
+  // null when the previous value is unknown (e.g. defensive write where the
+  // pre-image SELECT failed). Receivers should treat null as "indeterminate".
+  previousStatus: z.enum(FINDING_STATUS_ENUM).nullable(),
+  userId: z.string().uuid(),
+});
+export type FindingStatusChangedData = z.infer<
+  typeof FindingStatusChangedDataSchema
+>;
+
+/**
+ * Severity domain mirrors `findings.severity` CHECK in migration 0001.
+ * Repeated as a tuple here so the schema can validate without importing
+ * the type-only enum module (Zod needs runtime literals).
+ */
+export const FINDING_SEVERITY_ENUM = [
+  'high',
+  'medium',
+  'low',
+  'info',
+] as const;
+
+export const FindingCreatedDataSchema = z.object({
+  auditId: z.string().uuid(),
+  findingId: z.string().uuid(),
+  userId: z.string().uuid(),
+  severity: z.enum(FINDING_SEVERITY_ENUM),
+  // rule_id is a stable identifier (e.g. "autopsy_escalated_<category>") —
+  // bounded to a sane length so a misconfigured caller can't push an
+  // unbounded string into Inngest event history.
+  ruleId: z.string().min(1).max(120),
+  title: z.string().min(1).max(500),
+  estimatedMonthlySavingsCents: z.number().int().nullable(),
+});
+export type FindingCreatedData = z.infer<typeof FindingCreatedDataSchema>;
+
+export const BillComparisonPersistedDataSchema = z.object({
+  comparisonId: z.string().uuid(),
+  userId: z.string().uuid(),
+  previousAuditId: z.string().uuid(),
+  currentAuditId: z.string().uuid(),
+  disputableCents: z.number().int(),
+  netChangeCents: z.number().int(),
+  driversCount: z.number().int().min(0),
+});
+export type BillComparisonPersistedData = z.infer<
+  typeof BillComparisonPersistedDataSchema
+>;
+
 /**
  * Convenience: parse + throw with a stable error name so the Inngest
  * function's top-level catch can surface the event shape issue distinctly

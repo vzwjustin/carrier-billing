@@ -5,6 +5,9 @@ import { requireAdmin } from '@/lib/admin/guard';
 const ADMIN_NAV = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/users', label: 'Users' },
+  { href: '/admin/failed-audits', label: 'Failed audits' },
+  { href: '/admin/trail', label: 'Trail' },
+  { href: '/admin/rate-limits', label: 'Rate limits' },
 ] as const;
 
 export default async function AdminLayout({

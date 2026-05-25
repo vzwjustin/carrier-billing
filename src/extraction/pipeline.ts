@@ -5,6 +5,10 @@ import { extractTextWithOCR, hasAwsCredentials } from '@/extraction/ocr';
 import { normalize as normalizeVerizon } from '@/extraction/carriers/verizon';
 import { normalize as normalizeAtt } from '@/extraction/carriers/att';
 import { normalize as normalizeTmobile } from '@/extraction/carriers/tmobile';
+import { normalize as normalizeUsCellular } from '@/extraction/carriers/uscellular';
+import { normalize as normalizeSpectrum } from '@/extraction/carriers/spectrum';
+import { normalize as normalizeXfinity } from '@/extraction/carriers/xfinity';
+import { normalize as normalizeCricket } from '@/extraction/carriers/cricket';
 import type { Carrier, ExtractedBill } from '@/extraction/schema';
 
 /** Below this length we assume the PDF is image-only and route to OCR. */
@@ -173,6 +177,14 @@ function applyCarrierNormalization(bill: ExtractedBill): ExtractedBill {
       return normalizeAtt(bill);
     case 'tmobile':
       return normalizeTmobile(bill);
+    case 'uscellular':
+      return normalizeUsCellular(bill);
+    case 'spectrum':
+      return normalizeSpectrum(bill);
+    case 'xfinity':
+      return normalizeXfinity(bill);
+    case 'cricket':
+      return normalizeCricket(bill);
     case 'unknown':
       return bill;
   }

@@ -1,6 +1,12 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { Upload, FileSearch, Sparkles } from 'lucide-react';
+import {
+  Upload,
+  FileSearch,
+  Sparkles,
+  TrendingUp,
+  MessageSquare,
+} from 'lucide-react';
 
 import { SiteNav } from '@/components/marketing/site-nav';
 import { SiteFooter } from '@/components/marketing/site-footer';
@@ -18,6 +24,7 @@ export default function HomePage(): React.ReactElement {
         <TrustBar />
         <HowItWorks />
         <WhatWeFind />
+        <FeatureCallouts />
         <SampleReport />
         <PricingTeaser />
         <Faq />
@@ -125,9 +132,9 @@ function HowItWorks(): React.ReactElement {
   const steps = [
     {
       icon: Upload,
-      title: 'Upload a PDF',
+      title: 'Upload a PDF — or CSV / XLSX export',
       body:
-        'Drag and drop your most recent Verizon, AT&T, or T-Mobile business wireless bill.',
+        'Drag and drop your most recent Verizon, AT&T, or T-Mobile business wireless bill. Already have a line-item export from the carrier portal? Skip the PDF.',
     },
     {
       icon: FileSearch,
@@ -137,9 +144,9 @@ function HowItWorks(): React.ReactElement {
     },
     {
       icon: Sparkles,
-      title: 'Audit rules surface waste',
+      title: '30 audit rules surface waste',
       body:
-        'A rules engine quantifies expired credits, unused features, and wrong plans — with recommended actions.',
+        'A rules engine quantifies expired credits, unused features, contract-rate drift, and wrong plans — with recommended actions.',
     },
   ] as const;
 
@@ -186,9 +193,9 @@ function HowItWorks(): React.ReactElement {
 function WhatWeFind(): React.ReactElement {
   const findings = [
     {
-      title: 'Expired promotional credits',
+      title: 'Missing or expired promotional credits',
       body:
-        'Promo credits that have rolled off, raising your monthly without a plan change.',
+        'Promos that quietly rolled off, plus promised credits the carrier never applied — both raise your monthly without a plan change.',
     },
     {
       title: 'Completed device payments still being billed',
@@ -196,19 +203,34 @@ function WhatWeFind(): React.ReactElement {
         'Equipment installments that finished but the line item never came off.',
     },
     {
-      title: 'Insurance on suspended lines',
+      title: 'Suspended-but-billed lines',
       body:
-        'Asurion, Mobile Protect, and AppleCare charges on lines no one is using.',
+        'Lines flagged suspended by the carrier yet still accruing plan, feature, or insurance charges.',
+    },
+    {
+      title: 'Zero-usage lines',
+      body:
+        'Phones, tablets, watches, and MiFi/jetpacks with effectively no data, calls, or texts — usually candidates to cancel.',
+    },
+    {
+      title: 'Contract rate mismatch',
+      body:
+        'Billed plan and feature rates that drifted above what your signed carrier contract entitles you to.',
+    },
+    {
+      title: 'Redundant hotspot add-ons',
+      body:
+        'Hotspot add-ons billed alongside plans that already include unlimited hotspot data.',
+    },
+    {
+      title: 'Insurance on suspended or paid-off devices',
+      body:
+        'Asurion, Mobile Protect, and AppleCare charges on devices that no longer need protection.',
     },
     {
       title: 'Stale international plans',
       body:
         'TravelPass and global add-ons still billing months after the trip ended.',
-    },
-    {
-      title: 'Unused MiFi/jetpack lines',
-      body:
-        'Hotspot devices on the bill with effectively zero data usage.',
     },
     {
       title: 'Plans on legacy unlimited tiers',
@@ -225,7 +247,8 @@ function WhatWeFind(): React.ReactElement {
             What we find
           </h2>
           <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
-            Common waste patterns across business wireless bills.
+            30 rules cover the most common waste patterns on US business
+            wireless bills. A few of the highest-impact ones:
           </p>
         </div>
         <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -240,6 +263,56 @@ function WhatWeFind(): React.ReactElement {
               <p className="text-sm text-neutral-600">{f.body}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeatureCallouts(): React.ReactElement {
+  return (
+    <section className="border-b border-neutral-200">
+      <div className="mx-auto w-full max-w-6xl px-4 py-16">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <h2 className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl">
+            More than a one-time audit
+          </h2>
+          <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
+            Once your bill is in, two power tools help you stay on top of
+            it month after month.
+          </p>
+        </div>
+        <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-neutral-900 text-neutral-50">
+              <TrendingUp className="h-4 w-4" aria-hidden />
+            </div>
+            <h3 className="text-base font-semibold text-neutral-900">
+              Bill Increase Autopsy
+            </h3>
+            <p className="text-sm text-neutral-600">
+              Upload two bill periods and we&apos;ll explain every dollar of
+              change — line by line. New charges, dropped credits, plan
+              changes, and rate hikes are bucketed into &quot;potentially
+              disputable&quot; and &quot;unexplained&quot; so you know exactly
+              what to take to your carrier rep.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-neutral-900 text-neutral-50">
+              <MessageSquare className="h-4 w-4" aria-hidden />
+            </div>
+            <h3 className="text-base font-semibold text-neutral-900">
+              AI assistant
+            </h3>
+            <p className="text-sm text-neutral-600">
+              Ask plain-English questions about your bill — &quot;which lines
+              haven&apos;t been used in 90 days?&quot; or &quot;which
+              departments spend the most on hotspots?&quot; — and get answers
+              that cite the underlying line items so every dollar is
+              traceable.
+            </p>
+          </div>
         </div>
       </div>
     </section>
