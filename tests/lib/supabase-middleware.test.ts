@@ -165,7 +165,7 @@ describe('updateSession — supabase client invocation', () => {
   it('passes the configured URL + anon key to createServerClient', async () => {
     currentUser = null;
     await updateSession(makeReq('/'));
-    const args = createServerClientMock.mock.calls[0]!;
+    const args = createServerClientMock.mock.calls[0] as unknown as unknown[];
     expect(args[0]).toBe('http://localhost:54321');
     expect(args[1]).toBe('placeholder');
   });
