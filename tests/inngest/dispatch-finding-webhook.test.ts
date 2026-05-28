@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * Tests for the dispatch-finding-webhook Inngest function.
  *
  * The inner `postFindingWebhook` is exported via `__testables` so we can
- * exercise the signing + fetch path directly without standing up an Inngest
- * runtime. We mock the SSRF guard to short-circuit DNS (test env has no
- * network) and stub global `fetch` to capture the outbound request.
+ * exercise the signing + IP-pinning hand-off directly without standing up an
+ * Inngest runtime. We mock the SSRF guard to short-circuit DNS (test env has
+ * no network) and mock the `postPinnedHttps` transport to capture the
+ * outbound request. The transport's TLS/SNI/redirect mechanics are covered in
+ * tests/lib/security/pinned-https.test.ts.
  */
 
 vi.mock('@/lib/security/ssrf-guard', () => ({
@@ -18,6 +20,13 @@ vi.mock('@/lib/security/ssrf-guard', () => ({
     hostname: 'hook.example.com',
   })),
   SsrfBlockedError: class extends Error {},
+}));
+
+const postPinnedHttpsMock = vi.hoisted(() =>
+  vi.fn(async (_req: unknown) => ({ status: 200 })),
+);
+vi.mock('@/lib/security/pinned-https', () => ({
+  postPinnedHttps: postPinnedHttpsMock,
 }));
 
 vi.mock('@/env', () => ({
@@ -38,6 +47,21 @@ import type { FindingSeverity } from '@/types/db-enums';
 const { postFindingWebhook } = __testables;
 
 const SECRET = 'whs_test_secret_value';
+
+interface PinnedReq {
+  url: URL;
+  resolvedIp: string;
+  family: number;
+  headers: Record<string, string>;
+  body: string;
+  timeoutMs: number;
+}
+
+function lastReq(): PinnedReq {
+  const calls = postPinnedHttpsMock.mock.calls;
+  expect(calls.length, 'postPinnedHttps was not called').toBeGreaterThan(0);
+  return calls[calls.length - 1]![0] as PinnedReq;
+}
 
 interface FindingFixture {
   id: string;
@@ -62,25 +86,13 @@ function makeFinding(overrides: Partial<FindingFixture> = {}): FindingFixture {
   };
 }
 
-// Capture the last fetch call so each test can assert headers / body.
-let lastCall: { input: string; init: RequestInit } | null = null;
-
 beforeEach(() => {
-  lastCall = null;
-  const fetchMock = vi.fn(
-    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      lastCall = {
-        input: typeof input === 'string' ? input : input.toString(),
-        init: init ?? {},
-      };
-      return new Response('{}', { status: 200 });
-    },
-  );
-  vi.stubGlobal('fetch', fetchMock);
+  postPinnedHttpsMock.mockReset();
+  postPinnedHttpsMock.mockResolvedValue({ status: 200 });
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 describe('dispatchFindingWebhookFn registration', () => {
@@ -110,28 +122,23 @@ describe('postFindingWebhook — HMAC signature', () => {
       finding: makeFinding(),
     });
 
-    expect(lastCall).not.toBeNull();
-    const headers = lastCall!.init.headers as Record<string, string>;
-    const body = lastCall!.init.body as string;
+    const req = lastReq();
+    const headers = req.headers;
+    const body = req.body;
     expect(typeof body).toBe('string');
 
-    // Pull the timestamp + v1 hex out of the signature header.
     const sig = headers['X-CarrierAudit-Signature'];
     const match = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(sig ?? '');
     expect(match, `signature header malformed: ${sig}`).not.toBeNull();
     const timestamp = match![1]!;
     const v1 = match![2]!;
 
-    // Recompute the HMAC the same way the receiver should.
     const expected = createHmac('sha256', SECRET)
       .update(`${timestamp}.${body}`)
       .digest('hex');
     expect(v1).toBe(expected);
 
-    // Timestamp header matches the signature header timestamp.
     expect(headers['X-CarrierAudit-Timestamp']).toBe(timestamp);
-
-    // Event + ID headers — receivers may route on these.
     expect(headers['X-CarrierAudit-Event']).toBe('finding.status_changed');
     expect(headers['X-CarrierAudit-Audit-Id']).toBe(
       '22222222-2222-4222-8222-222222222222',
@@ -152,7 +159,7 @@ describe('postFindingWebhook — HMAC signature', () => {
       finding: makeFinding(),
     });
 
-    const body = JSON.parse(lastCall!.init.body as string) as {
+    const body = JSON.parse(lastReq().body) as {
       event: string;
       audit_id: string;
       finding_id: string;
@@ -171,14 +178,12 @@ describe('postFindingWebhook — HMAC signature', () => {
       estimated_monthly_savings_cents: 4500,
       status: 'approved',
     });
-    // PII-safe: no MDN, no description (which can carry account context), no
-    // raw extracted bill data.
     expect(body.finding).not.toHaveProperty('mdn_last4');
     expect(body.finding).not.toHaveProperty('description');
     expect(body.finding).not.toHaveProperty('evidence');
   });
 
-  it('preserves the original Host header even when connecting to a pinned IP', async () => {
+  it('pins to the resolved IP while keeping the hostname URL and Host header', async () => {
     await postFindingWebhook({
       url: 'https://hook.example.com:8443/cb',
       secret: SECRET,
@@ -189,20 +194,19 @@ describe('postFindingWebhook — HMAC signature', () => {
       finding: makeFinding(),
     });
 
-    expect(lastCall!.input).toContain('203.0.113.10');
-    const headers = lastCall!.init.headers as Record<string, string>;
-    // Original host:port is preserved for TLS/SNI correctness.
-    expect(headers['Host']).toBe('hook.example.com:8443');
+    const req = lastReq();
+    expect(req.resolvedIp).toBe('203.0.113.10');
+    expect(req.family).toBe(4);
+    expect(req.url.hostname).toBe('hook.example.com');
+    expect(req.url.href).not.toContain('203.0.113.10');
+    // Original host:port preserved for vhost routing.
+    expect(req.headers['Host']).toBe('hook.example.com:8443');
   });
 });
 
 describe('postFindingWebhook — retry-on-5xx', () => {
   it('throws on non-2xx so Inngest retries (5xx)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('boom', { status: 503 })),
-    );
-
+    postPinnedHttpsMock.mockResolvedValue({ status: 503 });
     await expect(
       postFindingWebhook({
         url: 'https://hook.example.com/path',
@@ -217,11 +221,7 @@ describe('postFindingWebhook — retry-on-5xx', () => {
   });
 
   it('throws on 4xx too — receiver-side rotation looks indistinguishable', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('unauthorized', { status: 401 })),
-    );
-
+    postPinnedHttpsMock.mockResolvedValue({ status: 401 });
     await expect(
       postFindingWebhook({
         url: 'https://hook.example.com/path',

@@ -388,9 +388,14 @@ function tryParseAndValidate(raw: string): ParseResult {
       .slice(0, 5)
       .map((i) => `${i.path.join('.')}: ${i.message}`)
       .join('; ');
+    // L: do NOT store `raw: parsed` here — `parsed` is the full LLM-parsed
+    // bill candidate and can carry un-truncated phone/account numbers. An
+    // outer `Sentry.captureException(error)` would serialize `details.raw`
+    // BEFORE `deriveFailureReason` runs `redactDetails`, leaking PII (see
+    // CLAUDE.md §1#5). The Zod `issues` (paths + messages) are sufficient for
+    // diagnostics and never contain bill values.
     const error = new ExtractionError('Schema validation failed', {
       issues,
-      raw: parsed,
     });
     return { kind: 'error', error, reason };
   }

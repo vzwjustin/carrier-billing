@@ -181,6 +181,57 @@ describe('extractBill — H4 prompt caching', () => {
   });
 });
 
+describe('extractBill — schema-validation failure does not leak bill PII', () => {
+  it('omits the raw bill candidate from ExtractionError.details, keeping only Zod issues', async () => {
+    // A well-formed JSON object that FAILS the schema: `total_charges_cents`
+    // is a string, and it carries un-truncated PII (full phone + account
+    // number) that must NOT survive onto the thrown error's details.
+    const malformed = JSON.stringify({
+      carrier: 'verizon',
+      billing_period_start: '2026-04-01',
+      billing_period_end: '2026-04-30',
+      total_charges_cents: 'not-a-number',
+      account_number: '4155551234',
+      contact_phone: '415-555-1234',
+      accounts: [],
+      notes: [],
+    });
+    // extractBill retries once on a schema failure, so both attempts must
+    // return the malformed payload to reach the final throw.
+    messagesCreateMock.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: malformed }],
+    });
+
+    let caught: unknown = null;
+    try {
+      await extractBill(FAKE_PDF);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ExtractionError);
+    const e = caught as ExtractionError;
+    expect(e.message).toMatch(/schema validation failed/i);
+
+    const details = e.details as Record<string, unknown>;
+    // The raw bill candidate must be gone entirely.
+    expect(details).not.toHaveProperty('raw');
+    // And no bill PII may have bled into details by any path.
+    const serialized = JSON.stringify(details);
+    expect(serialized).not.toContain('4155551234');
+    expect(serialized).not.toContain('415-555-1234');
+
+    // Zod issue paths are still present for diagnostics.
+    const issues = details.issues as Array<{ path: unknown[]; message: string }>;
+    expect(Array.isArray(issues)).toBe(true);
+    expect(issues.length).toBeGreaterThan(0);
+    expect(
+      issues.some((i) => i.path.includes('total_charges_cents')),
+    ).toBe(true);
+  });
+});
+
 describe('extractBill — H6 totals sanity check', () => {
   it('returns an unmodified bill when per-account totals reconcile', async () => {
     const bill = makeBalancedBill();

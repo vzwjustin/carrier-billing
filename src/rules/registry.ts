@@ -103,6 +103,12 @@ export function validateRegistry(rules: Rule[] = ALL_RULES): void {
       );
     }
 
+    if (typeof rule.evaluate !== 'function') {
+      throw new Error(
+        `[rules] registry: rule "${rule.id}" has no evaluate function`,
+      );
+    }
+
     const applies = rule.appliesTo;
     if (applies === 'all') continue;
     if (!Array.isArray(applies)) {

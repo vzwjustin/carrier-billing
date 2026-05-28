@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import { inngest } from '../client';
 import { FindingStatusChangedDataSchema, parseEventData } from '../events';
+import { postPinnedHttps } from '@/lib/security/pinned-https';
 import { assertPublicHttpsTarget } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 import type { FindingSeverity } from '@/types/db-enums';
@@ -219,51 +220,41 @@ async function postFindingWebhook(
   const signatureHeader = `t=${timestamp},v1=${sigHex}`;
 
   // Re-validate at dispatch time — defeats DNS rebinding by resolving fresh
-  // and connecting to the literal IP with the original Host header.
+  // and pinning the connect to the vetted IP via `postPinnedHttps`, which
+  // keeps the hostname as TLS SNI so the receiver's cert still validates.
   const target = await assertPublicHttpsTarget(url);
   const original = new URL(url);
   const host =
     original.port.length > 0
       ? `${original.hostname}:${original.port}`
       : original.hostname;
-  const ipForUrl =
-    target.family === 6 ? `[${target.resolvedIp}]` : target.resolvedIp;
-  const portSuffix = original.port.length > 0 ? `:${original.port}` : '';
-  const pinnedUrl = `https://${ipForUrl}${portSuffix}${original.pathname}${original.search}`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const { status: responseStatus } = await postPinnedHttps({
+    url: original,
+    resolvedIp: target.resolvedIp,
+    family: target.family,
+    headers: {
+      'Content-Type': 'application/json',
+      Host: host,
+      'X-CarrierAudit-Timestamp': String(timestamp),
+      'X-CarrierAudit-Signature': signatureHeader,
+      'X-CarrierAudit-Event': 'finding.status_changed',
+      'X-CarrierAudit-Audit-Id': auditId,
+      'X-CarrierAudit-Finding-Id': findingId,
+      'User-Agent': 'CarrierAudit-Webhook/1.0',
+    },
+    body,
+    timeoutMs: 15_000,
+  });
 
-  try {
-    const response = await fetch(pinnedUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Host: host,
-        'X-CarrierAudit-Timestamp': String(timestamp),
-        'X-CarrierAudit-Signature': signatureHeader,
-        'X-CarrierAudit-Event': 'finding.status_changed',
-        'X-CarrierAudit-Audit-Id': auditId,
-        'X-CarrierAudit-Finding-Id': findingId,
-        'User-Agent': 'CarrierAudit-Webhook/1.0',
-      },
-      body,
-      signal: controller.signal,
-      // No redirects — receivers should expose a stable URL.
-      redirect: 'error',
-    });
-
-    if (!response.ok) {
-      // Throw so Inngest retries. 4xx still throws because we can't tell
-      // a transient 401 (e.g. rotating secret on receiver side) from a
-      // permanent reject without inspecting the body, and we don't want
-      // to leak body content into the retry log.
-      throw new Error(`webhook ${response.status}`);
-    }
-    return { status: response.status };
-  } finally {
-    clearTimeout(timeout);
+  if (responseStatus < 200 || responseStatus >= 300) {
+    // Throw so Inngest retries. 4xx still throws because we can't tell
+    // a transient 401 (e.g. rotating secret on receiver side) from a
+    // permanent reject without inspecting the body, and we don't want
+    // to leak body content into the retry log.
+    throw new Error(`webhook ${responseStatus}`);
   }
+  return { status: responseStatus };
 }
 
 export const __testables = { postFindingWebhook };

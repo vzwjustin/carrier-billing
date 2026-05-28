@@ -10,8 +10,9 @@ import { isIP } from 'node:net';
  *      scheme is not HTTPS or any DNS-resolved address falls in a private,
  *      loopback, link-local, CGNAT, or otherwise non-public range. Returns the
  *      first resolved address so callers can pin the connect (defeats DNS
- *      rebinding by reusing the *vetted* IP and forwarding the original Host
- *      header).
+ *      rebinding by reusing the *vetted* IP). Pin via a connect-level `lookup`
+ *      (see `postPinnedHttps`) — NOT by putting the IP in the fetch URL, which
+ *      would break TLS SNI/cert validation against the hostname's certificate.
  *   2. `isBlockedAddress(ip)` — exposed for tests + callers that already have
  *      a resolved address (e.g. validating a redirect Location host).
  *
@@ -46,8 +47,11 @@ interface ResolvedTarget {
  *   - non-HTTPS schemes
  *   - hostnames whose DNS resolution returns any address in a non-public range
  *
- * Returns the first resolved address. Caller should `fetch(\`https://${ip}\`)`
- * and forward the original Host header for TLS/SNI correctness.
+ * Returns the first resolved address. Caller should pin the connect to that
+ * IP while keeping the original hostname for TLS SNI + certificate identity
+ * (see `postPinnedHttps`). Do NOT `fetch(\`https://${ip}\`)` — an IP-literal
+ * URL sends no SNI and validates the cert against the IP, which fails for any
+ * normal hostname certificate.
  */
 export async function assertPublicHttpsTarget(
   url: string,

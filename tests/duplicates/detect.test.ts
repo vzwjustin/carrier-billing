@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  __testables,
   buildDetectorInput,
   detectCrossAuditDuplicates,
   DUPLICATE_RULE_IDS,
@@ -127,6 +128,70 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
     // invariant.
     expect(f.affected_line_indexes).toEqual([]);
     expect(f.confidence).toBeLessThanOrEqual(0.8);
+  });
+
+  it('attributes a within-audit finding to the actual account index (not a silent 0 default)', () => {
+    // Two accounts: the first carries a unique feature, the second carries a
+    // within-account duplicate. The within-audit finding must be stamped with
+    // account index 1 — the assertion path must not fall back to account 0.
+    const bill = makeBill({
+      accounts: [
+        makeAccount({
+          account_number_last4: '1111',
+          lines: [
+            makeLine({
+              features: [
+                makeFeature({ name: 'Solo Feature', monthly_cents: 700 }),
+              ],
+            }),
+          ],
+        }),
+        makeAccount({
+          account_number_last4: '2222',
+          lines: [
+            makeLine({
+              features: [
+                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
+              ],
+            }),
+            makeLine({
+              features: [
+                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = detectCrossAuditDuplicates(buildDetectorInput(bill));
+    const within = findings.find((f) => f.rule_id === DUPLICATE_RULE_IDS.within);
+    if (!within) throw new Error('expected a within-audit finding');
+    expect(within.affected_account_indexes).toEqual([1]);
+  });
+
+  it('throws (rather than silently defaulting to account 0) when the within-audit group has no account index', () => {
+    // Directly exercise the invariant guard: a group with an empty
+    // accountIndexes array must throw, not stamp the finding with account 0.
+    // The public detector never produces this, so the internal builder is
+    // reached via __testables. Under the old `accountIndexes[0] ?? 0` form
+    // this returned a finding attributed to account 0 instead of throwing.
+    const group = {
+      key: 'k',
+      name: 'TravelPass Daily',
+      monthlyCents: 1000,
+      refs: [
+        { accountIndex: 3, lineIndex: 0, featureName: 'TravelPass Daily' },
+        { accountIndex: 3, lineIndex: 1, featureName: 'TravelPass Daily' },
+      ],
+    };
+    expect(() =>
+      __testables.buildWithinAuditFinding(
+        group as unknown as Parameters<
+          typeof __testables.buildWithinAuditFinding
+        >[0],
+        [],
+      ),
+    ).toThrow(/within-audit group has no account index/);
   });
 
   it('does NOT fire when the same name has different prices on different lines', () => {

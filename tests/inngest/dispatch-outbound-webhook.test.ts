@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * Tests for the dispatch-outbound-webhook Inngest function.
  *
- * Mirror of dispatch-finding-webhook.test.ts — the inner `postOutboundWebhook`
- * is exposed via `__testables` so we can verify the v2 HMAC signing, SSRF
- * pinning, and PII-safe payload shape without needing an Inngest harness.
+ * The inner `postOutboundWebhook` is exposed via `__testables` so we can
+ * verify the v2 HMAC signing, IP-pinning hand-off, and PII-safe payload shape
+ * without needing an Inngest harness.
  *
- * The SSRF guard is stubbed so DNS doesn't run; `fetch` is stubbed so no
- * outbound request actually fires.
+ * The SSRF guard is stubbed so DNS doesn't run; the `postPinnedHttps`
+ * transport is mocked so no outbound request actually fires and we can assert
+ * exactly what the dispatcher hands it. The transport's own TLS/SNI/redirect
+ * mechanics are covered separately in tests/lib/security/pinned-https.test.ts.
  */
 
 vi.mock('@/lib/security/ssrf-guard', () => ({
@@ -20,6 +22,13 @@ vi.mock('@/lib/security/ssrf-guard', () => ({
     hostname: 'hook.example.com',
   })),
   SsrfBlockedError: class extends Error {},
+}));
+
+const postPinnedHttpsMock = vi.hoisted(() =>
+  vi.fn(async (_req: unknown) => ({ status: 200 })),
+);
+vi.mock('@/lib/security/pinned-https', () => ({
+  postPinnedHttps: postPinnedHttpsMock,
 }));
 
 vi.mock('@/env', () => ({
@@ -40,6 +49,22 @@ import type { AuditCarrier, AuditStatus, FindingSeverity } from '@/types/db-enum
 const { postOutboundWebhook } = __testables;
 
 const SECRET = 'whs_test_secret_value';
+
+interface PinnedReq {
+  url: URL;
+  resolvedIp: string;
+  family: number;
+  headers: Record<string, string>;
+  body: string;
+  timeoutMs: number;
+}
+
+/** The argument the dispatcher handed to the (mocked) pinned transport. */
+function lastReq(): PinnedReq {
+  const calls = postPinnedHttpsMock.mock.calls;
+  expect(calls.length, 'postPinnedHttps was not called').toBeGreaterThan(0);
+  return calls[calls.length - 1]![0] as PinnedReq;
+}
 
 interface AuditFixture {
   id: string;
@@ -97,24 +122,13 @@ function makeFinding(over: Partial<FindingFixture> = {}): FindingFixture {
   };
 }
 
-let lastCall: { input: string; init: RequestInit } | null = null;
-
 beforeEach(() => {
-  lastCall = null;
-  const fetchMock = vi.fn(
-    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      lastCall = {
-        input: typeof input === 'string' ? input : input.toString(),
-        init: init ?? {},
-      };
-      return new Response('{}', { status: 200 });
-    },
-  );
-  vi.stubGlobal('fetch', fetchMock);
+  postPinnedHttpsMock.mockReset();
+  postPinnedHttpsMock.mockResolvedValue({ status: 200 });
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 describe('dispatchOutboundWebhookFn — registration', () => {
@@ -141,9 +155,9 @@ describe('postOutboundWebhook — v2 HMAC signature', () => {
       findings: [makeFinding()],
     });
 
-    expect(lastCall).not.toBeNull();
-    const headers = lastCall!.init.headers as Record<string, string>;
-    const body = lastCall!.init.body as string;
+    const req = lastReq();
+    const headers = req.headers;
+    const body = req.body;
 
     const sig = headers['X-CarrierAudit-Signature'];
     const match = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(sig ?? '');
@@ -170,7 +184,7 @@ describe('postOutboundWebhook — v2 HMAC signature', () => {
       audit: makeAudit(),
       findings: [],
     });
-    const sigA = (lastCall!.init.headers as Record<string, string>)['X-CarrierAudit-Signature'];
+    const sigA = lastReq().headers['X-CarrierAudit-Signature'];
 
     await postOutboundWebhook({
       url: 'https://hook.example.com/path',
@@ -178,44 +192,38 @@ describe('postOutboundWebhook — v2 HMAC signature', () => {
       audit: makeAudit(),
       findings: [],
     });
-    const sigB = (lastCall!.init.headers as Record<string, string>)['X-CarrierAudit-Signature'];
+    const sigB = lastReq().headers['X-CarrierAudit-Signature'];
 
     expect(sigA).not.toBe(sigB);
   });
 });
 
-describe('postOutboundWebhook — SSRF protection', () => {
-  it('connects to the resolved IP literal, not the hostname', async () => {
+describe('postOutboundWebhook — SSRF pinning hand-off', () => {
+  it('pins the connect to the resolved IP while keeping the hostname URL (so TLS SNI/cert still validate)', async () => {
     await postOutboundWebhook({
       url: 'https://hook.example.com/path',
       secret: SECRET,
       audit: makeAudit(),
       findings: [],
     });
-    expect(lastCall!.input).toContain('203.0.113.10');
-    // The hostname must NOT appear in the URL (it's pinned to the IP).
-    expect(lastCall!.input).not.toContain('hook.example.com');
+    const req = lastReq();
+    // Connect target is pinned to the vetted IP...
+    expect(req.resolvedIp).toBe('203.0.113.10');
+    expect(req.family).toBe(4);
+    // ...but the URL (and therefore TLS SNI + cert identity) stays the hostname.
+    expect(req.url.hostname).toBe('hook.example.com');
+    expect(req.url.href).toContain('hook.example.com');
+    expect(req.url.href).not.toContain('203.0.113.10');
   });
 
-  it('preserves the original Host header (so TLS SNI and vhost routing still work)', async () => {
+  it('preserves the original Host header including port', async () => {
     await postOutboundWebhook({
       url: 'https://hook.example.com:8443/cb',
       secret: SECRET,
       audit: makeAudit(),
       findings: [],
     });
-    const headers = lastCall!.init.headers as Record<string, string>;
-    expect(headers['Host']).toBe('hook.example.com:8443');
-  });
-
-  it('disables redirects (so a 30x cannot bounce to an internal IP)', async () => {
-    await postOutboundWebhook({
-      url: 'https://hook.example.com/path',
-      secret: SECRET,
-      audit: makeAudit(),
-      findings: [],
-    });
-    expect(lastCall!.init.redirect).toBe('error');
+    expect(lastReq().headers['Host']).toBe('hook.example.com:8443');
   });
 });
 
@@ -228,7 +236,7 @@ describe('postOutboundWebhook — payload contract', () => {
       findings: [makeFinding()],
     });
 
-    const body = JSON.parse(lastCall!.init.body as string) as {
+    const body = JSON.parse(lastReq().body) as {
       event: string;
       delivered_at: string;
       audit: Record<string, unknown>;
@@ -259,12 +267,10 @@ describe('postOutboundWebhook — payload contract', () => {
         finding_count: null,
         high_severity_count: null,
       }),
-      findings: [
-        makeFinding({ estimated_monthly_savings_cents: null }),
-      ],
+      findings: [makeFinding({ estimated_monthly_savings_cents: null })],
     });
 
-    const body = JSON.parse(lastCall!.init.body as string) as {
+    const body = JSON.parse(lastReq().body) as {
       audit: Record<string, number>;
       findings: Array<Record<string, number>>;
     };
@@ -277,15 +283,13 @@ describe('postOutboundWebhook — payload contract', () => {
   });
 
   it('does NOT include raw bill data, MDN, or phone numbers in the audit envelope', async () => {
-    // The audit envelope must carry only the aggregate / metadata fields —
-    // never raw extracted bill payload that could leak account/MDN content.
     await postOutboundWebhook({
       url: 'https://hook.example.com/path',
       secret: SECRET,
       audit: makeAudit(),
       findings: [makeFinding()],
     });
-    const body = JSON.parse(lastCall!.init.body as string) as {
+    const body = JSON.parse(lastReq().body) as {
       audit: Record<string, unknown>;
     };
     expect(body.audit).not.toHaveProperty('extracted_bill');
@@ -299,10 +303,7 @@ describe('postOutboundWebhook — payload contract', () => {
 
 describe('postOutboundWebhook — retry-on-non-2xx', () => {
   it('throws on 5xx so Inngest retries', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('boom', { status: 503 })),
-    );
+    postPinnedHttpsMock.mockResolvedValue({ status: 503 });
     await expect(
       postOutboundWebhook({
         url: 'https://hook.example.com/path',
@@ -314,10 +315,7 @@ describe('postOutboundWebhook — retry-on-non-2xx', () => {
   });
 
   it('throws on 4xx too (rotating-secret 401 looks the same as a permanent reject)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('unauthorized', { status: 401 })),
-    );
+    postPinnedHttpsMock.mockResolvedValue({ status: 401 });
     await expect(
       postOutboundWebhook({
         url: 'https://hook.example.com/path',

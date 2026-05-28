@@ -14,9 +14,9 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  * Idempotency contract: callers (the webhook route + the replay cron) gate
  * this function on the `billing_events.stripe_event_id` unique constraint so
  * that the same Stripe event id is never persisted twice. On retry, callers
- * pass `previousStatus` in the context so non-idempotent mutations (the
- * credit grant in checkout.session.completed) can short-circuit and avoid
- * double-effects.
+ * pass `previousStatus` in the context, but it is now informational-only — no
+ * remaining mutation gates on it. The atomic `grant_credit_once` RPC is the
+ * durable idempotency guard for the credit grant in checkout.session.completed.
  *
  * Throwing from here surfaces a 5xx out of the webhook route so Stripe
  * automatically retries (H8). Each branch is written to be safe under retry:

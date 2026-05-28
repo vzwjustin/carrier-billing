@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   runEdi811Pipeline,
   Edi811PipelineError,
@@ -374,6 +374,94 @@ describe('runEdi811Pipeline — failure modes', () => {
     });
     expect(bill.billing_period_start).toBe('2026-03-01');
     expect(bill.billing_period_end).toBe('2026-03-31');
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (Finding E) A $0 SAC device installment (D830) is a valid DPP row — the
+  // schema allows monthly_cents: 0 (nonnegative). It must be RETAINED so
+  // device binding for DPP / contract-rate rules still works.
+  // ───────────────────────────────────────────────────────────────────────
+  it('retains a $0 SAC device installment in dpp_installments', async () => {
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-DPP0~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*150*20260301~',
+      'DTM*151*20260331~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'PID*F****iPhone 15 Pro~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      buildSac({
+        indicator: 'C',
+        code: 'D830',
+        amount: '0.00',
+        description: 'iPhone 15 Pro Installment (paid off)',
+        remainingPayments: 0,
+        totalPayments: 24,
+      }),
+      'TDS*4000~',
+      'CTT*1~',
+      'SE*14*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const { bill } = await runEdi811Pipeline({ buffer: bufferOf(interchange) });
+    const line = bill.accounts[0]!.lines[0]!;
+    expect(line.dpp_installments).toHaveLength(1);
+    expect(line.dpp_installments[0]!.monthly_cents).toBe(0);
+    expect(line.dpp_installments[0]!.total_payments).toBe(24);
+    expect(() => ExtractedBillSchema.parse(bill)).not.toThrow();
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (Finding F) An arithmetically-negative account subtotal is clamped to 0
+  // so the schema's nonnegative() doesn't reject the bill, but the clamp must
+  // be observable (console.warn with account last4 + the negative subtotal),
+  // not silent — silent clamping masks an extraction error.
+  // ───────────────────────────────────────────────────────────────────────
+  it('warns (and clamps) when an account subtotal computes negative', async () => {
+    // Account-level credit (-$50) outweighs the only line's base ($40): the
+    // raw subtotal is -$10, which sumAccountTotal clamps to 0 with a warning.
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-NEG~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*150*20260301~',
+      'DTM*151*20260331~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      // Account-level allowance (no current line yet) → account_level_credits.
+      buildSac({ indicator: 'A', code: 'F050', amount: '50.00', description: 'Loyalty credit' }),
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      'TDS*4000~',
+      'CTT*1~',
+      'SE*13*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { bill } = await runEdi811Pipeline({ buffer: bufferOf(interchange) });
+      expect(() => ExtractedBillSchema.parse(bill)).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const msg = warnSpy.mock.calls[0]![0] as string;
+      // Observability: surfaces the account last4 and the negative subtotal.
+      expect(msg).toContain('7890');
+      expect(msg).toContain('-1000');
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('accepts an unknown carrier and emits notes through the validated bill', async () => {

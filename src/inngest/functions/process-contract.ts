@@ -55,6 +55,7 @@ export const processContractFn = inngest.createFunction(
         | { proceed: true }
         | { proceed: false; reason: 'not-found' }
         | { proceed: false; reason: 'ownership-mismatch' }
+        | { proceed: false; reason: 'ownership-mismatch-race' }
         | { proceed: false; reason: 'already-advanced'; observedStatus: string };
 
       const markResult = (await step.run(
@@ -74,14 +75,26 @@ export const processContractFn = inngest.createFunction(
           if (!rowData) return { proceed: false, reason: 'not-found' };
           const row = rowData as { id: string; user_id: string; status: string };
           if (row.user_id !== userId) {
-            await supabase
+            // Status-guarded so a row that advanced to 'extracting'/'parsed'
+            // between the fetch and this update is never stomped to 'failed'.
+            const { data: ownRows, error: ownErr } = await supabase
               .from('contracts')
               .update({
                 status: 'failed',
                 failure_reason: 'ownership-mismatch',
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', contractId);
+              .eq('id', contractId)
+              .eq('status', 'pending')
+              .select('id');
+            if (ownErr) {
+              throw new Error(
+                `contracts update (ownership-mismatch) failed: ${ownErr.message}`,
+              );
+            }
+            if ((ownRows ?? []).length === 0) {
+              return { proceed: false, reason: 'ownership-mismatch-race' };
+            }
             return { proceed: false, reason: 'ownership-mismatch' };
           }
           const { data: updatedRows, error: updErr } = await supabase
@@ -151,7 +164,7 @@ export const processContractFn = inngest.createFunction(
         const supabase = getAdminClient();
 
         // (a) write header fields to the parent row
-        const { error: updErr } = await supabase
+        const { data: updatedRows, error: updErr } = await supabase
           .from('contracts')
           .update({
             carrier: contract.header.carrier,
@@ -167,6 +180,12 @@ export const processContractFn = inngest.createFunction(
           .select('id');
         if (updErr) {
           throw new Error(`contracts update (persist) failed: ${updErr.message}`);
+        }
+        // 0-row no-op: a concurrent run / Inngest replay already advanced the
+        // header out of 'extracting'. Short-circuit BEFORE rewriting
+        // contract_terms so we don't leave the header stale while terms churn.
+        if ((updatedRows ?? []).length === 0) {
+          return { ok: false as const, reason: 'status-guard' as const };
         }
 
         // (b) delete-then-insert contract_terms — idempotent on retry the

@@ -173,7 +173,16 @@ function unique<T>(arr: T[]): T[] {
 }
 
 function buildWithinAuditFinding(group: Group, accountIndexes: number[]): Finding {
-  const accountIdx = accountIndexes[0] ?? 0;
+  const accountIdx = accountIndexes[0];
+  // Caller guarantees a single non-empty account bucket (group.refs.length >= 2,
+  // accountIndexes.length === 1) before routing here. Assert rather than
+  // silently defaulting to account 0 — a broken invariant must not mis-attribute
+  // the finding to the wrong account.
+  if (accountIdx === undefined) {
+    throw new Error(
+      '[duplicates] buildWithinAuditFinding: within-audit group has no account index',
+    );
+  }
   // All refs are in the same account; collect the local line indexes.
   // De-duplicate so "same line twice" doesn't double-stamp the same line id.
   const localLineIndexes = unique(group.refs.map((r) => r.lineIndex));
@@ -248,3 +257,13 @@ function buildAcrossAccountsFinding(
     },
   };
 }
+
+/**
+ * Test-only surface. `buildWithinAuditFinding` is internal, but its
+ * account-index invariant — throw rather than silently default to account 0
+ * when the account bucket is empty — is unreachable through the public
+ * `detectCrossAuditDuplicates` API, which structurally never routes an empty
+ * group here. Exposed so a test can exercise the guard directly. Mirrors the
+ * `__testables` convention used by the webhook dispatchers.
+ */
+export const __testables = { buildWithinAuditFinding };
