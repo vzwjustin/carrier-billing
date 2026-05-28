@@ -29,6 +29,12 @@ export function SiteNav(): React.ReactElement {
             See a sample
           </Link>
           <Link
+            href="/docs"
+            className="rounded-md px-3 py-1.5 text-sm text-neutral-700 hover:text-neutral-900"
+          >
+            Docs
+          </Link>
+          <Link
             href="/pricing"
             className="rounded-md px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
           >

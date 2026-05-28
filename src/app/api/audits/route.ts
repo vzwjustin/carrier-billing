@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { scrubString } from '@/lib/observability/redact';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -297,6 +298,8 @@ export async function POST(request: Request): Promise<Response> {
         { status: 500 },
       );
     }
+
+    await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'pdf', file_size_bytes: fileSize }, actorEmail: user.email ?? null });
 
     return NextResponse.json({
       auditId,

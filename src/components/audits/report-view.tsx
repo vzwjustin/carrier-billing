@@ -9,6 +9,12 @@ import type { ReportData } from '@/reports/types';
 export interface ReportViewProps {
   report: ReportData;
   isPublic?: boolean;
+  /**
+   * Passed through to `ReportActions` so the PDF / CSV download buttons
+   * append `?token=…` when the viewer arrived via a public share link. The
+   * download routes accept either an auth cookie or a share token; without
+   * one of the two they 401, which would make the buttons broken on /share.
+   */
   shareToken?: string;
 }
 
@@ -29,6 +35,8 @@ export function ReportView({
       <FindingsList
         findingsBySeverity={report.findingsBySeverity}
         totalFindingCount={report.audit.finding_count}
+        auditId={report.audit.id}
+        isPublic={isPublic}
       />
     </div>
   );

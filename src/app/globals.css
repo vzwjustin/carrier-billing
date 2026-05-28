@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Class/attribute-based dark variant. The ThemeProvider resolves the user's
+   preference (light | dark | system) to a concrete value and sets
+   `data-theme` on <html>, so `dark:` utilities key off that attribute. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 @theme {
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(0 0% 3.9%);
@@ -13,8 +18,21 @@
   --radius: 0.5rem;
 }
 
+:root[data-theme='dark'] {
+  --color-background: hsl(0 0% 3.9%);
+  --color-foreground: hsl(0 0% 98%);
+  --color-muted: hsl(0 0% 14.9%);
+  --color-muted-foreground: hsl(0 0% 63.9%);
+  --color-border: hsl(0 0% 14.9%);
+  --color-primary: hsl(0 0% 98%);
+  --color-primary-foreground: hsl(0 0% 9%);
+  color-scheme: dark;
+}
+
+/* No-JS fallback: honor the OS preference until the provider sets an
+   explicit attribute. */
 @media (prefers-color-scheme: dark) {
-  @theme {
+  :root:not([data-theme]) {
     --color-background: hsl(0 0% 3.9%);
     --color-foreground: hsl(0 0% 98%);
     --color-muted: hsl(0 0% 14.9%);
@@ -22,6 +40,7 @@
     --color-border: hsl(0 0% 14.9%);
     --color-primary: hsl(0 0% 98%);
     --color-primary-foreground: hsl(0 0% 9%);
+    color-scheme: dark;
   }
 }
 

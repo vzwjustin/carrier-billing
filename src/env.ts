@@ -145,6 +145,12 @@ export const env = createEnv({
     // Stripe-API + Anthropic-key checks. When unset, /api/health remains a
     // pure liveness endpoint (200 / app:ok) — the default-safe behavior.
     HEALTH_SECRET: z.string().min(16).optional(),
+
+    // Recurring bill-upload reminder cron. Default-safe: when unset or not
+    // exactly 'true', the monthly job runs in dry-run mode (selects + logs
+    // the due-user count but sends no email). Set to 'true' ONLY once a
+    // verified Resend sender domain is configured (see FROM_ADDRESS TODO).
+    BILL_REMINDER_ENABLED: z.enum(['true', 'false']).optional(),
   },
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -180,6 +186,7 @@ export const env = createEnv({
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
     HEALTH_SECRET: process.env.HEALTH_SECRET,
+    BILL_REMINDER_ENABLED: process.env.BILL_REMINDER_ENABLED,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

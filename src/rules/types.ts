@@ -1,3 +1,4 @@
+import type { ContractWithTerms } from '@/contracts/schema';
 import type { Carrier, ExtractedBill } from '@/extraction/schema';
 
 /**
@@ -28,6 +29,20 @@ import type { Carrier, ExtractedBill } from '@/extraction/schema';
 export type Severity = 'high' | 'medium' | 'low' | 'info';
 
 /**
+ * Reviewer workflow status on a persisted finding (migration 0023). Lives
+ * here so both the API route and UI components can import without dragging
+ * a 'use client' boundary in. Mirrors the CHECK constraint in
+ * `supabase/migrations/0023_finding_status_workflow.sql` — keep in sync.
+ */
+export type FindingStatus =
+  | 'new'
+  | 'in_review'
+  | 'approved'
+  | 'rejected'
+  | 'disputed'
+  | 'resolved';
+
+/**
  * A confidence number constrained to [0, 1]. Kept as `number` (not branded)
  * so rule authors don't have to plumb a constructor through every helper.
  * Validated at the rule-runner layer. See "Confidence Buckets" above for
@@ -36,6 +51,13 @@ export type Severity = 'high' | 'medium' | 'low' | 'info';
 export type Confidence = number;
 
 export type Finding = {
+  /**
+   * Database row id. Optional because the rule engine itself does not know
+   * the id — it's assigned by the persistence layer. The report builder
+   * populates it when reconstructing a Finding from a `ReportFindingRow`
+   * so UI components can pass it back into the reviewer-status API.
+   */
+  id?: string;
   rule_id: string;
   severity: Severity;
   title: string;
@@ -55,6 +77,11 @@ export type Finding = {
   affected_account_indexes: number[];
   /** Small, PII-free JSON describing what triggered the finding. */
   evidence: Record<string, unknown>;
+  /**
+   * Reviewer workflow status. Optional for the same reason as `id` —
+   * the rule engine doesn't set it; the persistence layer + builder do.
+   */
+  status?: FindingStatus;
 };
 
 export type RuleContext = {
@@ -62,6 +89,15 @@ export type RuleContext = {
   /** Always inject "now" — never call `new Date()` inside a rule. */
   today: Date;
   carrier: Carrier;
+  /**
+   * Parsed contracts belonging to the audit's user. Optional so existing
+   * tests / call sites that don't load contracts continue to work
+   * unchanged. Rules that consume this field should skip cleanly when the
+   * array is `undefined` or empty. Loaded by the rule-runner caller
+   * (`src/inngest/functions/process-bill.ts`), NOT inside rules — rules
+   * remain pure functions with no I/O.
+   */
+  contracts?: ContractWithTerms[];
 };
 
 export type Rule = {

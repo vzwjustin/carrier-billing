@@ -29,7 +29,15 @@ export const AUDIT_STATUSES: readonly AuditStatus[] = [
 ] as const;
 
 /** Mirrors `audits.carrier` CHECK domain (nullable). */
-export type AuditCarrier = 'verizon' | 'att' | 'tmobile' | 'unknown';
+export type AuditCarrier =
+  | 'verizon'
+  | 'att'
+  | 'tmobile'
+  | 'uscellular'
+  | 'spectrum'
+  | 'xfinity'
+  | 'cricket'
+  | 'unknown';
 
 /** Mirrors `findings.severity` CHECK domain. */
 export type FindingSeverity = 'high' | 'medium' | 'low' | 'info';

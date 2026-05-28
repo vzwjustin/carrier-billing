@@ -229,6 +229,53 @@ export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecr
   return { ok: true, secret };
 }
 
+export type DeleteAccountResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+const DeleteAccountSchema = z.object({
+  confirm_email: z.string().trim().min(1).max(320),
+});
+
+export async function deleteAccountAction(
+  input: unknown,
+): Promise<DeleteAccountResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+
+  const parsed = DeleteAccountSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: 'Invalid confirmation.' };
+  }
+
+  // Require the user to type their own email exactly. Scoped strictly to the
+  // signed-in user's own account — never deletes anyone else.
+  const expected = (user.email ?? '').trim().toLowerCase();
+  if (
+    expected.length === 0 ||
+    parsed.data.confirm_email.toLowerCase() !== expected
+  ) {
+    return {
+      ok: false,
+      error: 'The email you typed does not match your account email.',
+    };
+  }
+
+  const admin = getAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(user.id);
+  if (error) {
+    return { ok: false, error: 'Could not delete account. Please try again.' };
+  }
+
+  // Session cookies now reference a deleted user; clear them so the browser
+  // isn't left in a half-authenticated state.
+  await supabase.auth.signOut();
+  return { ok: true };
+}
+
 export async function rotateInboundTokenAction(): Promise<RotateInboundTokenResult> {
   const supabase = await createClient();
   const {

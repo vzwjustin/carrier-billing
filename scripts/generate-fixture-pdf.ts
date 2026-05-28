@@ -39,6 +39,14 @@ function carrierHeader(carrier: ExtractedBill['carrier']): CarrierHeader {
       return { display: 'AT&T Business Mobility', banner: 'AT&T' };
     case 'tmobile':
       return { display: 'T-Mobile for Business', banner: 'T-Mobile' };
+    case 'uscellular':
+      return { display: 'U.S. Cellular Business', banner: 'U.S. Cellular' };
+    case 'spectrum':
+      return { display: 'Spectrum Mobile', banner: 'Spectrum Mobile' };
+    case 'xfinity':
+      return { display: 'Xfinity Mobile', banner: 'Xfinity Mobile' };
+    case 'cricket':
+      return { display: 'Cricket Wireless', banner: 'Cricket Wireless' };
     case 'unknown':
       return { display: 'Wireless Bill', banner: 'wireless' };
   }

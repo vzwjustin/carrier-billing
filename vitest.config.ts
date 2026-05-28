@@ -18,6 +18,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Stub Next.js' `server-only` package — it throws at runtime when imported
+      // into a client bundle, and vite can't resolve the bare module name
+      // during test transform.
+      'server-only': path.resolve(__dirname, './tests/shims/server-only.ts'),
     },
   },
 });

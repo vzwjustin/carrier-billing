@@ -1,5 +1,4 @@
 import { createHmac } from 'node:crypto';
-import { request as httpsRequest } from 'node:https';
 
 import { inngest } from '../client';
 import { AuditCompletedDataSchema, parseEventData } from '../events';
@@ -63,51 +62,6 @@ interface FindingRow {
   recommended_action: string;
   estimated_monthly_savings_cents: number | null;
   confidence: number | null;
-}
-
-function postPinnedHttps({
-  url,
-  resolvedIp,
-  family,
-  headers,
-  body,
-  timeoutMs,
-}: {
-  url: URL;
-  resolvedIp: string;
-  family: 4 | 6;
-  headers: Record<string, string>;
-  body: string;
-  timeoutMs: number;
-}): Promise<{ status: number }> {
-  return new Promise((resolve, reject) => {
-    const req = httpsRequest(
-      {
-        protocol: 'https:',
-        hostname: url.hostname,
-        port: url.port ? Number(url.port) : 443,
-        path: `${url.pathname}${url.search}`,
-        method: 'POST',
-        headers,
-        servername: url.hostname,
-        timeout: timeoutMs,
-        lookup: (_hostname, _options, callback) => {
-          callback(null, resolvedIp, family);
-        },
-      },
-      (res) => {
-        const status = res.statusCode ?? 0;
-        res.resume();
-        res.on('end', () => resolve({ status }));
-      },
-    );
-
-    req.on('timeout', () => {
-      req.destroy(new Error('webhook timeout'));
-    });
-    req.on('error', reject);
-    req.end(body);
-  });
 }
 
 export const dispatchOutboundWebhookFn = inngest.createFunction(
@@ -193,84 +147,12 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
     }
 
     const result = (await step.run('post-webhook', async () => {
-      const payload = {
-        event: 'audit.completed' as const,
-        delivered_at: new Date().toISOString(),
-        audit: {
-          id: ctx.audit.id,
-          user_id: ctx.audit.user_id,
-          status: ctx.audit.status,
-          carrier: ctx.audit.carrier,
-          billing_period_start: ctx.audit.billing_period_start,
-          billing_period_end: ctx.audit.billing_period_end,
-          estimated_monthly_savings_cents:
-            ctx.audit.estimated_monthly_savings_cents ?? 0,
-          estimated_annual_savings_cents:
-            ctx.audit.estimated_annual_savings_cents ?? 0,
-          finding_count: ctx.audit.finding_count ?? 0,
-          high_severity_count: ctx.audit.high_severity_count ?? 0,
-          completed_at: ctx.audit.completed_at,
-        },
-        findings: ctx.findings.map((f) => ({
-          id: f.id,
-          rule_id: f.rule_id,
-          severity: f.severity,
-          title: f.title,
-          description: f.description,
-          recommended_action: f.recommended_action,
-          estimated_monthly_savings_cents:
-            f.estimated_monthly_savings_cents ?? 0,
-          confidence: f.confidence,
-        })),
-      };
-
-      const body = JSON.stringify(payload);
-      const timestamp = Math.floor(Date.now() / 1000);
-      // v2 signature: HMAC over `${timestamp}.${body}` so a captured request
-      // can't be replayed indefinitely. Receivers should reject timestamps
-      // older than 5 min.
-      const signedPayload = `${timestamp}.${body}`;
-      const sigHex = createHmac('sha256', ctx.secret)
-        .update(signedPayload)
-        .digest('hex');
-      const signatureHeader = `t=${timestamp},v1=${sigHex}`;
-
-      // Re-validate the URL at dispatch time — checking only at submit-time
-      // would let an attacker register a public DNS name now and rebind it to
-      // 127.0.0.1 / 169.254.169.254 before the worker fires. Resolve fresh
-      // here, then `fetch` the literal IP with the original Host header
-      // preserved so TLS/SNI still terminates correctly.
-      const target = await assertPublicHttpsTarget(ctx.url);
-
-      const original = new URL(ctx.url);
-      const host =
-        original.port.length > 0
-          ? `${original.hostname}:${original.port}`
-          : original.hostname;
-
-      const response = await postPinnedHttps({
-        url: original,
-        resolvedIp: target.resolvedIp,
-        family: target.family,
-        headers: {
-          'Content-Type': 'application/json',
-          Host: host,
-          'X-CarrierAudit-Timestamp': String(timestamp),
-          'X-CarrierAudit-Signature': signatureHeader,
-          'X-CarrierAudit-Event': 'audit.completed',
-          'X-CarrierAudit-Audit-Id': ctx.audit.id,
-          'User-Agent': 'CarrierAudit-Webhook/1.0',
-        },
-        body,
-        timeoutMs: 15_000,
+      return postOutboundWebhook({
+        url: ctx.url,
+        secret: ctx.secret,
+        audit: ctx.audit,
+        findings: ctx.findings,
       });
-
-      if (response.status < 200 || response.status >= 300) {
-        // Throw so Inngest retries; only surface the status code, not the
-        // body, to keep PII out of logs.
-        throw new Error(`webhook ${response.status}`);
-      }
-      return { status: response.status };
     })) as { status: number };
 
     logger.info('dispatchOutboundWebhook: delivered', {
@@ -281,3 +163,116 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
     return { delivered: true, status: result.status };
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extracted POST logic — kept as a separate function so unit tests can
+// exercise the signing + fetch + SSRF-guard path without spinning up an
+// Inngest runtime. Exported via `__testables` (test-only surface).
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PostOutboundWebhookInput {
+  url: string;
+  secret: string;
+  audit: AuditRow;
+  findings: FindingRow[];
+}
+
+async function postOutboundWebhook(
+  input: PostOutboundWebhookInput,
+): Promise<{ status: number }> {
+  const { url, secret, audit, findings } = input;
+
+  const payload = {
+    event: 'audit.completed' as const,
+    delivered_at: new Date().toISOString(),
+    audit: {
+      id: audit.id,
+      user_id: audit.user_id,
+      status: audit.status,
+      carrier: audit.carrier,
+      billing_period_start: audit.billing_period_start,
+      billing_period_end: audit.billing_period_end,
+      estimated_monthly_savings_cents:
+        audit.estimated_monthly_savings_cents ?? 0,
+      estimated_annual_savings_cents:
+        audit.estimated_annual_savings_cents ?? 0,
+      finding_count: audit.finding_count ?? 0,
+      high_severity_count: audit.high_severity_count ?? 0,
+      completed_at: audit.completed_at,
+    },
+    findings: findings.map((f) => ({
+      id: f.id,
+      rule_id: f.rule_id,
+      severity: f.severity,
+      title: f.title,
+      description: f.description,
+      recommended_action: f.recommended_action,
+      estimated_monthly_savings_cents: f.estimated_monthly_savings_cents ?? 0,
+      confidence: f.confidence,
+    })),
+  };
+
+  const body = JSON.stringify(payload);
+  const timestamp = Math.floor(Date.now() / 1000);
+  // v2 signature: HMAC over `${timestamp}.${body}` so a captured request
+  // can't be replayed indefinitely. Receivers should reject timestamps older
+  // than 5 min.
+  const signedPayload = `${timestamp}.${body}`;
+  const sigHex = createHmac('sha256', secret)
+    .update(signedPayload)
+    .digest('hex');
+  const signatureHeader = `t=${timestamp},v1=${sigHex}`;
+
+  // Re-validate the URL at dispatch time — checking only at submit-time
+  // would let an attacker register a public DNS name now and rebind it to
+  // 127.0.0.1 / 169.254.169.254 before the worker fires. Resolve fresh
+  // here, then `fetch` the literal IP with the original Host header
+  // preserved so TLS/SNI still terminates correctly.
+  const target = await assertPublicHttpsTarget(url);
+
+  const original = new URL(url);
+  const host =
+    original.port.length > 0
+      ? `${original.hostname}:${original.port}`
+      : original.hostname;
+  // Wrap IPv6 literal in brackets for URL syntax.
+  const ipForUrl =
+    target.family === 6 ? `[${target.resolvedIp}]` : target.resolvedIp;
+  const portSuffix = original.port.length > 0 ? `:${original.port}` : '';
+  const pinnedUrl = `https://${ipForUrl}${portSuffix}${original.pathname}${original.search}`;
+
+  // Bound the round-trip so a slow consumer doesn't park a worker.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const response = await fetch(pinnedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Host: host,
+        'X-CarrierAudit-Timestamp': String(timestamp),
+        'X-CarrierAudit-Signature': signatureHeader,
+        'X-CarrierAudit-Event': 'audit.completed',
+        'X-CarrierAudit-Audit-Id': audit.id,
+        'User-Agent': 'CarrierAudit-Webhook/1.0',
+      },
+      body,
+      signal: controller.signal,
+      // No redirects — receivers should expose a stable URL, and silently
+      // following a 30x to a different host opens a small SSRF surface.
+      redirect: 'error',
+    });
+
+    if (!response.ok) {
+      // Throw so Inngest retries; only surface the status code, not the
+      // body, to keep PII out of logs.
+      throw new Error(`webhook ${response.status}`);
+    }
+    return { status: response.status };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const __testables = { postOutboundWebhook };

@@ -8,6 +8,11 @@ import { Button } from '@/components/ui/button';
 export interface ReportActionsProps {
   auditId: string;
   isPublic?: boolean;
+  /**
+   * When the viewer reached the report via a public share link, the download
+   * routes need `?token=<share_token>` to authorize the request. Auth users
+   * leave this undefined; the cookie does the job.
+   */
   shareToken?: string;
 }
 
@@ -27,6 +32,11 @@ export function ReportActions({
   shareToken,
 }: ReportActionsProps): React.JSX.Element {
   const [isLoading, setIsLoading] = React.useState(false);
+
+  // The share-token query string used by both download buttons when the
+  // viewer arrived via /share/[token]. Empty string for authed callers so
+  // the URL stays clean.
+  const tokenQuery = shareToken ? `?token=${encodeURIComponent(shareToken)}` : '';
 
   const handleShare = React.useCallback(async (): Promise<void> => {
     setIsLoading(true);
@@ -58,17 +68,28 @@ export function ReportActions({
   }, [auditId]);
 
   const handleDownload = React.useCallback((): void => {
-    const tokenQuery =
-      isPublic && shareToken
-        ? `?token=${encodeURIComponent(shareToken)}`
-        : '';
-    window.open(`/api/audits/${auditId}/report.pdf${tokenQuery}`, '_blank', 'noopener');
-  }, [auditId, isPublic, shareToken]);
+    window.open(
+      `/api/audits/${auditId}/report.pdf${tokenQuery}`,
+      '_blank',
+      'noopener',
+    );
+  }, [auditId, tokenQuery]);
+
+  const handleDownloadCsv = React.useCallback((): void => {
+    window.open(
+      `/api/audits/${auditId}/findings.csv${tokenQuery}`,
+      '_blank',
+      'noopener',
+    );
+  }, [auditId, tokenQuery]);
 
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Button onClick={handleDownload} variant="default">
         Download PDF
+      </Button>
+      <Button onClick={handleDownloadCsv} variant="outline">
+        Export CSV
       </Button>
       {!isPublic ? (
         <Button
