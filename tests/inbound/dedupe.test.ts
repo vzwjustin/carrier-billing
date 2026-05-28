@@ -452,4 +452,45 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(storageRemoveMock).toHaveBeenCalledTimes(1);
     expect(inboundEventsDeleteEqMock).toHaveBeenCalledTimes(1);
   });
+
+  it('refunds via refund_orphan_audit BEFORE deleting the row when bill.uploaded dispatch fails', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 dispatch-fail', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    gateMock.mockResolvedValueOnce({ ok: true, reason: 'credit' });
+    inngestSendMock.mockRejectedValueOnce(new Error('inngest down'));
+
+    const res = await POST(makeRequest(payload));
+
+    // The rethrown sendErr is swallowed by the outer catch → 200 so the email
+    // provider doesn't retry; orphan-cleanup would catch any half-created row.
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('internal_error');
+    // Refund via the idempotent, row-anchored RPC (not a bare increment), so a
+    // retry / the orphan-cleanup cron can't double-refund.
+    expect(rpcMock).toHaveBeenCalledWith('refund_orphan_audit', {
+      p_audit_id: expect.any(String),
+      p_user_id: 'user-uuid-1',
+      p_reason: 'inbound-dispatch-failed',
+    });
+    // Refund must run BEFORE the audit-row delete (the RPC has to match the
+    // still-present pending row) — this is the crash-window leak fix.
+    const refundIdx = rpcMock.mock.calls.findIndex(
+      ([fn]) => fn === 'refund_orphan_audit',
+    );
+    expect(refundIdx).toBeGreaterThanOrEqual(0);
+    expect(rpcMock.mock.invocationCallOrder[refundIdx]!).toBeLessThan(
+      auditsDeleteEqMock.mock.invocationCallOrder[0]!,
+    );
+    expect(inboundEventsDeleteEqMock).toHaveBeenCalledTimes(1);
+  });
 });

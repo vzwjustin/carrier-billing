@@ -33,9 +33,17 @@ async function refundConsumedCredit(
   surface: string,
 ): Promise<void> {
   try {
-    const { error } = await admin.rpc('increment_audit_credits', {
-      profile_id: userId,
-      delta: 1,
+    // Use the row-anchored, idempotent `refund_orphan_audit` RPC rather than a
+    // bare `increment_audit_credits(+1)`. It flips `credit_consumed` true→false
+    // AND increments the balance in one atomic statement, gated on
+    // (status='pending' AND credit_consumed=true). That gate makes a second
+    // call (e.g. the orphan-cleanup cron, or a request retry) a no-op on the
+    // credit, so it can never double-refund — which is why the caller refunds
+    // BEFORE deleting the row (the row must still exist for the RPC to match).
+    const { error } = await admin.rpc('refund_orphan_audit', {
+      p_audit_id: auditId,
+      p_user_id: userId,
+      p_reason: 'create_rollback',
     });
     if (error) {
       throw new Error(error.message);
@@ -277,22 +285,29 @@ export async function POST(request: Request): Promise<Response> {
           (signError as { name?: string } | null)?.name ?? 'unknown',
         ),
       });
-      // Clean up the orphaned audit row so the user can retry cleanly.
-      // R2-F11 — match the decrement-rollback pattern at L121-141 so a
-      // failed rollback surfaces in Sentry instead of being silently lost.
+      // Refund FIRST, while the row still exists, so the idempotent
+      // `refund_orphan_audit` RPC can match it (status='pending' AND
+      // credit_consumed=true) and atomically flip the flag + restore the
+      // credit. Doing this before the delete closes the crash-window leak:
+      // previously a crash between delete and refund lost the credit, and
+      // reordering naively with a bare increment would risk a double-refund
+      // from the orphan-cleanup cron — the flag-gated RPC avoids both.
+      // Subscription users never spent a credit, so nothing to refund there.
+      if (creditConsumed) {
+        await refundConsumedCredit(admin, user.id, auditId, 'audits.create.refund');
+      }
+      // Then clean up the orphaned row so the user can retry cleanly.
+      // R2-F11 — best-effort delete surfaces failures in Sentry rather than
+      // silently losing them. If this delete is the step that crashes, the row
+      // lingers as status='failed' with credit_consumed=false, which the
+      // orphan-cleanup cron ignores (it targets stale 'pending' rows) — no
+      // leak, no double-refund.
       await deleteAuditRowBestEffort(
         admin,
         user.id,
         auditId,
         'audits.create.rollback_signed_url_orphan',
       );
-      // If we consumed a credit on this request, refund it. The orphan-cleanup
-      // cron only sees rows that survive — since we just deleted the row, the
-      // credit would otherwise be lost. Subscription users never spent a
-      // credit, so nothing to refund there.
-      if (creditConsumed) {
-        await refundConsumedCredit(admin, user.id, auditId, 'audits.create.refund');
-      }
       return NextResponse.json(
         { error: 'Failed to create upload URL.' },
         { status: 500 },

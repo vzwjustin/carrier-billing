@@ -501,8 +501,27 @@ export async function POST(request: Request): Promise<Response> {
         data: { auditId, userId, storagePath, retryCount: 0 },
       });
     } catch (sendErr) {
-      // Roll back in reverse order. Each step is best-effort; we surface
-      // the original error via the outer catch.
+      // Roll back. Refund FIRST (while the audit row still exists) via the
+      // idempotent, row-anchored refund_orphan_audit RPC — same pattern as the
+      // decrement-transient path above. Doing this before the delete closes
+      // the crash-window credit leak, and the RPC's (status='pending' AND
+      // credit_consumed=true) gate makes a repeat call (request retry / the
+      // orphan-cleanup cron) a no-op on the credit, so it can't double-refund.
+      // Best-effort: never mask the original sendErr.
+      if (gate.reason === 'credit') {
+        try {
+          await failPendingAuditAndRefundIfNeeded(admin, {
+            auditId,
+            userId,
+            reason: 'inbound-dispatch-failed',
+          });
+        } catch (refundErr) {
+          Sentry.captureException(refundErr, {
+            tags: { surface: 'inbound.email.dispatch_refund' },
+            extra: { userId, auditId },
+          });
+        }
+      }
       await deleteAuditRowBestEffort(
         admin,
         auditId,
@@ -516,20 +535,6 @@ export async function POST(request: Request): Promise<Response> {
         userId,
         'inbound.email.rollback_dispatch_storage',
       );
-      if (gate.reason === 'credit') {
-        try {
-          const { error: refundErr } = await admin.rpc(
-            'increment_audit_credits',
-            { profile_id: userId, delta: 1 },
-          );
-          if (refundErr) throw new Error(refundErr.message);
-        } catch (refundErr) {
-          Sentry.captureException(refundErr, {
-            tags: { surface: 'inbound.email.dispatch_refund' },
-            extra: { userId, auditId },
-          });
-        }
-      }
       // Free the dedupe claim so the user can re-forward the same bill.
       throw sendErr;
     }

@@ -217,4 +217,16 @@ describe('processContractFn — audit trail', () => {
     expect(CONTRACT_SRC).toMatch(/logTrailEvent\(/);
     expect(CONTRACT_SRC).toMatch(/eventType:\s*['"]contract_uploaded['"]/);
   });
+
+  it('gates the trail event on the persist result so a 0-row no-op does not double-log', () => {
+    // The persist step result must be captured and the append-only trail
+    // event guarded by it — otherwise a concurrent run / replay that
+    // short-circuits persist (status-guard) would still emit a duplicate
+    // contract_uploaded event.
+    expect(CONTRACT_SRC).toMatch(/const persistResult = await step\.run\(\s*['"]persist['"]/);
+    const guardIdx = CONTRACT_SRC.indexOf('if (persistResult.ok)');
+    const trailIdx = CONTRACT_SRC.indexOf('logTrailEvent({ userId');
+    expect(guardIdx).toBeGreaterThanOrEqual(0);
+    expect(guardIdx).toBeLessThan(trailIdx);
+  });
 });

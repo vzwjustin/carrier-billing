@@ -144,10 +144,19 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     expect(res.status).toBe(500);
     expect(decrementMock).toHaveBeenCalledTimes(1);
     expect(adminRpcMock).toHaveBeenCalledTimes(1);
-    expect(adminRpcMock).toHaveBeenCalledWith('increment_audit_credits', {
-      profile_id: 'user-uuid-1',
-      delta: 1,
+    // Refund via the idempotent, row-anchored refund_orphan_audit RPC (not a
+    // bare increment) so a request retry / the orphan-cleanup cron can't
+    // double-refund.
+    expect(adminRpcMock).toHaveBeenCalledWith('refund_orphan_audit', {
+      p_audit_id: expect.any(String),
+      p_user_id: 'user-uuid-1',
+      p_reason: 'create_rollback',
     });
+    // Refund runs BEFORE the row delete — the RPC must match the still-present
+    // pending row, and refunding first closes the crash-window credit leak.
+    expect(adminRpcMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      auditsDeleteEqMock.mock.invocationCallOrder[0]!,
+    );
     // Audit row was deleted as part of cleanup.
     expect(auditsDeleteEqMock).toHaveBeenCalledTimes(1);
   });

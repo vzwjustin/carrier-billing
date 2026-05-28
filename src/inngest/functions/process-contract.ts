@@ -160,7 +160,7 @@ export const processContractFn = inngest.createFunction(
 
       // Step 3: persist. Upsert header onto `contracts`, replace any prior
       // contract_terms row, flip status to `parsed`.
-      await step.run('persist', async () => {
+      const persistResult = await step.run('persist', async () => {
         const supabase = getAdminClient();
 
         // (a) write header fields to the parent row
@@ -223,10 +223,17 @@ export const processContractFn = inngest.createFunction(
             `contract_terms insert (persist) failed: ${insErr.message}`,
           );
         }
-        return { ok: true };
+        return { ok: true as const };
       });
 
-      await logTrailEvent({ userId, eventType: 'contract_uploaded', entityType: 'contract', entityId: contractId, metadata: { carrier: contract.header.carrier ?? null } });
+      // On a 0-row persist no-op (the header already advanced out of
+      // 'extracting' via a concurrent run / Inngest replay) skip the
+      // audit-trail event — the trail is append-only and non-dedup, so the
+      // winning run already recorded the upload and emitting here would
+      // double-log.
+      if (persistResult.ok) {
+        await logTrailEvent({ userId, eventType: 'contract_uploaded', entityType: 'contract', entityId: contractId, metadata: { carrier: contract.header.carrier ?? null } });
+      }
 
       logger.info('processContract: parsed', { contractId });
       return { contractId, status: 'parsed' };
