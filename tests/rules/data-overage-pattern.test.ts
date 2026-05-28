@@ -9,14 +9,17 @@ function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
 }
 
 describe('data_overage_pattern rule', () => {
-  it('fires (approaching_soft_cap) at 85% of known plan cap (Verizon Pro 2.0, 200 GB)', async () => {
+  it('fires (approaching_soft_cap) at 85% of known plan cap (Verizon Plus 2.0, 100 GB)', async () => {
+    // M4: Pro 2.0 no longer has a soft cap (no premium-data limit per
+    // Verizon's 2024 update). Plus 2.0 (100 GB) is the next-up Verizon tier
+    // and exercises the same code path.
     const c = ctx({
       accounts: [
         makeAccount({
           lines: [
             makeLine({
-              plan_name: 'Business Unlimited Pro 2.0',
-              data_used_gb: 170,
+              plan_name: 'Business Unlimited Plus 2.0',
+              data_used_gb: 85,
             }),
           ],
         }),
@@ -33,7 +36,7 @@ describe('data_overage_pattern rule', () => {
       utilization_ratio: number;
     };
     expect(evidence.branch).toBe('approaching_soft_cap');
-    expect(evidence.threshold_gb).toBe(200);
+    expect(evidence.threshold_gb).toBe(100);
     expect(evidence.utilization_ratio).toBe(0.85);
   });
 
@@ -180,13 +183,15 @@ describe('data_overage_pattern rule', () => {
   });
 
   it('emits one finding per qualifying line; soft-cap branch is authoritative for known plans', async () => {
+    // M4: Pro 2.0 no longer matches the soft-cap list. Plus 2.0 (100 GB) is
+    // the next-up Verizon tier that still has a published cap.
     const c = ctx({
       accounts: [
         makeAccount({
           lines: [
             makeLine({
-              plan_name: 'Business Unlimited Pro 2.0',
-              data_used_gb: 250, // over soft cap (200) AND > 100 GB absolute
+              plan_name: 'Business Unlimited Plus 2.0',
+              data_used_gb: 130, // over soft cap (100) AND > 100 GB absolute
             }),
           ],
         }),
@@ -198,5 +203,27 @@ describe('data_overage_pattern rule', () => {
     if (!f) throw new Error('expected finding');
     const evidence = f.evidence as { branch: string };
     expect(evidence.branch).toBe('over_soft_cap');
+  });
+
+  it('Verizon Pro 2.0 no longer fires soft_cap branch (M4 — no premium-data cap on this tier)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              plan_name: 'Business Unlimited Pro 2.0',
+              data_used_gb: 170, // would have fired approaching_soft_cap pre-M4
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await dataOveragePatternRule.evaluate(c);
+    // 170 GB > 100 → Branch A (very_high_any_plan) fires instead at info severity.
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    if (!f) throw new Error('expected finding');
+    const evidence = f.evidence as { branch: string };
+    expect(evidence.branch).toBe('very_high_any_plan');
   });
 });

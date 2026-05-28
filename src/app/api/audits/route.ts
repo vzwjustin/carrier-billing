@@ -24,6 +24,13 @@ const SAFE_FILENAME_RE = /[^A-Za-z0-9._-]+/g;
  *  ASCII; the worker also content-sniffs to guard against confused extensions. */
 const ACCEPTED_EXTENSIONS = ['.pdf', '.edi', '.x12', '.811', '.txt'] as const;
 
+/** Mirrors the CHECK constraint on `audits.storage_path` in migration 0018.
+ *  Path layout is `<userUuid>/<auditUuid>/<safeFilename>`. Keep this regex
+ *  byte-for-byte identical to the DB constraint so a violation surfaces here
+ *  with a clear 500 rather than as a Postgres error at insert time. */
+const STORAGE_PATH_RE =
+  /^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[A-Za-z0-9._-]+$/;
+
 async function refundConsumedCredit(
   admin: ReturnType<typeof getAdminClient>,
   userId: string,
@@ -49,10 +56,13 @@ async function refundConsumedCredit(
 async function markCreditConsumed(
   admin: ReturnType<typeof getAdminClient>,
   auditId: string,
+  userId: string,
 ): Promise<void> {
-  const updateResult = admin.from('audits').update?.({ credit_consumed: true });
-  if (!updateResult) return;
-  const { error } = await updateResult.eq('id', auditId);
+  const { error } = await admin
+    .from('audits')
+    .update({ credit_consumed: true })
+    .eq('id', auditId)
+    .eq('user_id', userId);
   if (error) {
     throw new Error(`credit marker failed: ${error.message}`);
   }
@@ -63,12 +73,26 @@ function isAcceptedFilename(filename: string): boolean {
   return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+/** Pick a fallback when safeFilename's character-class scrub leaves us with an
+ *  empty base. M-4 — previously this defaulted to `bill.pdf`, which mislabelled
+ *  EDI uploads as PDFs and broke downstream content-type sniffing. Prefer the
+ *  original filename's own extension when it's one of our accepted types;
+ *  otherwise probe the MIME-typeish suffix, then fall back to `bill.bin`. */
+function fallbackFilename(originalFilename: string): string {
+  const lower = originalFilename.toLowerCase();
+  for (const ext of ACCEPTED_EXTENSIONS) {
+    if (lower.endsWith(ext)) return `bill${ext}`;
+  }
+  return 'bill.bin';
+}
+
 function safeFilename(input: string): string {
   // Strip any directory components and unsafe characters.
   const base = input.split(/[\\/]/).pop() ?? input;
   const cleaned = base.replace(SAFE_FILENAME_RE, '_');
   // Cap length so the path can't blow past Postgres limits.
-  return cleaned.slice(0, 200) || 'bill.pdf';
+  const capped = cleaned.slice(0, 200);
+  return capped || fallbackFilename(input);
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -136,6 +160,20 @@ export async function POST(request: Request): Promise<Response> {
     const auditId = crypto.randomUUID();
     const cleanName = safeFilename(filename);
     const storagePath = `${user.id}/${auditId}/${cleanName}`;
+
+    // M-2 — defence-in-depth against any future change to safeFilename or the
+    // auth user_id format that would let a row slip past the DB CHECK
+    // constraint (see migration 0018). Both inputs are server-generated, so a
+    // mismatch is a programming bug, not a user error → 500 with Sentry.
+    if (!STORAGE_PATH_RE.test(storagePath)) {
+      Sentry.captureMessage('audits.create: storage_path failed validation', {
+        level: 'error',
+        tags: { surface: 'audits.create.storage_path' },
+        extra: { storagePath, userId: user.id, auditId },
+      });
+      return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
+    }
+
     const admin = getAdminClient();
 
     let creditConsumed = false;
@@ -162,7 +200,7 @@ export async function POST(request: Request): Promise<Response> {
       try {
         await decrementAuditCreditAtomically(user.id);
         creditConsumed = true;
-        await markCreditConsumed(admin, auditId);
+        await markCreditConsumed(admin, auditId, user.id);
       } catch (decrementErr) {
         Sentry.captureException(decrementErr, {
           tags: { surface: 'audits.create.decrement', transient: 'true' },

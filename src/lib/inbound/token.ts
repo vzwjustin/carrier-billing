@@ -109,11 +109,16 @@ export async function getOrCreateInboundToken(
 }
 
 const HEX64_RE = /^(sha256=)?[0-9a-fA-F]{64}$/;
+// SHA-256 in base64 is 44 chars (43 + '=' padding). Accept both standard and
+// URL-safe alphabets — Postmark uses standard, some other providers use URL-safe.
+const BASE64_SHA256_RE = /^(sha256=)?[A-Za-z0-9+/_-]{43}=?$/;
 
 /**
  * Constant-time HMAC-SHA256 comparison so the verifier doesn't leak signature
  * mismatches via timing. Accepts either bare hex or `sha256=<hex>` (the
- * GitHub/Postmark convention) and is case-insensitive.
+ * GitHub/Postmark convention) and is case-insensitive. L-10: also accepts
+ * base64-encoded signatures (standard or URL-safe) — try hex first, fall back
+ * to base64 on length mismatch / decode failure.
  */
 export function verifyHmac(
   body: string,
@@ -121,17 +126,37 @@ export function verifyHmac(
   secret: string,
 ): boolean {
   if (typeof signatureHex !== 'string') return false;
-  if (!HEX64_RE.test(signatureHex)) return false;
-  const stripped = signatureHex.replace(/^sha256=/, '').toLowerCase();
-  const expected = createHmac('sha256', secret).update(body).digest('hex');
-  const expectedBuf = Buffer.from(expected, 'hex');
-  const receivedBuf = Buffer.from(stripped, 'hex');
-  if (expectedBuf.length !== 32 || receivedBuf.length !== 32) return false;
-  try {
-    return timingSafeEqual(expectedBuf, receivedBuf);
-  } catch {
-    return false;
+  const stripped = signatureHex.replace(/^sha256=/, '');
+  const expected = createHmac('sha256', secret).update(body).digest();
+  if (expected.length !== 32) return false;
+
+  // Try hex first.
+  if (HEX64_RE.test(signatureHex)) {
+    const receivedBuf = Buffer.from(stripped.toLowerCase(), 'hex');
+    if (receivedBuf.length === 32) {
+      try {
+        if (timingSafeEqual(expected, receivedBuf)) return true;
+      } catch {
+        // fall through to base64
+      }
+    }
   }
+
+  // Fall back to base64 (standard or URL-safe).
+  if (BASE64_SHA256_RE.test(signatureHex)) {
+    // Normalize URL-safe alphabet to standard before decoding.
+    const normalized = stripped.replace(/-/g, '+').replace(/_/g, '/');
+    const receivedBuf = Buffer.from(normalized, 'base64');
+    if (receivedBuf.length === 32) {
+      try {
+        return timingSafeEqual(expected, receivedBuf);
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

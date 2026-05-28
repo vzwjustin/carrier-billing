@@ -63,6 +63,14 @@ export async function runRules(
       // any captured context — ship a sanitized clone to Sentry instead.
       const sanitized = new Error(safeMessage);
       sanitized.name = err instanceof Error ? err.name : 'RuleError';
+      // H7: preserve the original stack trace. Constructing `new Error()`
+      // here previously overwrote the throw-site frames, so every rule
+      // exception in Sentry pointed at this line instead of the actual
+      // rule that threw. Substitute the raw (PII-bearing) message with the
+      // scrubbed one but keep the rest of the trace verbatim.
+      if (err instanceof Error && typeof err.stack === 'string') {
+        sanitized.stack = err.stack.replace(rawMessage, safeMessage);
+      }
       Sentry.captureException(sanitized, {
         tags: { rule_id: rule.id, carrier: ctx.carrier },
       });

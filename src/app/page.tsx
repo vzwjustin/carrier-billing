@@ -139,7 +139,7 @@ function HowItWorks(): React.ReactElement {
       icon: Sparkles,
       title: 'Audit rules surface waste',
       body:
-        'A rules engine quantifies expired credits, unused features, and wrong plans &mdash; with recommended actions.',
+        'A rules engine quantifies expired credits, unused features, and wrong plans — with recommended actions.',
     },
   ] as const;
 
@@ -173,10 +173,7 @@ function HowItWorks(): React.ReactElement {
                 <h3 className="text-base font-semibold text-neutral-900">
                   {step.title}
                 </h3>
-                <p
-                  className="text-sm text-neutral-600"
-                  dangerouslySetInnerHTML={{ __html: step.body }}
-                />
+                <p className="text-sm text-neutral-600">{step.body}</p>
               </li>
             );
           })}

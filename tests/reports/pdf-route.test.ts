@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const VALID_AUDIT_ID = '11111111-1111-4111-8111-111111111111';
-const SHARE_TOKEN = 'share-token-abc-123';
+const SHARE_TOKEN = 'abcdefghijklmnopqrstuvwxyz123456';
 
 // ---------------------------------------------------------------------------
 // Row + result types (no `any`)

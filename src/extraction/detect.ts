@@ -13,8 +13,11 @@ export function detectCarrier(text: string): Carrier {
     return 'verizon';
   }
 
-  // AT&T: matches "at&t business/wireless/mobility" or a bare "at&t" header.
-  if (/at&t\s+(business|wireless|mobility)|at\s*&\s*t/.test(haystack)) {
+  // AT&T: require a carrier-context keyword right after the brand. A bare
+  // "AT&T" mention (e.g. "port-in from AT&T") on a Sprint legacy bill would
+  // previously misclassify the whole bill, sending it through the AT&T
+  // normalizer + AT&T plan patterns. M8: anchor on the canonical phrases.
+  if (/at\s*&\s*t\s+(business|wireless|mobility|inc)/.test(haystack)) {
     return 'att';
   }
 

@@ -26,17 +26,19 @@ exports[`runRules — full pipeline > produces findings from a multi-rule fixtur
       0,
     ],
     "affected_line_indexes": [],
-    "confidence": 0.98,
+    "confidence": 0.95,
     "evidence": {
       "credit_name": "Loyalty Bonus",
       "expires_on": "2026-04-01",
+      "is_promo": true,
       "monthly_cents": -2500,
+      "name_matched_promo_pattern": true,
       "scope": "account",
     },
     "rule_id": "expired_promo_credit",
     "savings": 2500,
     "severity": "high",
-    "title": "Account credit "Loyalty Bonus" has expired ($25.00/mo lost)",
+    "title": "Account credit "Loyalty Bonus" has expired ($25.00/mo at risk)",
   },
   {
     "affected_account_indexes": [

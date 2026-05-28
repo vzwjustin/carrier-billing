@@ -55,6 +55,20 @@ export const ExtractedDppSchema = z.object({
 });
 export type ExtractedDpp = z.infer<typeof ExtractedDppSchema>;
 
+// H10: defense-in-depth name redaction. The LLM prompt instructs the model to
+// strip personal names from user_label, but a single missed bill (especially
+// from carriers that print "Firstname Lastname - Department") can leak names
+// into findings, descriptions, PDF reports, and downstream webhook payloads.
+// CLAUDE.md §1#9 forbids employee names in logs/reports. Pattern: two or more
+// capitalized words separated by spaces — covers "John Smith", "Mary J Doe",
+// "Jose Garcia-Lopez" (the hyphen falls in the second word). False positives
+// (e.g. "Sales Department") get redacted too; acceptable trade-off.
+const FULL_NAME_RE = /\b[A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){1,3}\b/g;
+function redactNamesInLabel(label: string | null): string | null {
+  if (label === null) return null;
+  return label.replace(FULL_NAME_RE, '[redacted-name]');
+}
+
 export const ExtractedLineSchema = z.object({
   mdn_last4: z
     .string()
@@ -62,7 +76,13 @@ export const ExtractedLineSchema = z.object({
     .nullable(),
   // Free-text PII risk: X12 REF*EM emits subscriber names verbatim.
   // Bound length so an oversized payload can't be persisted or echoed in logs.
-  user_label: z.string().max(40).nullable(),
+  // H10: transform applies FULL_NAME_RE to scrub two-or-more capitalized
+  // tokens (likely full names) regardless of what the LLM produced.
+  user_label: z
+    .string()
+    .max(40)
+    .nullable()
+    .transform(redactNamesInLabel),
   device: z.string().max(40).nullable(),
   plan_name: z.string().max(120).nullable(),
   plan_base_cents: z.number().int().nonnegative().max(10_000_000).nullable(),

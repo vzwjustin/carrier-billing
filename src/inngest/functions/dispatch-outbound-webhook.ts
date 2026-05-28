@@ -1,8 +1,14 @@
 import { createHmac } from 'node:crypto';
 
 import { inngest } from '../client';
+import { AuditCompletedDataSchema, parseEventData } from '../events';
 import { assertPublicHttpsTarget } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
+import type {
+  AuditCarrier,
+  AuditStatus,
+  FindingSeverity,
+} from '@/types/db-enums';
 
 /**
  * dispatch-outbound-webhook — POST a completed audit's report to the user's
@@ -34,8 +40,9 @@ interface ProfileRow {
 interface AuditRow {
   id: string;
   user_id: string;
-  status: string;
-  carrier: string | null;
+  // M13: literal union mirrored from supabase/migrations/0005 CHECK.
+  status: AuditStatus;
+  carrier: AuditCarrier | null;
   billing_period_start: string | null;
   billing_period_end: string | null;
   estimated_monthly_savings_cents: number | null;
@@ -48,7 +55,8 @@ interface AuditRow {
 interface FindingRow {
   id: string;
   rule_id: string;
-  severity: string;
+  // M13: literal union mirrored from supabase/migrations/0005 CHECK.
+  severity: FindingSeverity;
   title: string;
   description: string;
   recommended_action: string;
@@ -64,7 +72,12 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
   },
   { event: 'audit.completed' },
   async ({ event, step, logger }) => {
-    const { auditId, userId } = event.data;
+    // M11: validate the payload at the boundary.
+    const { auditId, userId } = parseEventData(
+      'audit.completed',
+      event.data,
+      AuditCompletedDataSchema,
+    );
 
     const ctx = (await step.run('load-context', async () => {
       const admin = getAdminClient();

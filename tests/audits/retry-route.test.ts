@@ -145,7 +145,7 @@ beforeEach(() => {
 });
 
 describe('POST /api/audits/[id]/retry', () => {
-  it('happy path: idempotency id is anchored to retry_count, NOT Date.now() (H7)', async () => {
+  it('happy path: idempotency id includes retry_count and a timestamp suffix (M-9)', async () => {
     const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
     const res = await POST(req, makeContext());
     expect(res.status).toBe(200);
@@ -153,7 +153,11 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
     const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string; name?: string };
     expect(sent?.name).toBe('bill.uploaded');
-    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-1`);
+    // M-9: key now includes a Date.now() suffix so a half-failed inngest.send
+    // followed by a rollback can't collide with the next attempt.
+    expect(sent?.id).toMatch(
+      new RegExp(`^${TEST_AUDIT_ID}-uploaded-retry-1-\\d+$`),
+    );
   });
 
   it('two retry POSTs racing → CAS loser returns 409 and does NOT enqueue', async () => {
@@ -242,8 +246,10 @@ describe('POST /api/audits/[id]/retry', () => {
     const res = await POST(req, makeContext());
     expect(res.status).toBe(200);
 
-    // Idempotency key tracks the new count.
+    // Idempotency key tracks the new count (and includes Date.now() suffix per M-9).
     const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
-    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-3`);
+    expect(sent?.id).toMatch(
+      new RegExp(`^${TEST_AUDIT_ID}-uploaded-retry-3-\\d+$`),
+    );
   });
 });

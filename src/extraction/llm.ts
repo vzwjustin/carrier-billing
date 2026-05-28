@@ -7,7 +7,7 @@ import {
   type ExtractedAccount,
   type ExtractedBill,
 } from '@/extraction/schema';
-import { redactDetails as redactDetailsImpl } from '@/lib/observability/redact';
+import { redactDetails as redactDetailsImpl, scrubString } from '@/lib/observability/redact';
 
 /**
  * Lazy singleton Anthropic client. Constructing eagerly at module load would
@@ -31,6 +31,7 @@ CRITICAL RULES:
 1. Output ONLY a single JSON object. No prose, no markdown, no code fences.
 2. All money values are integer cents. $43.99 → 4399. Never use floats for money.
 3. Phone numbers and account numbers: capture ONLY the last 4 digits, in a string field. Never output full PII.
+3a. user_label: if the printed label is a person's name ("John Smith", "Mary J Doe"), reduce it to first-initial + last-name ("J Smith", "M Doe"). If the label is purely a department or role ("Sales", "Field Tech"), keep as-is. If the label combines a name with a role, output only the role ("Sales VP"). NEVER output full human names.
 4. Dates: ISO 8601 (YYYY-MM-DD).
 5. Credits: monthly_cents is the SIGNED amount as it appears on the bill. A $10/mo discount line item shows as -1000.
 6. If a value is genuinely not present, use null. Do not guess. Do not invent.
@@ -168,10 +169,16 @@ export async function extractBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
     throw new ExtractionError('Not a wireless bill', firstResult.parsed);
   }
 
-  // Retry once with the prior assistant turn echoed and a corrective user turn.
+  // L6: redact the bad first response before echoing it back. If the schema
+  // failure was caused by the LLM emitting a full phone or account number
+  // (breaking the last-4-only regex), the unredacted echo would send that
+  // PII back across the network on the retry. scrubString strips digit-runs
+  // of 5+, emails, and phone-formatted sequences while leaving the
+  // structural JSON intact enough for the model to correct.
+  const safeFirstRaw = scrubString(firstRaw);
   const retryMessages: Message[] = [
     ...initialMessages,
-    { role: 'assistant', content: firstRaw },
+    { role: 'assistant', content: safeFirstRaw },
     {
       role: 'user',
       content: [
@@ -190,6 +197,33 @@ export async function extractBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
     throw new ExtractionError('Not a wireless bill', retryResult.parsed);
   }
   throw retryResult.error;
+}
+
+// H8: which HTTP statuses from Anthropic warrant a retry. 429 = rate-limited,
+// 529 = Anthropic-specific "overloaded", 500/502/503/504 = upstream transient.
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504, 529]);
+const MAX_LLM_ATTEMPTS = 3;
+// Base delay; doubles each attempt (1s, 2s, 4s) plus 0–250ms jitter.
+const RETRY_BASE_DELAY_MS = 1_000;
+
+function isRetryableLlmError(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return false;
+  const status = (err as { status?: unknown }).status;
+  if (typeof status === 'number' && RETRYABLE_STATUSES.has(status)) return true;
+  // The SDK sometimes wraps fetch errors; their `name` is 'APIConnectionError'
+  // or similar. Treat any obvious transport error as retryable.
+  const name = (err as { name?: unknown }).name;
+  if (
+    typeof name === 'string' &&
+    /Connection|Timeout|FetchError|Network/.test(name)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function callModel(messages: Message[]): Promise<string> {
@@ -213,27 +247,72 @@ async function callModel(messages: Message[]): Promise<string> {
     messages,
   } as unknown as Parameters<typeof client.messages.create>[0];
 
-  // The SDK's create return is `Message | Stream<...>` — we never opt into
-  // streaming, so narrow at the boundary.
-  const response = (await client.messages.create(createParams)) as {
-    stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | null;
+  type AnthropicResponse = {
+    stop_reason:
+      | 'end_turn'
+      | 'max_tokens'
+      | 'stop_sequence'
+      | 'tool_use'
+      | null;
     content: Array<{ type: string; text?: string }>;
   };
+
+  // H8: in-call retry with exponential backoff on transient upstream errors.
+  // Without this, a single 5-second Anthropic blip surfaces as a
+  // PipelineError → audit goes to `failed` → the Inngest function-level
+  // retries: 2 re-runs the entire pipeline (re-downloading the PDF +
+  // re-running OCR), which is expensive and slow. Three quick attempts
+  // here recover from the common transient case before paying that cost.
+  let response: AnthropicResponse | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
+    try {
+      response = (await client.messages.create(
+        createParams,
+      )) as unknown as AnthropicResponse;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === MAX_LLM_ATTEMPTS || !isRetryableLlmError(err)) {
+        throw err;
+      }
+      const status =
+        typeof (err as { status?: unknown }).status === 'number'
+          ? ((err as { status: number }).status)
+          : 'transport';
+      Sentry.addBreadcrumb({
+        category: 'extraction',
+        level: 'warning',
+        message: 'anthropic call failed, retrying',
+        data: { attempt, status },
+      });
+      const jitter = Math.floor(Math.random() * 250);
+      const delay = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1) + jitter;
+      await sleep(delay);
+    }
+  }
+  if (!response) {
+    // Defensive: the loop above either assigns `response` or throws.
+    throw lastErr instanceof Error
+      ? lastErr
+      : new ExtractionError('LLM call exhausted retries');
+  }
+  const finalResponse: AnthropicResponse = response;
 
   // H3: detect token-budget truncation BEFORE returning to the retry path so a
   // truncated, mid-JSON payload does not get echoed back to the model and
   // billed for a second time.
-  if (response.stop_reason === 'max_tokens') {
+  if (finalResponse.stop_reason === 'max_tokens') {
     throw new ExtractionError('Bill exceeds token budget', {
-      stop_reason: response.stop_reason,
+      stop_reason: finalResponse.stop_reason,
       max_tokens: MAX_TOKENS,
     });
   }
 
-  const textBlock = response.content.find((b) => b.type === 'text');
+  const textBlock = finalResponse.content.find((b) => b.type === 'text');
   if (!textBlock || textBlock.type !== 'text' || typeof textBlock.text !== 'string') {
     throw new ExtractionError('LLM returned no text content', {
-      content: response.content,
+      content: finalResponse.content,
     });
   }
   return textBlock.text;

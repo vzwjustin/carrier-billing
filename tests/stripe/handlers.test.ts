@@ -214,19 +214,28 @@ beforeEach(() => {
 });
 
 describe('handleStripeEvent', () => {
-  it('checkout.session.completed (payment) increments credits and stores customer id', async () => {
+  it('checkout.session.completed (payment) calls grant_credit_once and stores customer id (C1)', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
       client_reference_id: 'user_abc',
       customer: 'cus_111',
     });
 
-    await handleStripeEvent(event, client as unknown as never);
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_1',
+    });
 
+    // C1: the atomic grant-once RPC is keyed on the billing_events row id,
+    // not on `previousStatus`. Idempotency is enforced inside the RPC.
     expect(client.__rpcs).toHaveLength(1);
     expect(client.__rpcs[0]).toEqual({
-      name: 'increment_audit_credits',
-      args: { profile_id: 'user_abc', delta: 1 },
+      name: 'grant_credit_once',
+      args: {
+        p_event_id: 'evt_row_1',
+        p_profile_id: 'user_abc',
+        p_delta: 1,
+      },
     });
 
     // The customer id should also be persisted to the profile.
@@ -237,21 +246,31 @@ describe('handleStripeEvent', () => {
     expect(update?.patch['stripe_customer_id']).toBe('cus_111');
   });
 
-  it('checkout.session.completed (payment) with previousStatus=failed SKIPS the credit RPC (H8 retry safety)', async () => {
+  it('checkout.session.completed (payment) on a retry still calls grant_credit_once (C1 — RPC is idempotent)', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
       client_reference_id: 'user_replay',
       customer: 'cus_replay',
     });
 
-    // Replay context — caller (webhook route or replay cron) tells the
-    // handler this isn't the first attempt.
+    // C1: under the new model the handler ALWAYS calls grant_credit_once
+    // regardless of previousStatus. The RPC's WHERE-clause CAS on
+    // billing_events.credit_granted ensures the credit is granted at most
+    // once. A replay-cron retry calling with previousStatus='failed' must
+    // therefore also call the RPC — previously this attempt was permanently
+    // skipped, losing a paying customer's credit if the first try flapped.
     await handleStripeEvent(event, client as unknown as never, {
       previousStatus: 'failed',
+      billingEventId: 'evt_row_2',
     });
 
-    // Credit RPC must NOT fire on retry.
-    expect(client.__rpcs).toHaveLength(0);
+    expect(client.__rpcs).toHaveLength(1);
+    expect(client.__rpcs[0]?.name).toBe('grant_credit_once');
+    expect(client.__rpcs[0]?.args).toEqual({
+      p_event_id: 'evt_row_2',
+      p_profile_id: 'user_replay',
+      p_delta: 1,
+    });
     // Idempotent customer-id write still happens.
     expect(client.__updates).toHaveLength(1);
     expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_replay');
@@ -355,6 +374,48 @@ describe('handleStripeEvent', () => {
 
     const update = client.__updates[0];
     expect(update?.patch['subscription_status']).toBe('trialing');
+  });
+
+  it('customer.subscription.created falls back to userId when profile not yet linked (H-1)', async () => {
+    // Simulate subscription.created arriving before checkout.session.completed.
+    // The customer-id lookup returns 0 rows; the handler should retry by
+    // userId (from subscription.metadata) and link the profile.
+    client.__nextSelectRows = [];
+    const event = makeEvent('customer.subscription.created', {
+      id: 'sub_race',
+      customer: 'cus_race',
+      status: 'active',
+      metadata: { userId: 'user_race' },
+    });
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    // 1 select (the customer-id lookup that missed) and 1 fallback update by id.
+    expect(client.__selects).toHaveLength(1);
+    expect(client.__selects[0]?.eq).toEqual(['stripe_customer_id', 'cus_race']);
+    expect(client.__updates).toHaveLength(1);
+    const update = client.__updates[0];
+    expect(update?.table).toBe('profiles');
+    expect(update?.eq).toEqual(['id', 'user_race']);
+    expect(update?.patch['stripe_customer_id']).toBe('cus_race');
+    expect(update?.patch['subscription_id']).toBe('sub_race');
+    expect(update?.patch['subscription_status']).toBe('active');
+  });
+
+  it('customer.subscription.created with 0-row match and no userId metadata logs and returns (H-1)', async () => {
+    client.__nextSelectRows = [];
+    const event = makeEvent('customer.subscription.created', {
+      id: 'sub_orphan',
+      customer: 'cus_orphan',
+      status: 'active',
+      // no metadata.userId — fallback can't proceed
+    });
+
+    // Must not throw.
+    await expect(
+      handleStripeEvent(event, client as unknown as never),
+    ).resolves.toBeUndefined();
+    expect(client.__updates).toHaveLength(0);
   });
 
   it('access gate returns { ok: true, reason: "subscription" } for trialing profiles (C1)', async () => {
@@ -743,6 +804,7 @@ describe('handleStripeEvent', () => {
         status: 'active',
       }),
       countSurface: 'select' as const,
+      isTerminal: false,
       expectedThrow: /matched 0 rows .*customer\.subscription\.updated/,
       multiThrow: /matched 2 rows .*customer\.subscription\.updated/,
     },
@@ -754,7 +816,11 @@ describe('handleStripeEvent', () => {
         status: 'active',
       }),
       countSurface: 'select' as const,
-      expectedThrow: /matched 0 rows .*customer\.subscription\.created/,
+      // H-1: subscription.created with 0-row match no longer throws — the
+      // handler attempts a userId fallback. Without metadata.userId on the
+      // event the fallback can't proceed and we no-op instead.
+      isTerminal: true,
+      expectedThrow: null,
       multiThrow: /matched 2 rows .*customer\.subscription\.created/,
     },
     {
@@ -765,7 +831,11 @@ describe('handleStripeEvent', () => {
         status: 'canceled',
       }),
       countSurface: 'select' as const,
-      expectedThrow: /matched 0 rows .*customer\.subscription\.deleted/,
+      // H11: terminal events (subscription.deleted, invoice.payment_failed)
+      // no longer throw on 0-row match; the profile was deleted locally
+      // and we no-op instead of generating 13 Sentry warnings per retry.
+      isTerminal: true,
+      expectedThrow: null,
       multiThrow: /matched 2 rows .*customer\.subscription\.deleted/,
     },
     {
@@ -779,12 +849,13 @@ describe('handleStripeEvent', () => {
         customer: 'cus_b7p',
       }),
       countSurface: 'select' as const,
-      expectedThrow: /matched 0 rows .*invoice\.payment_failed/,
+      isTerminal: true,
+      expectedThrow: null,
       multiThrow: /matched 2 rows .*invoice\.payment_failed/,
     },
   ])(
     '$label profile lookup row-count verification (B7)',
-    ({ event, countSurface, expectedThrow, multiThrow }) => {
+    ({ event, countSurface, isTerminal, expectedThrow, multiThrow }) => {
       const setRows = (rows: Array<Record<string, unknown>>) => {
         if (countSurface === 'select') client.__nextSelectRows = rows;
         else client.__nextUpdateRows = rows;
@@ -797,12 +868,21 @@ describe('handleStripeEvent', () => {
         ).resolves.toBeUndefined();
       });
 
-      it('0 rows matched: throws so Stripe retries', async () => {
-        setRows([]);
-        await expect(
-          handleStripeEvent(event, client as unknown as never),
-        ).rejects.toThrow(expectedThrow);
-      });
+      if (isTerminal) {
+        it('0 rows matched on a terminal event: no-op (H11)', async () => {
+          setRows([]);
+          await expect(
+            handleStripeEvent(event, client as unknown as never),
+          ).resolves.toBeUndefined();
+        });
+      } else {
+        it('0 rows matched: throws so Stripe retries', async () => {
+          setRows([]);
+          await expect(
+            handleStripeEvent(event, client as unknown as never),
+          ).rejects.toThrow(expectedThrow as RegExp);
+        });
+      }
 
       it('>1 rows matched: throws (data corruption)', async () => {
         setRows([

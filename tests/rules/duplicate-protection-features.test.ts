@@ -9,7 +9,7 @@ function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
 }
 
 describe('duplicate_protection_features rule', () => {
-  it('fires when a line has two insurance features and saves total minus cheapest', async () => {
+  it('fires when a line has two insurance features and saves total minus most-expensive (M6)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -29,8 +29,8 @@ describe('duplicate_protection_features rule', () => {
     const f = findings[0];
     if (!f) throw new Error('expected finding');
     expect(f.severity).toBe('medium');
-    // Total 2799, cheapest 1099 → savings 1700
-    expect(f.estimated_monthly_savings_cents).toBe(1700);
+    // M6: conservative savings = total - max. Total 2799, max 1700 → savings 1099.
+    expect(f.estimated_monthly_savings_cents).toBe(1099);
     expect(f.confidence).toBe(0.9);
   });
 

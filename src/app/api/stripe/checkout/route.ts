@@ -143,11 +143,20 @@ export async function POST(request: Request): Promise<Response> {
           .eq('id', user.id)
           .maybeSingle();
         if (reread.error || !reread.data) {
-          // Best-effort cleanup before surfacing.
+          // M1: do not swallow the orphan-cleanup failure here. The primary
+          // error (reread failure) still surfaces, but if the cleanup also
+          // fails we want visibility — without it, orphaned Stripe customers
+          // accumulate silently.
           try {
             await stripe.customers.del(customer.id);
-          } catch {
-            /* swallow — primary error wins */
+          } catch (cleanupErr) {
+            Sentry.captureException(
+              new Error(scrubString(String(cleanupErr))),
+              {
+                tags: { area: 'stripe.checkout.orphan_cleanup_after_reread_fail' },
+                extra: { customerId: customer.id, userId: user.id },
+              },
+            );
           }
           throw new Error(
             `profile re-read failed after concurrent customer creation: ${
@@ -160,10 +169,17 @@ export async function POST(request: Request): Promise<Response> {
         if (!winner) {
           // The losing-side reread saw null too — extremely unlikely, but the
           // safest action is to abort this request without leaking a customer.
+          // M1: capture cleanup failures so we can reconcile out-of-band.
           try {
             await stripe.customers.del(customer.id);
-          } catch {
-            /* swallow */
+          } catch (cleanupErr) {
+            Sentry.captureException(
+              new Error(scrubString(String(cleanupErr))),
+              {
+                tags: { area: 'stripe.checkout.orphan_cleanup_null_winner' },
+                extra: { customerId: customer.id, userId: user.id },
+              },
+            );
           }
           throw new Error(
             'concurrent customer creation: profile still has no stripe_customer_id',
@@ -173,15 +189,32 @@ export async function POST(request: Request): Promise<Response> {
         try {
           await stripe.customers.del(customer.id);
         } catch (delErr) {
-          // M-S2: scrub the message before Sentry serialization (the
-          // exception text can echo customer email/address).
-          Sentry.captureException(
-            new Error(scrubString(String(delErr))),
-            {
-              tags: { area: 'stripe.checkout.orphan_cleanup' },
-              extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
-            },
-          );
+          // M-7: suppress Sentry noise when the customer is already gone
+          // (manual cleanup, prior retry, etc). These are expected and
+          // not actionable. Log at debug instead.
+          const e = delErr as {
+            code?: unknown;
+            type?: unknown;
+            raw?: { code?: unknown };
+          };
+          const alreadyGone =
+            e?.code === 'resource_missing' ||
+            (e?.type === 'StripeInvalidRequestError' && e?.raw?.code === 'resource_missing');
+          if (alreadyGone) {
+            console.debug('stripe.checkout.orphan_cleanup: customer already gone', {
+              orphanCustomerId: customer.id,
+            });
+          } else {
+            // M-S2: scrub the message before Sentry serialization (the
+            // exception text can echo customer email/address).
+            Sentry.captureException(
+              new Error(scrubString(String(delErr))),
+              {
+                tags: { area: 'stripe.checkout.orphan_cleanup' },
+                extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
+              },
+            );
+          }
         }
         stripeCustomerId = winner;
       }
@@ -223,7 +256,7 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ url: session.url });
   } catch (err) {
-    console.error('[stripe.checkout] unexpected error', err);
+    console.error('[stripe.checkout] unexpected error', err instanceof Error ? err.message : 'unknown');
     Sentry.captureException(err, { tags: { area: 'stripe.checkout' } });
     return Response.json({ error: 'internal_error' }, { status: 500 });
   }

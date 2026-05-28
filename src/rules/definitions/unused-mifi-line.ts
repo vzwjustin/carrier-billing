@@ -25,7 +25,12 @@ export const unusedMifiLineRule: Rule = {
 
         const planBase = line.plan_base_cents ?? 0;
         const isZeroUse = used < ZERO_USE_THRESHOLD_GB;
-        const severity: Severity = isZeroUse ? 'medium' : 'low';
+        // M3: cap severity at 'low' until ExtractedLineSchema carries an
+        // activation-in-period flag. A brand-new hotspot activated 3 days
+        // into the billing cycle can legitimately read ~0 GB; high-severity
+        // "suspend or cancel this line" findings on freshly-deployed devices
+        // burn auditor credibility.
+        const severity: Severity = 'low';
         const threshold = isZeroUse
           ? ZERO_USE_THRESHOLD_GB
           : LIGHT_USE_THRESHOLD_GB;
@@ -35,11 +40,11 @@ export const unusedMifiLineRule: Rule = {
           : `Hotspot device "${line.device}" used very little data`;
 
         const description = isZeroUse
-          ? `This hotspot/MiFi/Jetpack line used ${used.toFixed(2)} GB this period (under the ${ZERO_USE_THRESHOLD_GB} GB "drawer" threshold) while billing ${formatCents(planBase)}/mo for service. The device may be sitting unused.`
+          ? `This hotspot/MiFi/Jetpack line used ${used.toFixed(2)} GB this period (under the ${ZERO_USE_THRESHOLD_GB} GB "drawer" threshold) while billing ${formatCents(planBase)}/mo for service. The device may be sitting unused — or it may have been activated mid-cycle (the bill does not expose activation dates per line).`
           : `This hotspot/MiFi/Jetpack line used only ${used.toFixed(2)} GB this period (under ${LIGHT_USE_THRESHOLD_GB} GB) while billing ${formatCents(planBase)}/mo. Light usage may justify a smaller plan or consolidation.`;
 
         const recommended_action = isZeroUse
-          ? 'Confirm the device is needed. If not, suspend or cancel the line. If it is needed only for backup, consider moving it to a lower-tier plan.'
+          ? 'If the line has been active for at least one full billing cycle and usage stays this low, suspend or cancel. If recently activated, re-check next cycle.'
           : 'Confirm whether this hotspot needs its own line. Light, occasional use can often be served by a phone hotspot feature included on a primary line.';
 
         findings.push({
@@ -49,7 +54,9 @@ export const unusedMifiLineRule: Rule = {
           description,
           recommended_action,
           estimated_monthly_savings_cents: planBase,
-          confidence: 0.8,
+          // M3: confidence drops because we cannot rule out mid-cycle
+          // activation. Bump back up once `activation_date_in_period` lands.
+          confidence: isZeroUse ? 0.65 : 0.7,
           affected_line_indexes: [lineIndex],
           affected_account_indexes: [accountIndex],
           evidence: {

@@ -13,7 +13,13 @@ const SOFT_CAP_WARN_RATIO = 0.8;
 // Verifying public docs as of 2026-05; substring-matched on plan_name.
 const PLAN_SOFT_CAPS_GB: Array<{ pattern: RegExp; threshold_gb: number }> = [
   // Verizon Business Unlimited 2.0 family
-  { pattern: /business\s+unlimited\s+pro\s*2\.0/i, threshold_gb: 200 },
+  // M4: Verizon Business Unlimited Pro 2.0 no longer has a premium-data soft
+  // cap — the tier is "no cap; deprioritization on congestion only" per
+  // Verizon's 2024 announcement. Listing a 200 GB cap here previously fired
+  // "approaching soft cap" findings recommending users move up to a
+  // non-existent higher tier. The line still surfaces via Branch A
+  // (very_high_any_plan) at >100 GB if real review is warranted.
+  // Pro 2.0 intentionally absent.
   { pattern: /business\s+unlimited\s+plus\s*2\.0/i, threshold_gb: 100 },
   { pattern: /business\s+unlimited\s+start\s*2\.0/i, threshold_gb: 50 },
   // AT&T Business Unlimited family

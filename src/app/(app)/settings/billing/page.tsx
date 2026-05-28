@@ -17,6 +17,19 @@ interface ProfileRow {
   audit_credits: number | null;
   subscription_status: string | null;
   stripe_customer_id: string | null;
+  cancel_at_period_end: boolean | null;
+  current_period_end: string | null;
+}
+
+function formatPeriodEnd(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 export default async function BillingSettingsPage(): Promise<React.ReactElement> {
@@ -33,7 +46,9 @@ export default async function BillingSettingsPage(): Promise<React.ReactElement>
   const admin = getAdminClient();
   const { data, error } = await admin
     .from('profiles')
-    .select('audit_credits, subscription_status, stripe_customer_id')
+    .select(
+      'audit_credits, subscription_status, stripe_customer_id, cancel_at_period_end, current_period_end',
+    )
     .eq('id', user.id)
     .maybeSingle();
 
@@ -45,6 +60,8 @@ export default async function BillingSettingsPage(): Promise<React.ReactElement>
   const credits = profile?.audit_credits ?? 0;
   const status = profile?.subscription_status ?? null;
   const isSubscribed = status === 'active' || status === 'trialing';
+  const cancelAtPeriodEnd = profile?.cancel_at_period_end ?? false;
+  const periodEndIso = profile?.current_period_end ?? null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -60,7 +77,11 @@ export default async function BillingSettingsPage(): Promise<React.ReactElement>
 
       <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
         {isSubscribed ? (
-          <SubscribedState status={status ?? 'active'} />
+          <SubscribedState
+            status={status ?? 'active'}
+            cancelAtPeriodEnd={cancelAtPeriodEnd}
+            periodEndIso={periodEndIso}
+          />
         ) : status === 'past_due' ? (
           <PastDueState />
         ) : credits > 0 ? (
@@ -73,7 +94,16 @@ export default async function BillingSettingsPage(): Promise<React.ReactElement>
   );
 }
 
-function SubscribedState({ status }: { status: string }): React.ReactElement {
+function SubscribedState({
+  status,
+  cancelAtPeriodEnd,
+  periodEndIso,
+}: {
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  periodEndIso: string | null;
+}): React.ReactElement {
+  const periodEnd = formatPeriodEnd(periodEndIso);
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -85,6 +115,17 @@ function SubscribedState({ status }: { status: string }): React.ReactElement {
           cancellation in the customer portal.
         </p>
       </div>
+      {cancelAtPeriodEnd && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">Cancellation scheduled</p>
+          <p className="mt-1">
+            Your subscription will end{' '}
+            {periodEnd ? <>on <strong>{periodEnd}</strong></> : 'at the end of the current billing period'}
+            . Until then you keep unlimited access. Re-activate any time in
+            the customer portal.
+          </p>
+        </div>
+      )}
       <ManageSubscriptionButton />
     </div>
   );

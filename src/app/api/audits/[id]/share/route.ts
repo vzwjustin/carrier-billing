@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { env } from '@/env';
 import { trackServer } from '@/lib/analytics/events';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
+import { SHARE_TOKEN_BYTES } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -28,7 +29,7 @@ interface AuditTokenRow {
 const SHARE_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function generateToken(): string {
-  return randomBytes(24).toString('base64url');
+  return randomBytes(SHARE_TOKEN_BYTES).toString('base64url');
 }
 
 function buildShareUrl(token: string): string {

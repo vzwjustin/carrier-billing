@@ -129,6 +129,9 @@ importers:
       eslint-config-next:
         specifier: ^15.1.0
         version: 15.5.18(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+      eslint-plugin-react-hooks:
+        specifier: ^5.2.0
+        version: 5.2.0(eslint@9.39.4(jiti@2.7.0))
       jsdom:
         specifier: ^25.0.1
         version: 25.0.1
