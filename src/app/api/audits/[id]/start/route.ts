@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { scrubString } from '@/lib/observability/redact';
 import { createClient } from '@/lib/supabase/server';
 
@@ -78,6 +79,15 @@ export async function POST(
         { error: `Audit is already ${data.status}.` },
         { status: 409 },
       );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      key: `audit-start:${user.id}`,
+      limit: 10,
+      windowSeconds: 60 * 60,
+    });
+    if (!rateLimit.ok) {
+      return rateLimitedResponse(rateLimit.resetAt);
     }
 
     // B2 — idempotency key. Browser/proxy retries (or a duplicate /start POST)

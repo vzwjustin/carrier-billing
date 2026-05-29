@@ -240,23 +240,23 @@ export async function POST(request: Request): Promise<Response> {
             auditId,
             'audits.create.rollback_orphan',
           );
+          return NextResponse.json(
+            {
+              error: 'no_plan',
+              message: 'No active plan or audit credits.',
+              upgrade_url: '/pricing',
+            },
+            { status: 402 },
+          );
         }
-        // For transient errors (network drop between RPC commit and
-        // response, PostgREST 5xx, etc.) we deliberately LEAVE the audit
-        // row in place with status='pending'. If the RPC actually
-        // committed server-side, `credit_consumed=true` will be set;
-        // the orphan-cleanup cron sweeps such rows after 30 minutes and
-        // refunds the credit. If the RPC failed before committing, the
-        // row sits idle with `credit_consumed=false`, and orphan-
-        // cleanup will also reap it (no refund path needed — credit
-        // was never decremented). Either way, no credit is lost.
+        // Transient RPC failure — leave the pending row for orphan cleanup;
+        // do not mislabel as no_plan.
         return NextResponse.json(
           {
-            error: 'no_plan',
-            message: 'No active plan or audit credits.',
-            upgrade_url: '/pricing',
+            error: 'credit_decrement_unavailable',
+            message: 'Failed to reserve audit credit. Please try again.',
           },
-          { status: 402 },
+          { status: 503 },
         );
       }
     }

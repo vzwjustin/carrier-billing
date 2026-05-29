@@ -52,6 +52,12 @@ const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<StorageRemoveResp>
 );
 
 const sentryCaptureMock = vi.fn();
+const refundFailedAuditMock = vi.fn(
+  async (_name: string, _args: Record<string, unknown>) => ({
+    data: true,
+    error: null,
+  }),
+);
 
 // server-client chain: from('audits').select(...).eq(...).maybeSingle()
 function makeServerFromChain() {
@@ -104,6 +110,8 @@ vi.mock('@/lib/supabase/admin', () => ({
         remove: (paths: string[]) => storageRemoveMock(paths),
       }),
     },
+    rpc: (name: string, args: Record<string, unknown>) =>
+      refundFailedAuditMock(name, args),
   }),
 }));
 
@@ -176,6 +184,7 @@ beforeEach(() => {
   sentryCaptureMock.mockReset();
   assertCanRunAuditMock.mockReset();
   consumeAuditCreditMock.mockReset();
+  refundFailedAuditMock.mockClear();
 
   getUserMock.mockResolvedValue({
     data: { user: { id: TEST_USER_ID } },
@@ -363,7 +372,7 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(sent?.data?.retryCount).toBe(3);
   });
 
-  it('re-consumes credit when credit_consumed=false after system refund', async () => {
+  it('re-consumes credit after CAS reset when credit_consumed=false', async () => {
     auditsSelectMock.mockResolvedValueOnce({
       data: makeFailedAudit({ credit_consumed: false }),
       error: null,
@@ -378,11 +387,38 @@ describe('POST /api/audits/[id]/retry', () => {
     const res = await POST(req, makeContext());
 
     expect(res.status).toBe(200);
+    expect(adminUpdateRows[0]?.['status']).toBe('pending');
     expect(consumeAuditCreditMock).toHaveBeenCalledWith(
       TEST_USER_ID,
       TEST_AUDIT_ID,
     );
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('consumes credit only after the row is reset to pending', async () => {
+    const callOrder: string[] = [];
+    adminUpdateSelectMock.mockImplementation(async () => {
+      callOrder.push('cas-update');
+      return { data: [{ retry_count: 1 }], error: null };
+    });
+    consumeAuditCreditMock.mockImplementation(async () => {
+      callOrder.push('consume');
+      return { remaining: 0, idempotent: false };
+    });
+    auditsSelectMock.mockResolvedValueOnce({
+      data: makeFailedAudit({ credit_consumed: false }),
+      error: null,
+    });
+    assertCanRunAuditMock.mockResolvedValueOnce({
+      ok: true,
+      reason: 'credit',
+      remaining: 1,
+    });
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    await POST(req, makeContext());
+
+    expect(callOrder).toEqual(['cas-update', 'consume']);
   });
 
   it('skips credit consume when credit_consumed=true (user-fault failure)', async () => {
@@ -418,7 +454,28 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(res.status).toBe(402);
     expect(body.error).toBe('no_plan');
     expect(inngestSendMock).not.toHaveBeenCalled();
-    expect(adminUpdateSelectMock).not.toHaveBeenCalled();
+    expect(adminUpdateRows.some((row) => row['status'] === 'failed')).toBe(true);
+  });
+
+  it('returns 503 and rolls back when credit consume fails transiently', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: makeFailedAudit({ credit_consumed: false }),
+      error: null,
+    });
+    assertCanRunAuditMock.mockResolvedValueOnce({
+      ok: true,
+      reason: 'credit',
+      remaining: 1,
+    });
+    consumeAuditCreditMock.mockRejectedValueOnce(new Error('connection reset'));
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    const res = await POST(req, makeContext());
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(503);
+    expect(body.error).toBe('credit_decrement_unavailable');
+    expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
   it('subscription user with credit_consumed=false does not call consume', async () => {
@@ -434,5 +491,27 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(res.status).toBe(200);
     expect(assertCanRunAuditMock).toHaveBeenCalledTimes(1);
     expect(consumeAuditCreditMock).not.toHaveBeenCalled();
+  });
+
+  it('refunds re-consumed credit when enqueue fails after a refunded retry', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: makeFailedAudit({ credit_consumed: false }),
+      error: null,
+    });
+    assertCanRunAuditMock.mockResolvedValueOnce({
+      ok: true,
+      reason: 'credit',
+      remaining: 1,
+    });
+    inngestSendMock.mockRejectedValueOnce(new Error('inngest unavailable'));
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    const res = await POST(req, makeContext());
+
+    expect(res.status).toBe(500);
+    expect(refundFailedAuditMock).toHaveBeenCalledWith('refund_failed_audit', {
+      p_audit_id: TEST_AUDIT_ID,
+      p_user_id: TEST_USER_ID,
+    });
   });
 });

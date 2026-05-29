@@ -219,4 +219,23 @@ describe('POST /api/audits — access gate', () => {
     // back the audit row immediately and never sign a URL.
     expect(createSignedUploadUrlMock).not.toHaveBeenCalled();
   });
+
+  it('transient decrement error: 503 with credit_decrement_unavailable, row kept', async () => {
+    assertCanRunAuditMock.mockResolvedValueOnce({
+      ok: true,
+      reason: 'credit',
+      remaining: 1,
+    });
+    decrementMock.mockRejectedValueOnce(new Error('connection reset'));
+
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
+    expect(res.status).toBe(503);
+
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('credit_decrement_unavailable');
+
+    expect(auditsInsertMock).toHaveBeenCalledTimes(1);
+    expect(auditsDeleteEqMock).not.toHaveBeenCalled();
+    expect(createSignedUploadUrlMock).not.toHaveBeenCalled();
+  });
 });
