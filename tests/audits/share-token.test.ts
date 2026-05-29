@@ -272,16 +272,17 @@ describe('GET /share/[token] page handler', () => {
     ).rejects.toThrowError(NextNotFoundError);
   });
 
-  it('(f) audit found with NULL expiry (grandfathered share) → renders normally', async () => {
+  it('(f) audit found with NULL expiry when column exists → notFound() (H11)', async () => {
     auditMaybeSingleMock.mockResolvedValueOnce({
       data: makeAudit({ share_token_expires_at: null }),
       error: null,
     });
 
-    const element = await ShareReportPage({
-      params: Promise.resolve({ token: VALID_TOKEN_32 }),
-    });
-    expect(element).toBeDefined();
+    await expect(
+      ShareReportPage({
+        params: Promise.resolve({ token: VALID_TOKEN_32 }),
+      }),
+    ).rejects.toThrowError(NextNotFoundError);
   });
 
   it('(g) retries without share_token_expires_at when PostgREST schema cache is stale', async () => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { TermsEditor } from '@/components/contracts/terms-editor';
 import { createClient } from '@/lib/supabase/server';
+import { formatIsoDateDisplay } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 
 export const metadata = {
@@ -64,15 +65,6 @@ const CARRIER_LABELS: Record<string, string> = {
   tmobile: 'T-Mobile',
   unknown: 'Unknown',
 };
-
-function formatDate(value: string | null): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 export default async function ContractDetailPage({
   params,
@@ -144,7 +136,7 @@ export default async function ContractDetailPage({
               {contractData.original_filename}
             </h1>
             <p className="mt-1 text-sm text-neutral-500">
-              Uploaded {formatDate(contractData.created_at)}
+              Uploaded {formatIsoDateDisplay(contractData.created_at)}
             </p>
           </div>
           <span
@@ -182,7 +174,7 @@ export default async function ContractDetailPage({
             Effective
           </p>
           <p className="mt-1 text-sm text-neutral-900">
-            {formatDate(contractData.effective_date)}
+            {formatIsoDateDisplay(contractData.effective_date)}
           </p>
         </div>
         <div>
@@ -190,7 +182,7 @@ export default async function ContractDetailPage({
             Expires
           </p>
           <p className="mt-1 text-sm text-neutral-900">
-            {formatDate(contractData.expiration_date)}
+            {formatIsoDateDisplay(contractData.expiration_date)}
           </p>
         </div>
       </div>

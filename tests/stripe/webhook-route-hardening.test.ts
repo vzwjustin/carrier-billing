@@ -44,6 +44,7 @@ const billingEvents: BillingEventRow[] = [];
 // processed_status untouched.
 let nextMarkSuccessError: { message: string } | null = null;
 let nextMarkSuccessZeroRows = false;
+let nextMarkInFlightError: { message: string } | null = null;
 
 function applyPatch(row: BillingEventRow, patch: Record<string, unknown>): void {
   if ('processed_status' in patch) {
@@ -116,6 +117,11 @@ const fromMock = vi.fn(() => ({
       if (nextMarkSuccessError && patch['processed_status'] === 'success') {
         const err = nextMarkSuccessError;
         nextMarkSuccessError = null;
+        return { matched: [], error: err };
+      }
+      if (nextMarkInFlightError && patch['processed_status'] === 'in_flight') {
+        const err = nextMarkInFlightError;
+        nextMarkInFlightError = null;
         return { matched: [], error: err };
       }
       if (nextMarkSuccessZeroRows && patch['processed_status'] === 'success') {
@@ -243,6 +249,7 @@ beforeEach(() => {
   billingEvents.length = 0;
   nextMarkSuccessError = null;
   nextMarkSuccessZeroRows = false;
+  nextMarkInFlightError = null;
 });
 
 describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
@@ -283,6 +290,19 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     expect(row?.processed_status).toBe('failed');
     expect(row?.last_error).toContain('downstream RPC blew up');
     expect(row?.processed_at).toBeNull();
+  });
+
+  it('markInFlight DB error ⇒ 5xx, handler not invoked (Stripe will retry)', async () => {
+    nextMarkInFlightError = { message: 'connection reset' };
+    const event = makeCheckoutEvent('evt_h8_claim_err');
+    constructEventMock.mockReturnValue(event);
+
+    const res = await POST(makeRequest('{}'));
+    expect(res.status).toBe(500);
+    expect(handleStripeEventMock).not.toHaveBeenCalled();
+
+    const row = billingEvents.find((r) => r.stripe_event_id === 'evt_h8_claim_err');
+    expect(row?.processed_status).toBeNull();
   });
 
   it('handler failure: last_error is truncated and PII-scrubbed', async () => {

@@ -22,6 +22,10 @@ import type {
   DisputeLineInput,
   DisputeSeverity,
 } from './builder';
+import {
+  formatIsoDatePeriod,
+  formatUtcYyyyMmDd,
+} from '@/lib/dates';
 
 const CARRIER_DISPLAY_NAMES: Record<string, string> = {
   verizon: 'Verizon',
@@ -150,30 +154,6 @@ function carrierDisplay(slug: string | null): {
   return { slug: key, name: name ?? 'Unknown carrier' };
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start && !end) return '—';
-  return `${formatDate(start)} – ${formatDate(end)}`;
-}
-
-function formatYyyyMmDd(d: Date): string {
-  // UTC so snapshot tests don't flap with server TZ. Matches `builder.ts`.
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function formatLongDate(d: Date): string {
   // UTC-anchored long form (`May 25, 2026`). Drives the letter heading.
   const y = d.getUTCFullYear();
@@ -256,7 +236,7 @@ export function buildBulkDisputeLetter(
   const { audit, operatorName, findings, generatedAt } = input;
 
   const carrier = carrierDisplay(audit.carrier);
-  const billingPeriodDisplay = formatPeriod(
+  const billingPeriodDisplay = formatIsoDatePeriod(
     audit.billing_period_start,
     audit.billing_period_end,
   );
@@ -301,7 +281,7 @@ export function buildBulkDisputeLetter(
     carrierSlug: carrier.slug,
     billingPeriodDisplay,
     auditShortId: audit.id.slice(0, 8),
-    generatedDateDisplay: formatYyyyMmDd(generatedAt),
+    generatedDateDisplay: formatUtcYyyyMmDd(generatedAt),
     generatedDateLong: formatLongDate(generatedAt),
     operatorName: resolvedName,
     items,

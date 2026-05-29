@@ -156,8 +156,12 @@ vi.mock('@/env', () => ({
 
 import { loadDisputePacket } from '@/disputes/load';
 
+function futureShareExpiry(): string {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function makeAudit(over: Partial<AuditRow> = {}): AuditRow {
-  return {
+  const row: AuditRow = {
     id: AUDIT_ID,
     user_id: USER_A_ID,
     status: 'completed',
@@ -168,6 +172,10 @@ function makeAudit(over: Partial<AuditRow> = {}): AuditRow {
     share_token_expires_at: null,
     ...over,
   };
+  if (row.share_token && row.share_token_expires_at === null) {
+    return { ...row, share_token_expires_at: futureShareExpiry() };
+  }
+  return row;
 }
 
 function makeFinding(over: Partial<FindingRow> = {}): FindingRow {
@@ -372,6 +380,24 @@ describe('loadDisputePacket — share token path', () => {
       'pdf',
     );
     expect(outcome.kind).toBe('ok');
+  });
+
+  it('returns 404 when share token has NULL expiry (legacy row without TTL)', async () => {
+    adminAuditMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        ...makeAudit({ share_token: VALID_TOKEN }),
+        share_token_expires_at: null,
+      },
+      error: null,
+    });
+    const outcome = await loadDisputePacket(
+      makeReq(`?token=${VALID_TOKEN}`),
+      { id: AUDIT_ID, findingId: FINDING_ID },
+      'pdf',
+    );
+    expect(outcome.kind).toBe('response');
+    if (outcome.kind !== 'response') return;
+    expect(outcome.response.status).toBe(404);
   });
 
   it('returns 404 when the public token is past its expiration', async () => {

@@ -39,10 +39,8 @@ import { createClient } from '@/lib/supabase/server';
 
 import { parseCsvToBill } from '@/extraction/csv/parse';
 import { ColumnMappingSchema } from '@/extraction/csv/mapping';
-import type {
-  ExtractedAccount,
-  ExtractedBill,
-} from '@/extraction/schema';
+import type { ExtractedBill } from '@/extraction/schema';
+import { translateLineIndexes } from '@/lib/findings/translate-line-indexes';
 import { ALL_RULES } from '@/rules/registry';
 import { runRules } from '@/rules/runner';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
@@ -296,7 +294,12 @@ export async function POST(
       carrier: bill.carrier,
     };
     const ruleResult = await runRules(ctx, ALL_RULES);
-    const findings = translatePerAccountLineIndexes(ruleResult.findings, bill);
+    const findings = translateLineIndexes(ruleResult.findings, bill, {
+      auditId,
+      warn: (message, ctx) => {
+        console.warn(message, ctx);
+      },
+    });
     try {
       await persistFindings(auditId, findings, persisted);
     } catch (findingsErr) {
@@ -604,52 +607,6 @@ async function persistFindings(
   if (insErr) {
     throw new Error(`insert findings failed: ${insErr.message}`);
   }
-}
-
-/**
- * Per-account → global flat line-index translation (mirror of the helper in
- * process-bill.ts). Rules emit local-to-account indexes; persistFindings
- * resolves against a flattened list, so we translate before calling it.
- */
-function translatePerAccountLineIndexes(
-  findings: Finding[],
-  bill: ExtractedBill,
-): Finding[] {
-  const accountLineCounts = bill.accounts.map(
-    (a: ExtractedAccount) => a.lines.length,
-  );
-  const offsets: number[] = [];
-  let running = 0;
-  for (const n of accountLineCounts) {
-    offsets.push(running);
-    running += n;
-  }
-
-  return findings.map((f) => {
-    if (f.affected_line_indexes.length === 0) return f;
-    if (f.affected_account_indexes.length !== 1) {
-      // Can't safely route — drop the line indexes.
-      return { ...f, affected_line_indexes: [] };
-    }
-    const accountIdx = f.affected_account_indexes[0];
-    if (
-      typeof accountIdx !== 'number' ||
-      accountIdx < 0 ||
-      accountIdx >= accountLineCounts.length
-    ) {
-      return { ...f, affected_line_indexes: [], affected_account_indexes: [] };
-    }
-    const size = accountLineCounts[accountIdx] ?? 0;
-    const offset = offsets[accountIdx] ?? 0;
-    const out: number[] = [];
-    for (const localIdx of f.affected_line_indexes) {
-      if (typeof localIdx !== 'number' || localIdx < 0 || localIdx >= size) {
-        continue;
-      }
-      out.push(offset + localIdx);
-    }
-    return { ...f, affected_line_indexes: out };
-  });
 }
 
 async function markFailed(

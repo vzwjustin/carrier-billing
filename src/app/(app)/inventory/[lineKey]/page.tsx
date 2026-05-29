@@ -20,6 +20,7 @@ import {
   type LineStatus,
 } from '@/lib/inventory/aggregate';
 import { createClient } from '@/lib/supabase/server';
+import { formatIsoDateDisplay } from '@/lib/dates';
 import { cn, formatCents } from '@/lib/utils';
 
 export const metadata = {
@@ -55,17 +56,6 @@ interface RawAuditRow {
   carrier: string | null;
   billing_period_end: string | null;
   completed_at: string | null;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 function StatusBadge({ status }: { status: LineStatus }): React.JSX.Element {
@@ -232,7 +222,7 @@ export default async function InventoryLinePage({
             {history.map((h) => (
               <tr key={h.auditId} className="hover:bg-neutral-50">
                 <td className="px-4 py-3 text-neutral-700">
-                  {formatDate(h.billingPeriodEnd)}
+                  {formatIsoDateDisplay(h.billingPeriodEnd)}
                 </td>
                 <td className="px-4 py-3 text-neutral-900">
                   <span className="block max-w-xs truncate">

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { assertCanStartPendingAudit } from '@/lib/access/gate';
 import { scrubString } from '@/lib/observability/redact';
 import { createClient } from '@/lib/supabase/server';
 
@@ -77,6 +78,18 @@ export async function POST(
       return NextResponse.json(
         { error: `Audit is already ${data.status}.` },
         { status: 409 },
+      );
+    }
+
+    const startGate = await assertCanStartPendingAudit(user.id);
+    if (!startGate.ok) {
+      return NextResponse.json(
+        {
+          error: 'subscription_past_due',
+          message:
+            'Your subscription is past due. Please update payment before starting this audit.',
+        },
+        { status: 402 },
       );
     }
 

@@ -22,6 +22,7 @@ import {
   consumeRateLimit,
   rateLimitedResponse,
 } from '@/lib/security/rate-limit';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -50,13 +51,6 @@ const CSV_HEADER = [
 
 function csvFilename(auditId: string): string {
   return `carrieraudit-cost-centers-${auditId.slice(0, 8)}.csv`;
-}
-
-function isShareTokenExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
 }
 
 function centsToDollarsString(cents: number): string {

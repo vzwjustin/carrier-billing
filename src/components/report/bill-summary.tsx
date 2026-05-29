@@ -1,6 +1,6 @@
-import { format, parseISO } from 'date-fns';
 import * as React from 'react';
 
+import { formatIsoDatePeriod } from '@/lib/dates';
 import type { ReportAudit } from '@/reports/types';
 import { formatCents } from '@/lib/utils';
 
@@ -10,17 +10,6 @@ const CARRIER_LABELS: Record<string, string> = {
   tmobile: 'T-Mobile',
   unknown: 'Unknown',
 };
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start || !end) return '—';
-  try {
-    const s = parseISO(start);
-    const e = parseISO(end);
-    return `${format(s, 'MMM d')} – ${format(e, 'MMM d, yyyy')}`;
-  } catch {
-    return '—';
-  }
-}
 
 export interface BillSummaryProps {
   audit: ReportAudit;
@@ -39,7 +28,10 @@ export function BillSummary({ audit }: BillSummaryProps): React.JSX.Element {
         <SummaryItem label="Carrier" value={carrierLabel} />
         <SummaryItem
           label="Billing period"
-          value={formatPeriod(audit.billing_period_start, audit.billing_period_end)}
+          value={formatIsoDatePeriod(
+            audit.billing_period_start,
+            audit.billing_period_end,
+          )}
         />
         <SummaryItem
           label="Total charges"

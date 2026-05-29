@@ -26,6 +26,7 @@ import {
   consumeRateLimit,
   rateLimitedResponse,
 } from '@/lib/security/rate-limit';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { FindingStatus, Severity } from '@/rules/types';
@@ -123,13 +124,6 @@ function parseEnumCsv<T extends string>(
 
 function csvFilename(auditId: string): string {
   return `carrieraudit-findings-${auditId.slice(0, 8)}.csv`;
-}
-
-function isShareTokenExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
 }
 
 function centsToDollarsString(cents: number): string {
