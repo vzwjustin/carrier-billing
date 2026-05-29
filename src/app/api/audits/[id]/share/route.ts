@@ -8,6 +8,7 @@ import { env } from '@/env';
 import { trackServer } from '@/lib/analytics/events';
 import { scrubString } from '@/lib/observability/redact';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -41,13 +42,6 @@ function generateToken(): string {
 function buildShareUrl(token: string): string {
   const base = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
   return `${base}/share/${token}`;
-}
-
-function isExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
 }
 
 async function trackShared(auditId: string, userId: string): Promise<void> {
@@ -125,7 +119,10 @@ export async function POST(
 
     // Reuse existing, non-expired token; refresh the expiry on share clicks
     // so an active sharer gets a sliding 30-day window.
-    if (existing.share_token && !isExpired(existing.share_token_expires_at)) {
+    if (
+      existing.share_token &&
+      !isShareTokenExpired(existing.share_token_expires_at)
+    ) {
       const { data: refreshedRows, error: refreshError } = await admin
         .from('audits')
         .update({ share_token_expires_at: newExpiry })

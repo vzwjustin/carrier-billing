@@ -276,6 +276,27 @@ describe('POST /api/audits/[id]/share', () => {
     expect(json['url']).toBe('https://app.carrieraudit.test/share/existing-token-123');
   });
 
+  it('regenerates the token when expiry is NULL (legacy row without TTL)', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: VALID_AUDIT_ID,
+        user_id: OWNER_USER_ID,
+        status: 'completed',
+        share_token: 'legacy-token',
+        share_token_expires_at: null,
+      },
+      error: null,
+    });
+    const res = await POST(makeRequest(), makeContext(VALID_AUDIT_ID));
+    expect(res.status).toBe(200);
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    const arg = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(typeof arg['share_token']).toBe('string');
+    expect(arg['share_token']).not.toBe('legacy-token');
+    expect(typeof arg['share_token_expires_at']).toBe('string');
+  });
+
   it('regenerates the token when the existing one has expired (H11)', async () => {
     const pastExpiry = new Date(Date.now() - 1_000).toISOString();
     maybeSingleMock.mockResolvedValueOnce({

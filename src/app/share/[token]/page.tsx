@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { ReportView } from '@/components/audits/report-view';
 import { trackServer } from '@/lib/analytics/events';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { buildReportData } from '@/reports/builder';
 import type {
@@ -77,6 +78,7 @@ export async function generateMetadata({
       .maybeSingle<MetadataAuditRow>();
     let data = first.data;
     let error = first.error;
+    let expiryColumnAvailable = true;
 
     if (error && isMissingColumnError(error)) {
       const retry = await supabase
@@ -87,11 +89,16 @@ export async function generateMetadata({
         .maybeSingle<Omit<MetadataAuditRow, 'share_token_expires_at'>>();
       data = retry.data ? { ...retry.data, share_token_expires_at: null } : null;
       error = retry.error;
+      expiryColumnAvailable = false;
     }
 
     if (error) return fallback;
     if (!data) return fallback;
-    if (isExpired(data.share_token_expires_at)) return fallback;
+    if (
+      isShareTokenExpired(data.share_token_expires_at, expiryColumnAvailable)
+    ) {
+      return fallback;
+    }
 
     const carrierLabel = data.carrier ? (CARRIER_LABELS[data.carrier] ?? 'wireless') : 'wireless';
     const annual = formatUsdShort(data.estimated_annual_savings_cents);
@@ -163,13 +170,6 @@ function isMissingColumnError(error: unknown): boolean {
   return code === '42703' || code === 'PGRST204';
 }
 
-function isExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
-}
-
 export default async function ShareReportPage({
   params,
 }: {
@@ -203,6 +203,7 @@ export default async function ShareReportPage({
 
   let audit: AuditRow | null = null;
   let error: { code?: string; message?: string } | null = null;
+  let expiryColumnAvailable = true;
   {
     const first = await supabase
       .from('audits')
@@ -220,6 +221,7 @@ export default async function ShareReportPage({
         audit = { ...retry.data, share_token_expires_at: null };
       }
       error = retry.error as { code?: string; message?: string } | null;
+      expiryColumnAvailable = false;
     } else {
       audit = first.data;
       error = first.error as { code?: string; message?: string } | null;
@@ -234,9 +236,9 @@ export default async function ShareReportPage({
     notFound();
   }
 
-  // H11 — expired tokens behave exactly like unknown tokens. NULL means a
-  // grandfathered (pre-migration) share, which we keep alive.
-  if (isExpired(audit.share_token_expires_at)) {
+  if (
+    isShareTokenExpired(audit.share_token_expires_at, expiryColumnAvailable)
+  ) {
     notFound();
   }
 

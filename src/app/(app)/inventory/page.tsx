@@ -25,6 +25,7 @@ import {
   type LineStatus,
 } from '@/lib/inventory/aggregate';
 import { createClient } from '@/lib/supabase/server';
+import { formatIsoDateDisplay } from '@/lib/dates';
 import { cn, formatCents } from '@/lib/utils';
 
 export const metadata = {
@@ -78,17 +79,6 @@ function parsePage(raw: string | string[] | undefined): number {
   const n = Number.parseInt(v, 10);
   if (!Number.isFinite(n) || n < 1 || n > 1000) return 1;
   return n;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 interface RawLineRow {
@@ -387,7 +377,9 @@ function InventoryTableRow({ row }: { row: InventoryRow }): React.JSX.Element {
       <td className="px-4 py-3 text-neutral-700">
         <span className="block max-w-xs truncate">{row.planName ?? '—'}</span>
       </td>
-      <td className="px-4 py-3 text-neutral-700">{formatDate(row.lastSeen)}</td>
+      <td className="px-4 py-3 text-neutral-700">
+        {formatIsoDateDisplay(row.lastSeen)}
+      </td>
       <td className="px-4 py-3 text-neutral-900">
         {row.planBaseCents !== null ? formatCents(row.planBaseCents) : '—'}
       </td>

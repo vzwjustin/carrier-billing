@@ -19,8 +19,11 @@ export async function dispatchAuditCompletedSideEffects(opts: {
   highSeverityCount: number;
   monthlySavingsCents: number;
   logger?: CompletedSideEffectsLogger;
-  /** process-bill wraps the Inngest send in step.run for durability. */
-  wrapInngestSend?: (send: () => Promise<void>) => Promise<void>;
+  /**
+   * process-bill wraps analytics, trail, and Inngest send in step.run so
+   * replays do not double-emit PostHog events or audit-trail rows.
+   */
+  runInStep?: (name: string, fn: () => Promise<unknown>) => Promise<unknown>;
 }): Promise<void> {
   const {
     auditId,
@@ -30,55 +33,72 @@ export async function dispatchAuditCompletedSideEffects(opts: {
     highSeverityCount,
     monthlySavingsCents,
     logger,
-    wrapInngestSend,
+    runInStep,
   } = opts;
 
-  try {
-    await trackServer(
-      {
-        name: 'audit_completed',
-        properties: {
-          auditId,
-          carrier: carrier ?? 'unknown',
-          finding_count: findingCount,
-          high_severity_count: highSeverityCount,
-          estimated_monthly_savings_cents: monthlySavingsCents,
-        },
-      },
-      userId,
-    );
-  } catch (analyticsErr) {
-    logger?.error('dispatchAuditCompletedSideEffects: trackServer failed', {
-      auditId,
-      message:
-        analyticsErr instanceof Error
-          ? analyticsErr.message
-          : 'unknown analytics error',
-    });
-  }
-
-  await logTrailEvent({
-    userId,
-    eventType: 'audit_completed',
-    entityType: 'audit',
-    entityId: auditId,
-    metadata: { carrier: carrier ?? 'unknown', finding_count: findingCount },
-  });
-
-  const sendCompleted = async () => {
-    await inngest.send({
-      id: `${auditId}-completed`,
-      name: 'audit.completed',
-      data: { auditId, userId },
-    });
+  const run = async (name: string, fn: () => Promise<void>): Promise<void> => {
+    if (runInStep) {
+      await runInStep(name, async () => {
+        await fn();
+        return { ok: true };
+      });
+      return;
+    }
+    await fn();
   };
 
-  try {
-    if (wrapInngestSend) {
-      await wrapInngestSend(sendCompleted);
-    } else {
-      await sendCompleted();
+  await run('track-completed', async () => {
+    try {
+      await trackServer(
+        {
+          name: 'audit_completed',
+          properties: {
+            auditId,
+            carrier: carrier ?? 'unknown',
+            finding_count: findingCount,
+            high_severity_count: highSeverityCount,
+            estimated_monthly_savings_cents: monthlySavingsCents,
+          },
+        },
+        userId,
+      );
+    } catch (analyticsErr) {
+      logger?.error('dispatchAuditCompletedSideEffects: trackServer failed', {
+        auditId,
+        message:
+          analyticsErr instanceof Error
+            ? analyticsErr.message
+            : 'unknown analytics error',
+      });
     }
+  });
+
+  await run('log-trail-completed', async () => {
+    try {
+      await logTrailEvent({
+        userId,
+        eventType: 'audit_completed',
+        entityType: 'audit',
+        entityId: auditId,
+        metadata: { carrier: carrier ?? 'unknown', finding_count: findingCount },
+      });
+    } catch (trailErr) {
+      logger?.error('dispatchAuditCompletedSideEffects: logTrailEvent failed', {
+        auditId,
+        message:
+          trailErr instanceof Error ? trailErr.message : 'unknown trail error',
+      });
+    }
+  });
+
+  try {
+    await run('send-trigger', async () => {
+      await inngest.send({
+        id: `${auditId}-completed`,
+        name: 'audit.completed',
+        data: { auditId, userId },
+      });
+    });
   } catch (sendErr) {
     logger?.error(
       'dispatchAuditCompletedSideEffects: audit.completed send failed',

@@ -15,6 +15,11 @@
  *    authored by us and already PII-free.
  */
 
+import {
+  formatIsoDatePeriod,
+  formatUtcYyyyMmDd,
+} from '@/lib/dates';
+
 const CARRIER_DISPLAY_NAMES: Record<string, string> = {
   verizon: 'Verizon',
   att: 'AT&T',
@@ -143,22 +148,6 @@ export interface DisputePacket {
   phoneScript: string[];
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start && !end) return '—';
-  return `${formatDate(start)} – ${formatDate(end)}`;
-}
-
 function carrierDisplay(slug: string | null): {
   slug: string;
   name: string;
@@ -177,14 +166,6 @@ function formatCentsDollars(cents: number): string {
     style: 'currency',
     currency: 'USD',
   }).format(dollars);
-}
-
-function formatYyyyMmDd(d: Date): string {
-  // ISO date in UTC — independent of server TZ so snapshot tests don't flap.
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 function formatMdn(mdn: string | null): string {
@@ -297,7 +278,7 @@ export function buildDisputePacket(input: DisputeBuilderInput): DisputePacket {
   }));
 
   const requestedCreditDisplay = `${formatCentsDollars(monthlyCents)}/mo`;
-  const billingPeriodDisplay = formatPeriod(
+  const billingPeriodDisplay = formatIsoDatePeriod(
     audit.billing_period_start,
     audit.billing_period_end,
   );
@@ -317,7 +298,7 @@ export function buildDisputePacket(input: DisputeBuilderInput): DisputePacket {
     carrierName: carrier.name,
     carrierSlug: carrier.slug,
     billingPeriodDisplay,
-    generatedDateDisplay: formatYyyyMmDd(generatedAt),
+    generatedDateDisplay: formatUtcYyyyMmDd(generatedAt),
     auditShortId: audit.id.slice(0, 8),
     findingTitle: finding.title,
     severityLabel: severityLabel(finding.severity),

@@ -138,6 +138,122 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
       return count;
     });
 
-    return { processed: orphans.length, subscriptionOrphans: subOrphanCount };
+    // #2 backstop: reclaim credits leaked when the synchronous CSV route
+    // (no retrying worker) crashed between markFailed and its refund call,
+    // leaving status='failed' + credit_consumed=true. refund_failed_audit is
+    // idempotent and atomic (0034), so an already-refunded row (credit_consumed
+    // now false) is not matched here and never double-refunds. TTL on
+    // updated_at avoids racing a refund that's still in flight.
+    const leakedRefunds = await step.run('refund-leaked-credits', async () => {
+      const supabase = getAdminClient();
+      const cutoff = new Date(Date.now() - TTL_MINUTES * 60_000).toISOString();
+      const { data, error } = await supabase
+        .from('audits')
+        .select('id, user_id')
+        .eq('status', 'failed')
+        .eq('credit_consumed', true)
+        .lt('updated_at', cutoff);
+      if (error) {
+        throw new Error(
+          `audits select (refund-leaked-credits) failed: ${error.message}`,
+        );
+      }
+      const rows = (data ?? []) as Array<{ id: string; user_id: string }>;
+      let refunded = 0;
+      for (const row of rows) {
+        const { error: rpcErr } = await supabase.rpc('refund_failed_audit', {
+          p_audit_id: row.id,
+          p_user_id: row.user_id,
+        });
+        if (rpcErr) {
+          // 0034 raises on profile mismatch; log and continue so one bad row
+          // doesn't wedge the whole sweep.
+          logger.warn('cleanupOrphanAudits: refund_failed_audit error', {
+            auditId: row.id,
+          });
+          continue;
+        }
+        refunded += 1;
+      }
+      if (refunded > 0) {
+        logger.info('cleanupOrphanAudits: reclaimed leaked credits', { refunded });
+      }
+      return refunded;
+    });
+
+    // #8 backstop: finalize CSV audits stuck in 'analyzing' (the synchronous
+    // route persisted bill + findings but the summary flip failed and there is
+    // no worker to retry). Scoped to source_format='csv' because a CSV audit
+    // only reaches 'analyzing' AFTER findings are persisted, so recomputing the
+    // summary from the findings table is safe and preserves the user's report.
+    // PDF audits are intentionally left to process-bill's own retry/refund path.
+    const reclaimedAnalyzing = await step.run('complete-stuck-csv-analyzing', async () => {
+      const supabase = getAdminClient();
+      const cutoff = new Date(Date.now() - TTL_MINUTES * 60_000).toISOString();
+      const { data, error } = await supabase
+        .from('audits')
+        .select('id')
+        .eq('status', 'analyzing')
+        .eq('source_format', 'csv')
+        .lt('updated_at', cutoff);
+      if (error) {
+        throw new Error(
+          `audits select (complete-stuck-csv-analyzing) failed: ${error.message}`,
+        );
+      }
+      const rows = (data ?? []) as Array<{ id: string }>;
+      let completed = 0;
+      for (const row of rows) {
+        const { data: fRows, error: fErr } = await supabase
+          .from('findings')
+          .select('severity, estimated_monthly_savings_cents')
+          .eq('audit_id', row.id);
+        if (fErr) {
+          logger.warn('cleanupOrphanAudits: findings read failed', { auditId: row.id });
+          continue;
+        }
+        const findings = (fRows ?? []) as Array<{
+          severity: string;
+          estimated_monthly_savings_cents: number | null;
+        }>;
+        const monthly = findings.reduce(
+          (s, f) => s + (f.estimated_monthly_savings_cents ?? 0),
+          0,
+        );
+        const high = findings.filter((f) => f.severity === 'high').length;
+        const now = new Date().toISOString();
+        const { error: upErr } = await supabase
+          .from('audits')
+          .update({
+            status: 'completed',
+            completed_at: now,
+            finding_count: findings.length,
+            high_severity_count: high,
+            estimated_monthly_savings_cents: monthly,
+            estimated_annual_savings_cents: monthly * 12,
+            updated_at: now,
+          })
+          .eq('id', row.id)
+          .eq('status', 'analyzing');
+        if (upErr) {
+          logger.warn('cleanupOrphanAudits: complete stuck analyzing failed', {
+            auditId: row.id,
+          });
+          continue;
+        }
+        completed += 1;
+      }
+      if (completed > 0) {
+        logger.info('cleanupOrphanAudits: completed stuck CSV analyzing', { completed });
+      }
+      return completed;
+    });
+
+    return {
+      processed: orphans.length,
+      subscriptionOrphans: subOrphanCount,
+      leakedRefunds,
+      reclaimedAnalyzing,
+    };
   },
 );

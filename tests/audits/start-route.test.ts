@@ -28,19 +28,32 @@ type AuditRowResp = {
 
 // Wrap top-level mocks in vi.hoisted so they're initialized before the
 // vi.mock factories below run (per CLAUDE.md test-mocking rule).
-const { getUserMock, auditsSelectMock, inngestSendMock, sentryCaptureMock, consumeRateLimitMock } =
-  vi.hoisted(() => ({
-    getUserMock: vi.fn<() => Promise<GetUserResult>>(),
-    auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
-    inngestSendMock: vi.fn(async (_event: unknown) => undefined),
-    sentryCaptureMock: vi.fn(),
-    consumeRateLimitMock: vi.fn<
-      (config: { key: string; limit: number; windowSeconds: number }) => Promise<
-        | { ok: true; remaining: number; resetAt: string }
-        | { ok: false; remaining: number; resetAt: string }
-      >
-    >(),
-  }));
+const {
+  getUserMock,
+  auditsSelectMock,
+  inngestSendMock,
+  sentryCaptureMock,
+  consumeRateLimitMock,
+  assertCanStartPendingAuditMock,
+} = vi.hoisted(() => ({
+  getUserMock: vi.fn<() => Promise<GetUserResult>>(),
+  auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
+  inngestSendMock: vi.fn(async (_event: unknown) => undefined),
+  sentryCaptureMock: vi.fn(),
+  consumeRateLimitMock: vi.fn<
+    (config: { key: string; limit: number; windowSeconds: number }) => Promise<
+      | { ok: true; remaining: number; resetAt: string }
+      | { ok: false; remaining: number; resetAt: string }
+    >
+  >(),
+  assertCanStartPendingAuditMock: vi.fn<
+    () => Promise<{ ok: true } | { ok: false; reason: 'past_due' }>
+  >(),
+}));
+
+vi.mock('@/lib/access/gate', () => ({
+  assertCanStartPendingAudit: () => assertCanStartPendingAuditMock(),
+}));
 
 // `from('audits').select(...).eq(...).maybeSingle()` chain
 function makeFromChain() {
@@ -103,12 +116,13 @@ beforeEach(() => {
   inngestSendMock.mockReset();
   sentryCaptureMock.mockReset();
   consumeRateLimitMock.mockReset();
-
   consumeRateLimitMock.mockResolvedValue({
     ok: true,
     remaining: 9,
     resetAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   });
+  assertCanStartPendingAuditMock.mockReset();
+  assertCanStartPendingAuditMock.mockResolvedValue({ ok: true });
 
   getUserMock.mockResolvedValue({
     data: { user: { id: TEST_USER_ID } },
@@ -222,6 +236,21 @@ describe('POST /api/audits/[id]/start', () => {
     });
     const res = await POST(req, makeContext());
     expect(res.status).toBe(401);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 402 when subscription is past_due (start gate)', async () => {
+    assertCanStartPendingAuditMock.mockResolvedValueOnce({
+      ok: false,
+      reason: 'past_due',
+    });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(402);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('subscription_past_due');
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
 

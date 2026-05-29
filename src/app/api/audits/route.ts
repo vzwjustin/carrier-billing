@@ -249,12 +249,12 @@ export async function POST(request: Request): Promise<Response> {
             { status: 402 },
           );
         }
-        // Transient RPC failure — leave the pending row for orphan cleanup;
-        // do not mislabel as no_plan.
+        // Transient RPC failure — leave the pending row for orphan cleanup.
         return NextResponse.json(
           {
-            error: 'credit_decrement_unavailable',
-            message: 'Failed to reserve audit credit. Please try again.',
+            error: 'credit_pending',
+            message:
+              'Your audit was created but credit confirmation is still processing. Wait a few minutes and retry upload, or contact support if this persists.',
           },
           { status: 503 },
         );

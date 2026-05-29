@@ -59,9 +59,11 @@ describe('processContractFn — mark-extracting status guard', () => {
     return CONTRACT_SRC.slice(idx, idx + 4500);
   }
 
-  it('selects user_id + status before flipping (ownership recheck)', () => {
+  it('selects user_id + status + inngest_run_id before flipping (ownership recheck + #6 self-replay)', () => {
     const block = getMarkExtractingBlock();
-    expect(block).toMatch(/\.select\(['"]id, user_id, status['"]\)/);
+    expect(block).toMatch(
+      /\.select\(['"]id, user_id, status, inngest_run_id['"]\)/,
+    );
   });
 
   it('treats a missing row as `not-found` (does not throw)', () => {

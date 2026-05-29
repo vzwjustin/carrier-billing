@@ -27,6 +27,7 @@ import {
 import type { ReactElement } from 'react';
 
 import { formatCents } from '@/lib/utils';
+import { formatIsoDateDisplay, formatIsoDatePeriod } from '@/lib/dates';
 import type {
   ExecutiveAuditSummary,
   ExecutiveCategoryRow,
@@ -200,22 +201,6 @@ function carrierName(carrier: string | null): string {
   return CARRIER_NAMES[carrier] ?? carrier;
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start && !end) return '—';
-  return `${formatDate(start)} – ${formatDate(end)}`;
-}
-
 function pctLabel(bps: number | null): string {
   if (bps === null) return '—';
   const sign = bps >= 0 ? '+' : '';
@@ -258,7 +243,7 @@ function CoverPage({
   const newest = data.audits[0];
   const dateRange =
     oldest && newest
-      ? `${formatDate(oldest.billing_period_start ?? oldest.billing_period_end)} – ${formatDate(
+      ? `${formatIsoDateDisplay(oldest.billing_period_start ?? oldest.billing_period_end)} – ${formatIsoDateDisplay(
           newest.billing_period_end ?? newest.billing_period_start,
         )}`
       : '—';
@@ -415,7 +400,7 @@ function TrendPage({
                 ]}
               >
                 <Text style={[styles.tableCell, { flex: 2 }]}>
-                  {formatDate(p.billing_period_end)}
+                  {formatIsoDateDisplay(p.billing_period_end)}
                 </Text>
                 <Text
                   style={[
@@ -495,7 +480,7 @@ function AuditTable({
             {carrierName(a.carrier)}
           </Text>
           <Text style={[styles.tableCellMuted, { flex: 2 }]}>
-            {formatPeriod(a.billing_period_start, a.billing_period_end)}
+            {formatIsoDatePeriod(a.billing_period_start, a.billing_period_end)}
           </Text>
           <Text style={[styles.tableCell, { flex: 1, textAlign: 'right' }]}>
             {a.line_count.toLocaleString('en-US')}

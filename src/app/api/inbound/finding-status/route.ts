@@ -198,7 +198,7 @@ export async function POST(request: Request): Promise<Response> {
     // 6. Fire the same event the authed route fires. Best-effort.
     try {
       await inngest.send({
-        id: `finding-${findingId}-${status}-${Date.now()}`,
+        id: `finding-${findingId}-${status}`,
         name: 'finding.status_changed',
         data: {
           auditId,

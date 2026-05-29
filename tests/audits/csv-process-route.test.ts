@@ -232,7 +232,7 @@ beforeEach(() => {
 
 describe('POST /api/audits/csv/[id]/process', () => {
   it('returns 500 when mark-completed affects zero rows', async () => {
-    markCompletedMock.mockResolvedValueOnce({ data: [], error: null });
+    markCompletedMock.mockResolvedValue({ data: [], error: null });
 
     const res = await POST(makeRequest(), makeContext());
     expect(res.status).toBe(500);

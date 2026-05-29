@@ -30,6 +30,7 @@ import {
   consumeRateLimit,
   rateLimitedResponse,
 } from '@/lib/security/rate-limit';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -48,18 +49,6 @@ interface AuditFullRow extends ReportAuditRow {
   status: string;
   share_token: string | null;
   share_token_expires_at: string | null;
-}
-
-function isShareTokenExpired(expiresAt: string | null): boolean {
-  // NULL on a row that already has a share_token means the token is
-  // grandfathered (created before the expiry column existed). We treat that
-  // as "still valid" so we don't break working public links on deploy.
-  // For freshly-revoked rows, share_token is null already, which the caller
-  // checks first.
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
 }
 
 function isMissingColumnError(error: unknown): boolean {
@@ -139,6 +128,7 @@ export async function GET(
       .maybeSingle<AuditFullRow>();
     let data = result.data;
     let error = result.error;
+    let expiryColumnAvailable = true;
 
     if (error && isMissingColumnError(error)) {
       const retry = await admin
@@ -151,6 +141,7 @@ export async function GET(
         ? { ...retry.data, share_token_expires_at: null }
         : null;
       error = retry.error;
+      expiryColumnAvailable = false;
     }
 
     // Public token surface — collapse all lookup failures (no row, transient
@@ -165,7 +156,12 @@ export async function GET(
     // the query, but if it's been nulled out between SELECT planning and
     // execution we'd never get here; the expiry check catches the lifecycle
     // case where the row still has the token but the window has elapsed.
-    if (isShareTokenExpired(audit.share_token_expires_at)) {
+    if (
+      isShareTokenExpired(
+        audit.share_token_expires_at,
+        expiryColumnAvailable,
+      )
+    ) {
       return new NextResponse('Not found.', { status: 404 });
     }
   } else {

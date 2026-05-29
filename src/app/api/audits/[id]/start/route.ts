@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { assertCanStartPendingAudit } from '@/lib/access/gate';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { scrubString } from '@/lib/observability/redact';
 import { createClient } from '@/lib/supabase/server';
@@ -88,6 +89,18 @@ export async function POST(
     });
     if (!rateLimit.ok) {
       return rateLimitedResponse(rateLimit.resetAt);
+    }
+
+    const startGate = await assertCanStartPendingAudit(user.id);
+    if (!startGate.ok) {
+      return NextResponse.json(
+        {
+          error: 'subscription_past_due',
+          message:
+            'Your subscription is past due. Please update payment before starting this audit.',
+        },
+        { status: 402 },
+      );
     }
 
     // B2 — idempotency key. Browser/proxy retries (or a duplicate /start POST)

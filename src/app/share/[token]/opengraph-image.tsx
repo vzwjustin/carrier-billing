@@ -1,4 +1,7 @@
 import { ImageResponse } from 'next/og';
+
+import { formatIsoDatePeriod } from '@/lib/dates';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 export const size = { width: 1200, height: 630 };
@@ -29,13 +32,6 @@ const AUDIT_CARD_COLUMNS =
   'carrier, line_count, finding_count, high_severity_count, estimated_monthly_savings_cents, estimated_annual_savings_cents, billing_period_start, billing_period_end, share_token_expires_at';
 const AUDIT_CARD_FALLBACK_COLUMNS =
   'carrier, line_count, finding_count, high_severity_count, estimated_monthly_savings_cents, estimated_annual_savings_cents, billing_period_start, billing_period_end';
-
-function isExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
-}
 
 function isMissingColumnError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
@@ -70,6 +66,7 @@ export default async function Image({ params }: Params) {
       /^[A-Za-z0-9_-]+$/.test(token)
     ) {
       const supabase = getAdminClient();
+      let expiryColumnAvailable = true;
       const first = await supabase
         .from('audits')
         .select(AUDIT_CARD_COLUMNS)
@@ -86,22 +83,26 @@ export default async function Image({ params }: Params) {
         data = retry.data
           ? { ...retry.data, share_token_expires_at: null }
           : null;
+        expiryColumnAvailable = false;
       } else {
         data = first.data;
       }
-    }
 
-    if (data && !isExpired(data.share_token_expires_at)) {
+      if (
+        data &&
+        !isShareTokenExpired(data.share_token_expires_at, expiryColumnAvailable)
+      ) {
       carrier = formatCarrier(data.carrier);
       monthlySavings = data.estimated_monthly_savings_cents ?? 0;
       annualSavings = data.estimated_annual_savings_cents ?? 0;
       findingCount = data.finding_count ?? 0;
       highCount = data.high_severity_count ?? 0;
       lineCount = data.line_count ?? 0;
-      const start = data.billing_period_start;
-      const end = data.billing_period_end;
-      if (start && end) {
-        billingPeriod = `${formatMonth(start)} ${new Date(start).getUTCFullYear()}`;
+      billingPeriod = formatIsoDatePeriod(
+        data.billing_period_start,
+        data.billing_period_end,
+      );
+      if (billingPeriod === '—') billingPeriod = null;
       }
     }
   } catch {
@@ -341,10 +342,4 @@ function formatCarrier(carrier: string | null): string {
     default:
       return 'Wireless audit';
   }
-}
-
-function formatMonth(iso: string): string {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const m = new Date(iso).getUTCMonth();
-  return months[m] ?? '';
 }

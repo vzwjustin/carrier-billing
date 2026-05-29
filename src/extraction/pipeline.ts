@@ -105,7 +105,7 @@ export async function runExtractionPipeline({
   if (rawText.trim().length < OCR_TEXT_THRESHOLD && hasAwsCredentials()) {
     neededOcr = true;
     try {
-      const ocrText = await extractTextWithOCR(buffer);
+      const ocrText = await extractTextWithOCR(buffer, { pageCount });
       // Prefer the longer of the two — if OCR was empty, keep whatever pdf-parse gave us.
       if (ocrText.length > rawText.length) {
         rawText = ocrText;

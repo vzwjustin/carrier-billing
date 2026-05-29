@@ -142,11 +142,18 @@ export async function POST(
     // Fire `finding.status_changed` so any outbound webhook fires + so future
     // event consumers (Slack/Linear/etc.) can subscribe. Failure here MUST NOT
     // fail the response — the DB update already succeeded and the webhook
-    // dispatch is best-effort. Idempotency key collapses retries against the
-    // same (findingId, status) tuple within Inngest's ~24h window.
+    // dispatch is best-effort.
+    //
+    // #10: the key must NOT include Date.now() — that made every call a unique
+    // id, so Inngest never deduped and a double-submit (double-click, proxy
+    // retry, React StrictMode double-fire) dispatched the outbound webhook
+    // twice. The (findingId, status) tuple is the logical transition; identical
+    // concurrent submits now collapse to one. (Trade-off: an intentional
+    // re-transition to the same status within Inngest's ~24h window is also
+    // deduped — acceptable; we don't want to spam the webhook on rapid toggles.)
     try {
       await inngest.send({
-        id: `finding-${findingId}-${status}-${Date.now()}`,
+        id: `finding-${findingId}-${status}`,
         name: 'finding.status_changed',
         data: {
           auditId,

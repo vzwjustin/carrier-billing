@@ -64,7 +64,7 @@ export const processContractFn = inngest.createFunction(
           const supabase = getAdminClient();
           const { data: rowData, error: fetchErr } = await supabase
             .from('contracts')
-            .select('id, user_id, status')
+            .select('id, user_id, status, inngest_run_id')
             .eq('id', contractId)
             .maybeSingle();
           if (fetchErr) {
@@ -73,7 +73,12 @@ export const processContractFn = inngest.createFunction(
             );
           }
           if (!rowData) return { proceed: false, reason: 'not-found' };
-          const row = rowData as { id: string; user_id: string; status: string };
+          const row = rowData as {
+            id: string;
+            user_id: string;
+            status: string;
+            inngest_run_id: string | null;
+          };
           if (row.user_id !== userId) {
             // Status-guarded so a row that advanced to 'extracting'/'parsed'
             // between the fetch and this update is never stomped to 'failed'.
@@ -101,6 +106,7 @@ export const processContractFn = inngest.createFunction(
             .from('contracts')
             .update({
               status: 'extracting',
+              inngest_run_id: event.id ?? null,
               updated_at: new Date().toISOString(),
             })
             .eq('id', contractId)
@@ -113,6 +119,15 @@ export const processContractFn = inngest.createFunction(
           }
           const affected = (updatedRows ?? []).length;
           if (affected === 0) {
+            // #6 / C1: Inngest step-replay self-recognition. If this run
+            // already stamped its run id (a prior body execution committed the
+            // pending→extracting flip but the step result wasn't persisted
+            // before the worker crashed), treat the bail as success so the
+            // contract isn't stranded in 'extracting' forever — mirrors
+            // process-bill's mark-extracting C1 branch.
+            if (event.id && row.inngest_run_id === event.id) {
+              return { proceed: true };
+            }
             return {
               proceed: false,
               reason: 'already-advanced',

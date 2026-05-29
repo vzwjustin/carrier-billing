@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
+import { formatIsoDateDisplay } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 
 export const metadata = {
@@ -43,15 +44,6 @@ const CARRIER_LABELS: Record<string, string> = {
   tmobile: 'T-Mobile',
   unknown: 'Unknown',
 };
-
-function formatDate(value: string | null): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 function StatusBadge({ status }: { status: string }): React.JSX.Element {
   const cls = STATUS_STYLES[status] ?? 'bg-neutral-100 text-neutral-700';
@@ -146,10 +138,10 @@ export default async function ContractsPage(): Promise<React.JSX.Element> {
                     {row.ban_last4 ? `…${row.ban_last4}` : '—'}
                   </td>
                   <td className="px-4 py-3 text-neutral-700">
-                    {formatDate(row.effective_date)}
+                    {formatIsoDateDisplay(row.effective_date)}
                   </td>
                   <td className="px-4 py-3 text-neutral-700">
-                    {formatDate(row.expiration_date)}
+                    {formatIsoDateDisplay(row.expiration_date)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />

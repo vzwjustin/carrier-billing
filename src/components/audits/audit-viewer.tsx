@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { ReportView } from '@/components/audits/report-view';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatIsoDatePeriod } from '@/lib/dates';
 import type { ReportData } from '@/reports/types';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -64,17 +65,6 @@ function statusIndex(status: string): number {
   if (status === 'analyzing') return 2;
   if (status === 'extracting') return 1;
   return 0;
-}
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start || !end) return '—';
-  const fmt = (s: string) =>
-    new Date(s).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  return `${fmt(start)} – ${fmt(end)}`;
 }
 
 export interface AuditViewerProps {
@@ -217,7 +207,10 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
           />
           <SummaryCard
             label="Billing period"
-            value={formatPeriod(data.billing_period_start, data.billing_period_end)}
+            value={formatIsoDatePeriod(
+              data.billing_period_start,
+              data.billing_period_end,
+            )}
           />
           <SummaryCard
             label="Accounts"
