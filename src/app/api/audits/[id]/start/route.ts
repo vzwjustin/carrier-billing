@@ -92,11 +92,16 @@ export async function POST(
 
     // B2 — idempotency key. Browser/proxy retries (or a duplicate /start POST)
     // must not enqueue the worker twice. Inngest dedupes events with the same
-    // `id` for ~24h, so anchoring to the audit id ensures a single bill.uploaded
-    // event ever fires for this audit.
+    // `id` for ~24h. First upload uses `${auditId}-uploaded`; retried audits
+    // (retry_count > 0 after POST /retry) must use the retry-scoped key so a
+    // second worker run is not collapsed onto the original upload event.
+    const uploadEventId =
+      data.retry_count === 0
+        ? `${auditId}-uploaded`
+        : `${auditId}-uploaded-retry-${data.retry_count}`;
     try {
       await inngest.send({
-        id: `${auditId}-uploaded`,
+        id: uploadEventId,
         name: 'bill.uploaded',
         data: {
           auditId: data.id,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { dispatchAuditCompletedSideEffects } from '@/lib/audits/completed-side-effects';
 import { processBillFn, __testables } from '@/inngest/functions/process-bill';
 import { functions } from '@/inngest/functions';
 
@@ -121,13 +122,17 @@ describe('processBillFn — H6 mark-analyzing status guard', () => {
   });
 
   it('audit.completed Inngest send carries a stable idempotency key', () => {
-    // (H5) The send-trigger step must pass `id: \`${auditId}-completed\``
+    // (H5) The send must pass `id: \`${auditId}-completed\``
     // so a retried function cannot fire `audit.completed` twice.
-    // Side effects live in emitCompletedAuditSideEffects (shared with C1
-    // downstream-only recovery).
-    const src = __testables.emitCompletedAuditSideEffects.toString();
+    const src = dispatchAuditCompletedSideEffects.toString();
     expect(src).toMatch(/name:\s*['"]audit\.completed['"]/);
     expect(src).toMatch(/id:\s*`\$\{auditId\}-completed`/);
+  });
+});
+
+describe('processBillFn — user-fault refund guard', () => {
+  it('treats empty extraction as user fault (no credit refund)', () => {
+    expect(__testables.isUserFaultFailure('no lines extracted')).toBe(true);
   });
 });
 
@@ -205,9 +210,10 @@ describe('processBillFn — C1 Inngest step-replay self-recognition', () => {
     expect(idx).toBeGreaterThan(-1);
     const block = src.slice(idx, idx + 4000);
     // The follow-up probe must read both columns and the closure must
-    // accept analyzing OR completed as a self-replay terminal state.
+    // accept analyzing, extracting, OR completed as a self-replay terminal state.
     expect(block).toMatch(/['"]status, inngest_run_id['"]/);
     expect(block).toMatch(/inngest_run_id\s*===?\s*event\.id/);
+    expect(block).toMatch(/probe\.status\s*===?\s*['"]extracting['"]/);
   });
 
   it('mark-analyzing is scoped to retry_count and this event run id', () => {

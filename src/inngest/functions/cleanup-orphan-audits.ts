@@ -70,11 +70,16 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
       //   - resilience to future column drift (a code path that sets
       //     credit_consumed=true on a sub audit would otherwise quietly
       //     mint a credit via this cron)
+      // `retry_count=0` excludes retried audits: POST /api/audits/[id]/retry
+      // resets a failed row to `pending` and bumps retry_count while
+      // retaining the original created_at. Without this filter, a retried
+      // credit audit still waiting on /start could be falsely refunded.
       const { data, error } = await supabase
         .from('audits')
         .select('id, user_id, created_at')
         .eq('status', 'pending')
         .eq('credit_consumed', true)
+        .eq('retry_count', 0)
         .lt('created_at', cutoff);
       if (error) {
         throw new Error(`audits select (find-orphans) failed: ${error.message}`);

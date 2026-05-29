@@ -152,6 +152,28 @@ describe('POST /api/audits/[id]/start', () => {
     expect(sent?.data?.retryCount).toBe(0);
   });
 
+  it('uses retry-scoped idempotency id when retry_count > 0', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: {
+        id: TEST_AUDIT_ID,
+        user_id: TEST_USER_ID,
+        status: 'pending',
+        storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+        retry_count: 2,
+      },
+      error: null,
+    });
+
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(200);
+
+    const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
+    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-2`);
+  });
+
   it('returns 429 when the per-user start rate limit is exceeded', async () => {
     consumeRateLimitMock.mockResolvedValueOnce({
       ok: false,

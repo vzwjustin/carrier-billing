@@ -32,6 +32,8 @@ import { z } from 'zod';
 
 import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { assertCanRunAudit } from '@/lib/access/gate';
+import { dispatchAuditCompletedSideEffects } from '@/lib/audits/completed-side-effects';
+import { loadParsedContractsForUser } from '@/lib/audits/load-parsed-contracts';
 import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
@@ -303,10 +305,12 @@ export async function POST(
     }
 
     // 7. Run rules + translate indexes + persist findings.
+    const loadedContracts = await loadParsedContractsForUser(user.id);
     const ctx: RuleContext = {
       bill,
       today: new Date(),
       carrier: bill.carrier,
+      contracts: loadedContracts,
     };
     const ruleResult = await runRules(ctx, ALL_RULES);
     const findings = translatePerAccountLineIndexes(ruleResult.findings, bill);
@@ -339,7 +343,7 @@ export async function POST(
       (f) => f.severity === ('high' as Severity),
     ).length;
     const now = new Date().toISOString();
-    const { error: completedErr } = await admin
+    const { data: completedRows, error: completedErr } = await admin
       .from('audits')
       .update({
         status: 'completed',
@@ -351,16 +355,29 @@ export async function POST(
         updated_at: now,
       })
       .eq('id', auditId)
-      .eq('status', 'analyzing');
-    if (completedErr) {
-      Sentry.captureException(completedErr, {
-        tags: { surface: 'audits.csv.process.mark_completed' },
-        extra: { auditId },
-      });
-      // The bill + findings are persisted; the audit just won't show
-      // 'completed'. Return success-ish so the user isn't left wondering
-      // — they'll see the row in their dashboard either way.
+      .eq('status', 'analyzing')
+      .select('id');
+    if (completedErr || (completedRows ?? []).length === 0) {
+      if (completedErr) {
+        Sentry.captureException(completedErr, {
+          tags: { surface: 'audits.csv.process.mark_completed' },
+          extra: { auditId },
+        });
+      }
+      return NextResponse.json(
+        { error: 'Failed to finalize audit.' },
+        { status: 500 },
+      );
     }
+
+    await dispatchAuditCompletedSideEffects({
+      auditId,
+      userId: user.id,
+      carrier: bill.carrier,
+      findingCount: findings.length,
+      highSeverityCount,
+      monthlySavingsCents: monthlySavings,
+    });
 
     await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'csv', account_count: bill.accounts.length, line_count: lineCount, finding_count: findings.length }, actorEmail: user.email ?? null });
 

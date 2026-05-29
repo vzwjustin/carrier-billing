@@ -21,9 +21,9 @@ import type {
 import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
-import type { ContractWithTerms, ContractTerms } from '@/contracts/schema';
-import { trackServer } from '@/lib/analytics/events';
-import { logTrailEvent } from '@/lib/audit-trail/log';
+import type { ContractWithTerms } from '@/contracts/schema';
+import { dispatchAuditCompletedSideEffects } from '@/lib/audits/completed-side-effects';
+import { loadParsedContractsForUser } from '@/lib/audits/load-parsed-contracts';
 import { BillUploadedDataSchema, parseEventData } from '../events';
 
 /**
@@ -227,6 +227,7 @@ function isNotAWirelessBill(err: unknown): boolean {
  */
 function isUserFaultFailure(failureReason: string): boolean {
   if (failureReason.startsWith('encrypted-pdf')) return true;
+  if (failureReason === 'no lines extracted') return true;
   if (
     /Document does not appear to be a US business wireless bill/i.test(
       failureReason,
@@ -301,66 +302,21 @@ async function emitCompletedAuditSideEffects(opts: {
   step: InngestStepRunner;
   logger: SideEffectsLogger;
 }): Promise<void> {
-  const {
-    auditId,
-    userId,
-    carrier,
-    findingCount,
-    highSeverityCount,
-    monthlySavingsCents,
-    step,
-    logger,
-  } = opts;
-
-  try {
-    await trackServer(
-      {
-        name: 'audit_completed',
-        properties: {
-          auditId,
-          carrier: carrier ?? 'unknown',
-          finding_count: findingCount,
-          high_severity_count: highSeverityCount,
-          estimated_monthly_savings_cents: monthlySavingsCents,
-        },
-      },
-      userId,
-    );
-  } catch (analyticsErr) {
-    logger.error('processBill: trackServer failed (audit still completed)', {
-      auditId,
-      message:
-        analyticsErr instanceof Error
-          ? analyticsErr.message
-          : 'unknown analytics error',
-    });
-  }
-
-  await logTrailEvent({
-    userId,
-    eventType: 'audit_completed',
-    entityType: 'audit',
-    entityId: auditId,
-    metadata: { carrier: carrier ?? 'unknown', finding_count: findingCount },
-  });
-
-  try {
-    await step.run('send-trigger', async () => {
-      await inngest.send({
-        id: `${auditId}-completed`,
-        name: 'audit.completed',
-        data: { auditId, userId },
+  await dispatchAuditCompletedSideEffects({
+    auditId: opts.auditId,
+    userId: opts.userId,
+    carrier: opts.carrier,
+    findingCount: opts.findingCount,
+    highSeverityCount: opts.highSeverityCount,
+    monthlySavingsCents: opts.monthlySavingsCents,
+    logger: opts.logger,
+    wrapInngestSend: async (send) => {
+      await opts.step.run('send-trigger', async () => {
+        await send();
+        return { ok: true };
       });
-      return { ok: true };
-    });
-  } catch (sendErr) {
-    logger.error('processBill: send-trigger failed (audit still completed)', {
-      auditId,
-      userId,
-      message:
-        sendErr instanceof Error ? sendErr.message : 'unknown send error',
-    });
-  }
+    },
+  });
 }
 
 export const processBillFn = inngest.createFunction(
@@ -809,7 +765,9 @@ export const processBillFn = inngest.createFunction(
               probe &&
               event.id &&
               probe.inngest_run_id === event.id &&
-              (probe.status === 'analyzing' || probe.status === 'completed')
+              (probe.status === 'extracting' ||
+                probe.status === 'analyzing' ||
+                probe.status === 'completed')
             ) {
               return { ok: true };
             }
@@ -863,52 +821,9 @@ export const processBillFn = inngest.createFunction(
       // query fails, we log and proceed with an empty array so the rest of
       // the rules engine still runs.
       const loadedContracts = (await step.run('load-contracts', async () => {
-        try {
-          const supabase = getAdminClient();
-          const { data, error } = await supabase
-            .from('contracts')
-            .select(
-              'id,carrier,ban_last4,effective_date,expiration_date,status,contract_terms(plan_name,contracted_monthly_rate_cents,discount_percentage_bps,waived_fees,promo_credit_cents,promo_duration_months,device_credit_terms,line_minimums,upgrade_fee_rules,activation_fee_rules,international_package_terms,early_termination_terms,notes)',
-            )
-            .eq('user_id', userId)
-            .eq('status', 'parsed');
-          if (error) {
-            logger.warn('processBill: load-contracts failed (continuing without)', {
-              auditId,
-              message: error.message,
-            });
-            return [] as ContractWithTerms[];
-          }
-          const rows = (data ?? []) as Array<{
-            id: string;
-            carrier: string | null;
-            ban_last4: string | null;
-            effective_date: string | null;
-            expiration_date: string | null;
-            contract_terms: ContractTerms[] | ContractTerms | null;
-          }>;
-          return rows.map<ContractWithTerms>((r) => {
-            const termsField = r.contract_terms;
-            const terms = Array.isArray(termsField)
-              ? (termsField[0] ?? null)
-              : (termsField ?? null);
-            return {
-              id: r.id,
-              carrier: r.carrier,
-              ban_last4: r.ban_last4,
-              effective_date: r.effective_date,
-              expiration_date: r.expiration_date,
-              terms,
-            };
-          });
-        } catch (loadErr) {
-          logger.warn('processBill: load-contracts threw (continuing without)', {
-            auditId,
-            message:
-              loadErr instanceof Error ? loadErr.message : 'unknown error',
-          });
-          return [] as ContractWithTerms[];
-        }
+        return loadParsedContractsForUser(userId, {
+          warn: (message, ctx) => logger.warn(message, { auditId, ...ctx }),
+        });
       })) as ContractWithTerms[];
 
       // ─────────────────────────────────────────────────────────────────────

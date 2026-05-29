@@ -415,6 +415,7 @@ async function onInvoicePaymentFailed(
   // when Stripe retries the final invoice).
   const NON_REVIVABLE = new Set<SubscriptionStatus>([
     'canceled',
+    'incomplete',
     'incomplete_expired',
     'unpaid',
   ]);
