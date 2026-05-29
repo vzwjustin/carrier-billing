@@ -144,7 +144,9 @@ describe('extractTextWithOCR — sync path', () => {
       ],
     });
 
-    const out = await extractTextWithOCR(SYNC_BUFFER);
+    // #4: sync path requires a known single page (and ≤5MB). Multi-page or
+    // unknown-page documents now route async regardless of size.
+    const out = await extractTextWithOCR(SYNC_BUFFER, { pageCount: 1 });
 
     expect(out).toBe('Verizon Business\nAccount number: ****1234');
     expect(textractSend).toHaveBeenCalledTimes(1);
@@ -156,9 +158,9 @@ describe('extractTextWithOCR — sync path', () => {
 
   it('wraps SDK errors in OcrError', async () => {
     textractSend.mockRejectedValueOnce(new Error('boom'));
-    await expect(extractTextWithOCR(SYNC_BUFFER)).rejects.toBeInstanceOf(
-      OcrError,
-    );
+    await expect(
+      extractTextWithOCR(SYNC_BUFFER, { pageCount: 1 }),
+    ).rejects.toBeInstanceOf(OcrError);
   });
 });
 
@@ -177,6 +179,22 @@ describe('extractTextWithOCR — async path', () => {
     });
 
     expect(s3Send).not.toHaveBeenCalled();
+    expect(textractSend).not.toHaveBeenCalled();
+  });
+
+  it('#4: routes a multi-page document under the sync size cap to the async path', async () => {
+    (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET =
+      undefined;
+    // SYNC_BUFFER is small enough for the sync API by size, but 3 pages must
+    // go async (Textract sync is single-page only). With the bucket unset the
+    // async path throws — proving it did NOT silently take the sync path and
+    // hit Textract's UnsupportedDocumentException.
+    await expect(
+      extractTextWithOCR(SYNC_BUFFER, { pageCount: 3 }),
+    ).rejects.toMatchObject({
+      name: 'OcrError',
+      message: expect.stringContaining('AWS_TEXTRACT_S3_BUCKET'),
+    });
     expect(textractSend).not.toHaveBeenCalled();
   });
 

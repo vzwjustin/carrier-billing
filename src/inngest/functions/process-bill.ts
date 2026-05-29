@@ -974,41 +974,67 @@ export const processBillFn = inngest.createFunction(
         findingCount: findings.length,
       });
 
-      // Phase 5 analytics: fire `audit_completed`. Wrapped + try/catch so a
-      // PostHog outage cannot fail an already-completed audit. trackServer is
-      // already defensive but we belt-and-suspenders here.
-      try {
-        const monthlySavings = findings.reduce<number>(
-          (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
-          0,
-        );
-        const highSeverityCount = findings.filter(
-          (f) => f.severity === ('high' as Severity),
-        ).length;
-        await trackServer(
-          {
-            name: 'audit_completed',
-            properties: {
-              auditId,
-              carrier: bill.carrier,
-              finding_count: findings.length,
-              high_severity_count: highSeverityCount,
-              estimated_monthly_savings_cents: monthlySavings,
+      // Phase 5 analytics: fire `audit_completed`. #9: wrapped in step.run so
+      // Inngest MEMOIZES it. Without this, every function replay/retry that
+      // re-executes the body (to reach the later `send-trigger` step) re-ran
+      // this bare code and double-emitted the PostHog event (capture() has no
+      // dedup). The inner try/catch keeps a PostHog outage from failing the
+      // already-completed audit and from triggering step retries.
+      await step.run('track-completed', async () => {
+        try {
+          const monthlySavings = findings.reduce<number>(
+            (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
+            0,
+          );
+          const highSeverityCount = findings.filter(
+            (f) => f.severity === ('high' as Severity),
+          ).length;
+          await trackServer(
+            {
+              name: 'audit_completed',
+              properties: {
+                auditId,
+                carrier: bill.carrier,
+                finding_count: findings.length,
+                high_severity_count: highSeverityCount,
+                estimated_monthly_savings_cents: monthlySavings,
+              },
             },
-          },
-          userId,
-        );
-      } catch (analyticsErr) {
-        logger.error('processBill: trackServer failed (audit still completed)', {
-          auditId,
-          message:
-            analyticsErr instanceof Error
-              ? analyticsErr.message
-              : 'unknown analytics error',
-        });
-      }
+            userId,
+          );
+        } catch (analyticsErr) {
+          logger.error('processBill: trackServer failed (audit still completed)', {
+            auditId,
+            message:
+              analyticsErr instanceof Error
+                ? analyticsErr.message
+                : 'unknown analytics error',
+          });
+        }
+        return { ok: true };
+      });
 
-      await logTrailEvent({ userId, eventType: 'audit_completed', entityType: 'audit', entityId: auditId, metadata: { carrier: bill.carrier, finding_count: findings.length } });
+      // #9: the audit-trail INSERT has no unique constraint, so it must be
+      // memoized by step.run or a replay double-logs 'audit_completed'. Inner
+      // try/catch so a trail-write failure can't fail the completed audit.
+      await step.run('log-trail-completed', async () => {
+        try {
+          await logTrailEvent({
+            userId,
+            eventType: 'audit_completed',
+            entityType: 'audit',
+            entityId: auditId,
+            metadata: { carrier: bill.carrier, finding_count: findings.length },
+          });
+        } catch (trailErr) {
+          logger.error('processBill: logTrailEvent failed (audit still completed)', {
+            auditId,
+            message:
+              trailErr instanceof Error ? trailErr.message : 'unknown trail error',
+          });
+        }
+        return { ok: true };
+      });
 
       // ─────────────────────────────────────────────────────────────────────
       // Phase 3: send-trigger — fire `audit.completed` so the email pipeline

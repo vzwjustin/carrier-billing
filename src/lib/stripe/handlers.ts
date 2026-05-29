@@ -49,6 +49,9 @@ export async function handleStripeEvent(
         event.data.object as Stripe.Checkout.Session,
         supabase,
         context,
+        // #13: pass event.created so the subscription_id write can refuse to
+        // resurrect an id a newer subscription.deleted already cleared.
+        event.created,
       );
       return;
     case 'customer.subscription.created':
@@ -92,6 +95,7 @@ async function onCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
   supabase: SupabaseClient,
   context: HandlerContext,
+  eventCreated: number,
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
@@ -160,9 +164,32 @@ async function onCheckoutSessionCompleted(
     // We still record the subscription_id and link the customer id so the
     // profile is wired up before the subscription event lands.
     const subscriptionId = readSubscriptionId(session.subscription);
-    const patch: ProfilePatch = { subscription_id: subscriptionId };
-    if (customerId) patch.stripe_customer_id = customerId;
-    await updateProfile(supabase, userId, patch);
+    // stripe_customer_id is the profile↔customer link; it is never cleared, so
+    // write it unconditionally (keyed by userId) to wire up the profile.
+    if (customerId) {
+      await updateProfile(supabase, userId, { stripe_customer_id: customerId });
+    }
+    // #13: guard the subscription_id write. Previously this was an unconditional
+    // updateProfile, so a delayed/replayed checkout.session.completed running
+    // AFTER a customer.subscription.deleted (which cleared subscription_id to
+    // null via the ordering guard) would resurrect the stale id. Only write
+    // when no newer subscription event has been recorded. We intentionally do
+    // NOT bump subscription_event_at here — that column stays the authority of
+    // the subscription.* events so subscription.created can still set
+    // subscription_status (the H11 invariant above).
+    const eventCreatedAt = new Date(eventCreated * 1000).toISOString();
+    const { error: subIdErr } = await supabase
+      .from('profiles')
+      .update({ subscription_id: subscriptionId, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .or(
+        `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
+      );
+    if (subIdErr) {
+      throw new Error(
+        `onCheckoutSessionCompleted: subscription_id write failed: ${subIdErr.message}`,
+      );
+    }
     await trackCheckoutCompleted('subscription', userId);
     return;
   }

@@ -52,8 +52,8 @@ const {
   insertFindingMock,
   selectInsertedMock,
   updateDriverMock,
-  selectAuditMock,
-  updateAuditMock,
+  reReadDriverMock,
+  bumpCountsRpcMock,
   deleteFindingMock,
   consumeRateLimitMock,
   inngestSendMock,
@@ -62,9 +62,12 @@ const {
   driverMaybeSingleMock: vi.fn(),
   insertFindingMock: vi.fn(),
   selectInsertedMock: vi.fn(),
+  // stamp: .update(patch).eq('id').is('escalated_finding_id', null).select('id')
   updateDriverMock: vi.fn(),
-  selectAuditMock: vi.fn(),
-  updateAuditMock: vi.fn(),
+  // loss re-read: .select('escalated_finding_id').eq('id').maybeSingle()
+  reReadDriverMock: vi.fn(),
+  // atomic count bump RPC
+  bumpCountsRpcMock: vi.fn(),
   deleteFindingMock: vi.fn(),
   consumeRateLimitMock: vi.fn(),
   inngestSendMock: vi.fn(),
@@ -83,6 +86,8 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
+    rpc: (name: string, args: Record<string, unknown>) =>
+      bumpCountsRpcMock(name, args),
     from: (table: string) => {
       if (table === 'findings') {
         return {
@@ -101,18 +106,17 @@ vi.mock('@/lib/supabase/admin', () => ({
       }
       if (table === 'bill_change_drivers') {
         return {
+          // CAS stamp: .update(patch).eq('id').is('escalated_finding_id', null).select('id')
           update: (patch: Record<string, unknown>) => ({
-            eq: async () => updateDriverMock(patch),
+            eq: () => ({
+              is: () => ({
+                select: async () => updateDriverMock(patch),
+              }),
+            }),
           }),
-        };
-      }
-      if (table === 'audits') {
-        return {
+          // loss re-read: .select('escalated_finding_id').eq('id').maybeSingle()
           select: () => ({
-            eq: () => ({ maybeSingle: selectAuditMock }),
-          }),
-          update: (patch: Record<string, unknown>) => ({
-            eq: async () => updateAuditMock(patch),
+            eq: () => ({ maybeSingle: reReadDriverMock }),
           }),
         };
       }
@@ -168,8 +172,8 @@ beforeEach(() => {
   insertFindingMock.mockReset();
   selectInsertedMock.mockReset();
   updateDriverMock.mockReset();
-  selectAuditMock.mockReset();
-  updateAuditMock.mockReset();
+  reReadDriverMock.mockReset();
+  bumpCountsRpcMock.mockReset();
   deleteFindingMock.mockReset();
   consumeRateLimitMock.mockReset();
   inngestSendMock.mockReset();
@@ -190,12 +194,14 @@ beforeEach(() => {
     data: { id: NEW_FINDING_ID },
     error: null,
   });
-  updateDriverMock.mockResolvedValue({ error: null });
-  selectAuditMock.mockResolvedValue({
-    data: { finding_count: 5, high_severity_count: 1 },
+  // CAS stamp wins by default: 1 row matched.
+  updateDriverMock.mockResolvedValue({ data: [{ id: DRIVER_ID }], error: null });
+  // loss re-read default (only used when the stamp matches 0 rows).
+  reReadDriverMock.mockResolvedValue({
+    data: { escalated_finding_id: 'existing-finding-id' },
     error: null,
   });
-  updateAuditMock.mockResolvedValue({ error: null });
+  bumpCountsRpcMock.mockResolvedValue({ error: null });
   deleteFindingMock.mockResolvedValue({ error: null });
   inngestSendMock.mockResolvedValue({ ids: ['evt_x'] });
 });
@@ -348,11 +354,34 @@ describe('POST /escalate — severity + savings derivation', () => {
 describe('POST /escalate — rollback', () => {
   it('rolls back the inserted finding when driver-stamping fails', async () => {
     updateDriverMock.mockResolvedValueOnce({
+      data: null,
       error: { message: 'stamp failed' },
     });
     const res = await POST(new Request('http://localhost'), makeContext());
     expect(res.status).toBe(500);
     expect(deleteFindingMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('#5: on a lost CAS race (0 rows stamped) rolls back our finding and returns the winner id', async () => {
+    // The CAS stamp matched 0 rows → a concurrent request escalated first.
+    updateDriverMock.mockResolvedValueOnce({ data: [], error: null });
+    reReadDriverMock.mockResolvedValueOnce({
+      data: { escalated_finding_id: 'winner-finding' },
+      error: null,
+    });
+    const res = await POST(new Request('http://localhost'), makeContext());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      alreadyEscalated: boolean;
+      findingId: string;
+    };
+    expect(body.alreadyEscalated).toBe(true);
+    expect(body.findingId).toBe('winner-finding');
+    // Our duplicate finding is rolled back, and the loser neither bumps counts
+    // nor fires the event.
+    expect(deleteFindingMock).toHaveBeenCalledTimes(1);
+    expect(bumpCountsRpcMock).not.toHaveBeenCalled();
+    expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
   it('returns 500 with generic message when the finding insert fails', async () => {
@@ -370,22 +399,26 @@ describe('POST /escalate — rollback', () => {
 });
 
 describe('POST /escalate — audit counts + event dispatch', () => {
-  it('bumps audit finding_count + high_severity_count when severity is high', async () => {
+  it('bumps counts via the atomic RPC with high_delta=1 when severity is high', async () => {
     driverMaybeSingleMock.mockResolvedValueOnce({
       data: makeDriver({ is_disputable: true, difference_cents: 4500 }),
       error: null,
     });
     await POST(new Request('http://localhost'), makeContext());
-    const patch = updateAuditMock.mock.calls[0]?.[0] as Record<string, number>;
-    expect(patch.finding_count).toBe(6); // 5 + 1
-    expect(patch.high_severity_count).toBe(2); // 1 + 1 (high)
+    // #5: count bump is now a single atomic SQL increment, not a
+    // read-modify-write, so concurrent escalations on the same audit compose.
+    expect(bumpCountsRpcMock).toHaveBeenCalledWith('bump_audit_finding_counts', {
+      p_audit_id: AUDIT_ID,
+      p_high_delta: 1,
+    });
   });
 
-  it('only bumps finding_count (not high_severity_count) when severity is medium', async () => {
+  it('bumps counts via the atomic RPC with high_delta=0 when severity is medium', async () => {
     await POST(new Request('http://localhost'), makeContext());
-    const patch = updateAuditMock.mock.calls[0]?.[0] as Record<string, number>;
-    expect(patch.finding_count).toBe(6);
-    expect(patch.high_severity_count).toBe(1); // unchanged
+    expect(bumpCountsRpcMock).toHaveBeenCalledWith('bump_audit_finding_counts', {
+      p_audit_id: AUDIT_ID,
+      p_high_delta: 0,
+    });
   });
 
   it('fires the finding.created event with title (not summary) for PII discipline', async () => {

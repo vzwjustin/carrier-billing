@@ -19,6 +19,7 @@ interface ContractRow {
   user_id: string;
   status: string;
   storage_path: string;
+  extract_attempt: number;
 }
 
 interface ContractStatusRow {
@@ -92,6 +93,7 @@ function makeContract(over: Partial<ContractRow> = {}): ContractRow {
     user_id: USER_ID,
     status: 'pending',
     storage_path: `${USER_ID}/${CONTRACT_ID}/contract.pdf`,
+    extract_attempt: 0,
     ...over,
   };
 }

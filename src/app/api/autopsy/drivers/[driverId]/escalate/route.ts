@@ -161,13 +161,20 @@ export async function POST(
 
   const findingId: string = inserted.id;
 
-  const { error: stampErr } = await admin
+  // #5: the stamp is the atomic concurrency gate. `.is('escalated_finding_id',
+  // null)` means exactly one of N concurrent escalations of this driver wins;
+  // the losers match 0 rows, roll back their finding, and return the winner's
+  // id. Without this guard a double-click created duplicate findings, orphaned
+  // a row, and double-counted the audit totals.
+  const { data: stamped, error: stampErr } = await admin
     .from('bill_change_drivers')
     .update({
       escalated_finding_id: findingId,
       escalated_at: new Date().toISOString(),
     })
-    .eq('id', driverId);
+    .eq('id', driverId)
+    .is('escalated_finding_id', null)
+    .select('id');
   if (stampErr) {
     // Roll back the finding so we don't leave it orphaned.
     await admin.from('findings').delete().eq('id', findingId);
@@ -179,23 +186,35 @@ export async function POST(
       { status: 500 },
     );
   }
+  if (!stamped || stamped.length === 0) {
+    // Lost the race (a concurrent request escalated this driver between our
+    // initial read and this stamp). Roll back our finding and return the
+    // winner's id — idempotent from the caller's perspective.
+    await admin.from('findings').delete().eq('id', findingId);
+    const { data: existing } = await admin
+      .from('bill_change_drivers')
+      .select('escalated_finding_id')
+      .eq('id', driverId)
+      .maybeSingle<{ escalated_finding_id: string | null }>();
+    return NextResponse.json({
+      ok: true,
+      findingId: existing?.escalated_finding_id ?? null,
+      alreadyEscalated: true,
+    });
+  }
 
-  // Bump the parent audit's finding_count + high_severity_count so the
-  // dashboard tile reflects the escalation without a full re-aggregate.
-  const { data: auditCounts } = await admin
-    .from('audits')
-    .select('finding_count,high_severity_count')
-    .eq('id', auditId)
-    .maybeSingle<{ finding_count: number | null; high_severity_count: number | null }>();
-  if (auditCounts) {
-    await admin
-      .from('audits')
-      .update({
-        finding_count: (auditCounts.finding_count ?? 0) + 1,
-        high_severity_count:
-          (auditCounts.high_severity_count ?? 0) + (severity === 'high' ? 1 : 0),
-      })
-      .eq('id', auditId);
+  // We won the claim. Bump the parent audit's counts atomically — a
+  // read-modify-write here would lose increments when two DIFFERENT drivers
+  // on the same audit are escalated concurrently.
+  const { error: bumpErr } = await admin.rpc('bump_audit_finding_counts', {
+    p_audit_id: auditId,
+    p_high_delta: severity === 'high' ? 1 : 0,
+  });
+  if (bumpErr) {
+    Sentry.captureException(bumpErr, {
+      tags: { surface: 'autopsy.escalate.bump_counts' },
+      extra: { auditId },
+    });
   }
 
   await logTrailEvent({ userId: user.id, eventType: 'finding_escalated', entityType: 'driver', entityId: driverId, metadata: { audit_id: auditId, finding_id: findingId, category: driver.category, comparison_id: driver.bill_comparison_id }, actorEmail: user.email ?? null });

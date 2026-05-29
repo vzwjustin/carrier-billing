@@ -8,7 +8,7 @@ import {
   type ExtractedAccount,
   type ExtractedBill,
 } from '@/extraction/schema';
-import { redactDetails as redactDetailsImpl, scrubString } from '@/lib/observability/redact';
+import { redactDetails as redactDetailsImpl } from '@/lib/observability/redact';
 
 /**
  * Lazy singleton Anthropic client. Constructing eagerly at module load would
@@ -139,8 +139,9 @@ type Message =
 /**
  * Extract a normalized bill JSON from a PDF buffer using Claude with native
  * PDF input. Implements the §7 retry pattern: on a schema validation failure,
- * we make one more attempt with the bad output echoed back and a corrective
- * user turn appended. `not_a_wireless_bill` is NOT retried.
+ * we make one more attempt by re-asking against the original document with the
+ * specific Zod failure reason (the bad output is NOT echoed back — see #11).
+ * `not_a_wireless_bill` is NOT retried.
  */
 export async function extractBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
   // Dev-only fast path: bypass the LLM entirely and return a pre-canned
@@ -183,22 +184,23 @@ export async function extractBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
     throw new ExtractionError('Not a wireless bill', firstResult.parsed);
   }
 
-  // L6: redact the bad first response before echoing it back. If the schema
-  // failure was caused by the LLM emitting a full phone or account number
-  // (breaking the last-4-only regex), the unredacted echo would send that
-  // PII back across the network on the retry. scrubString strips digit-runs
-  // of 5+, emails, and phone-formatted sequences while leaving the
-  // structural JSON intact enough for the model to correct.
-  const safeFirstRaw = scrubString(firstRaw);
+  // #11: do NOT echo the bad first response back. The previous approach echoed
+  // scrubString(firstRaw) as an assistant turn, but scrubString truncates to
+  // 500 chars AND replaces every 4+ digit run with [REDACTED] — which mangles
+  // integer-cents values (e.g. 4399 → [REDACTED]) and chops the JSON to a
+  // fragment, so the model was shown a broken, truncated example and the paid
+  // retry was systematically degraded. Instead, re-ask against the original
+  // document (still in initialMessages) with the specific validation failure
+  // and request the full corrected JSON. PII is never echoed because we don't
+  // resend the model's prior output at all.
   const retryMessages: Message[] = [
     ...initialMessages,
-    { role: 'assistant', content: safeFirstRaw },
     {
       role: 'user',
       content: [
         {
           type: 'text',
-          text: `Your previous response failed validation: ${firstResult.reason}. Output corrected JSON only.`,
+          text: `Your previous attempt to extract this bill failed schema validation: ${firstResult.reason}. Re-extract the bill from the document above and output the full corrected JSON only — no prose, no markdown.`,
         },
       ],
     },

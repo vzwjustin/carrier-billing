@@ -1,20 +1,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getAdminContext } from '@/lib/admin/guard';
+// #12: use the shared, formula-injection-guarded CSV writer instead of a
+// private copy. The local csvCell only double-quoted values and did NOT
+// neutralize spreadsheet formula prefixes (= + - @), so a stored
+// profiles.email beginning with one would execute when an admin opened the
+// export. lib/csv.csvCell prefixes those with an apostrophe.
+import { toCsv } from '@/lib/csv';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
-
-function csvCell(value: unknown): string {
-  const s = value === null || value === undefined ? '' : String(value);
-  return `"${s.replace(/"/g, '""')}"`;
-}
-
-function toCsv(rows: Record<string, unknown>[], columns: string[]): string {
-  const header = columns.join(',');
-  const body = rows.map((r) => columns.map((c) => csvCell(r[c])).join(','));
-  return [header, ...body].join('\n');
-}
 
 export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getAdminContext();
@@ -36,14 +31,22 @@ export async function GET(req: NextRequest): Promise<Response> {
       )
       .order('created_at', { ascending: false })
       .limit(10000);
-    csv = toCsv((data ?? []) as Record<string, unknown>[], [
-      'id',
-      'email',
-      'role',
-      'audit_credits',
-      'subscription_status',
-      'created_at',
-    ]);
+    {
+      const cols = [
+        'id',
+        'email',
+        'role',
+        'audit_credits',
+        'subscription_status',
+        'created_at',
+      ];
+      csv = toCsv(
+        cols,
+        ((data ?? []) as Record<string, unknown>[]).map((r) =>
+          cols.map((c) => r[c]),
+        ),
+      );
+    }
     filename = 'users.csv';
   } else if (type === 'audits') {
     const { data } = await admin
@@ -53,14 +56,22 @@ export async function GET(req: NextRequest): Promise<Response> {
       )
       .order('created_at', { ascending: false })
       .limit(10000);
-    csv = toCsv((data ?? []) as Record<string, unknown>[], [
-      'id',
-      'user_id',
-      'status',
-      'carrier',
-      'estimated_annual_savings_cents',
-      'created_at',
-    ]);
+    {
+      const cols = [
+        'id',
+        'user_id',
+        'status',
+        'carrier',
+        'estimated_annual_savings_cents',
+        'created_at',
+      ];
+      csv = toCsv(
+        cols,
+        ((data ?? []) as Record<string, unknown>[]).map((r) =>
+          cols.map((c) => r[c]),
+        ),
+      );
+    }
     filename = 'audits.csv';
   } else {
     return NextResponse.json(
