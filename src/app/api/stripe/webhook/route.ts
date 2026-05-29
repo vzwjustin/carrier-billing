@@ -175,6 +175,9 @@ export async function POST(request: Request): Promise<Response> {
     // race) gets `'lost'` back and short-circuits BEFORE invoking the handler
     // so the credit grant in checkout.session.completed cannot fire twice.
     const claim = await markInFlight(supabase, billingEventId);
+    if (claim === 'error') {
+      return new Response('Claim failed', { status: 500 });
+    }
     if (claim === 'lost') {
       console.log('[stripe.webhook]', event.type, event.id, 'claim lost, deduped');
       return Response.json({ received: true, deduped: true });
@@ -229,7 +232,7 @@ export async function POST(request: Request): Promise<Response> {
 async function markInFlight(
   supabase: SupabaseClient,
   billingEventId: string,
-): Promise<'claimed' | 'lost'> {
+): Promise<'claimed' | 'lost' | 'error'> {
   // R1-F1 — true CAS claim. The UPDATE matches only when processed_status is
   // still null (fresh insert) or 'failed' (retry of a prior failure). If
   // another worker already flipped the row to 'in_flight' or 'success', the
@@ -252,10 +255,9 @@ async function markInFlight(
         tags: { area: 'stripe.webhook.mark_in_flight' },
         extra: { billingEventId },
       });
-      // Err on the safe side: a transient DB error here is indistinguishable
-      // from a lost claim from the caller's perspective. Return 'lost' so the
-      // handler does not run; Stripe will retry the delivery.
-      return 'lost';
+      // Transient DB error: return 'error' so the caller 5xx's and Stripe
+      // retries. Do NOT conflate with 'lost' (CAS dedupe), which correctly 200's.
+      return 'error';
     }
     const rows = (data ?? []) as Array<{ id: string }>;
     return rows.length > 0 ? 'claimed' : 'lost';
@@ -264,7 +266,7 @@ async function markInFlight(
       tags: { area: 'stripe.webhook.mark_in_flight' },
       extra: { billingEventId },
     });
-    return 'lost';
+    return 'error';
   }
 }
 

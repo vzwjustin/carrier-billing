@@ -375,7 +375,16 @@ export function mapEdi811ToBill(
         const numeric = Number(valueRaw);
         if (!Number.isFinite(numeric) || numeric < 0) break;
         if (qualifier === QTY_DATA_GB) {
-          currentAccount.currentLine.line.data_used_gb = numeric;
+          // #15: the schema caps data_used_gb at 10000 and Zod .max() REJECTS
+          // (throws) rather than clamps, so a garbled QTY*DG (decimal-shift, or
+          // bytes mislabeled as GB) would fail the whole otherwise-good 811.
+          // Clamp at the write site, mirroring the free-text bounding elsewhere.
+          if (numeric > 10_000) {
+            console.warn(
+              `[edi811] data_used_gb ${numeric} exceeds cap; clamping to 10000`,
+            );
+          }
+          currentAccount.currentLine.line.data_used_gb = Math.min(numeric, 10_000);
         } else if (qualifier === QTY_VOICE_MIN) {
           currentAccount.currentLine.line.voice_used_min = Math.round(numeric);
         } else if (qualifier === QTY_SMS_COUNT) {
@@ -414,6 +423,18 @@ export function mapEdi811ToBill(
   for (const acc of accounts) {
     acc.account.lines = acc.lines.map((s) => s.line);
     acc.account.total_charges_cents = sumAccountTotal(acc.account);
+  }
+  // #3: a credit-balance bill yields a negative TDS01 total. parseTdsAmount has
+  // no sign guard, and the raw negative is otherwise written straight onto the
+  // single account (overwriting the just-applied per-account zero-clamp) and
+  // returned as the bill total — both fields are schema nonnegative(), so a
+  // .parse() throw rejects the entire otherwise-good 811. Clamp here so it
+  // neither un-clamps the account nor trips the schema.
+  if (totalChargesCents !== null && totalChargesCents < 0) {
+    console.warn(
+      `[edi811] negative top-level TDS total ${totalChargesCents} cents; clamping to 0`,
+    );
+    totalChargesCents = 0;
   }
   if (totalChargesCents !== null && accounts.length === 1 && accounts[0]) {
     accounts[0].account.total_charges_cents = totalChargesCents;

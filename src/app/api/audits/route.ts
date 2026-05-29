@@ -250,13 +250,23 @@ export async function POST(request: Request): Promise<Response> {
         // row sits idle with `credit_consumed=false`, and orphan-
         // cleanup will also reap it (no refund path needed — credit
         // was never decremented). Either way, no credit is lost.
+        if (isDefinitiveRefusal) {
+          return NextResponse.json(
+            {
+              error: 'no_plan',
+              message: 'No active plan or audit credits.',
+              upgrade_url: '/pricing',
+            },
+            { status: 402 },
+          );
+        }
         return NextResponse.json(
           {
-            error: 'no_plan',
-            message: 'No active plan or audit credits.',
-            upgrade_url: '/pricing',
+            error: 'credit_pending',
+            message:
+              'Your audit was created but credit confirmation is still processing. Wait a few minutes and retry upload, or contact support if this persists.',
           },
-          { status: 402 },
+          { status: 503 },
         );
       }
     }

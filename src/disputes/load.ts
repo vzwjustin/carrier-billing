@@ -26,6 +26,7 @@ import {
   consumeRateLimit,
   rateLimitedResponse,
 } from '@/lib/security/rate-limit';
+import { isShareTokenExpired } from '@/lib/share-token';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -89,13 +90,6 @@ const ACCOUNT_COLUMNS = 'id,account_number_masked,account_label';
 export type LoadOutcome =
   | { kind: 'ok'; packet: DisputePacket }
   | { kind: 'response'; response: Response };
-
-function isShareTokenExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
-}
 
 function notFound(): Response {
   return new Response('Not found.', { status: 404 });

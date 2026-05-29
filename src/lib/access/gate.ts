@@ -80,3 +80,18 @@ export async function assertCanRunAudit(
 
   return { ok: false, reason: 'no_plan' };
 }
+
+/**
+ * Gate for POST /api/audits/[id]/start — blocks processing when billing is
+ * past_due, but still allows pending audits that already reserved a credit
+ * at create time (do not re-run the full gate here).
+ */
+export async function assertCanStartPendingAudit(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; reason: 'past_due' }> {
+  const gate = await assertCanRunAudit(userId);
+  if (!gate.ok && gate.reason === 'past_due') {
+    return { ok: false, reason: 'past_due' };
+  }
+  return { ok: true };
+}

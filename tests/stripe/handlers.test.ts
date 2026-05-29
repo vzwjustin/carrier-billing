@@ -154,6 +154,17 @@ function makeClient(): MockClient {
                 // simulate "fresher event won" by setting it to `[]`.
                 or(orExpr: string) {
                   return {
+                    // Awaited directly (no .select) — real PostgREST resolves
+                    // an ordering-guarded UPDATE to `{ error }`. Used by the
+                    // #13 checkout subscription_id guard.
+                    then(
+                      resolve: (v: {
+                        error: typeof state.__nextUpdateError;
+                      }) => void,
+                    ) {
+                      recordCall(eqArgs, undefined, orExpr);
+                      resolve({ error: consumeError() });
+                    },
                     select(cols: string) {
                       return {
                         then(
@@ -291,20 +302,36 @@ describe('handleStripeEvent', () => {
     await handleStripeEvent(event, client as unknown as never);
 
     expect(client.__rpcs).toHaveLength(0);
-    expect(client.__updates).toHaveLength(1);
-    const update = client.__updates[0];
-    expect(update?.table).toBe('profiles');
-    expect(update?.eq).toEqual(['id', 'user_xyz']);
-    expect(update?.patch['subscription_id']).toBe('sub_777');
-    expect(update?.patch['stripe_customer_id']).toBe('cus_222');
-    // Status must be absent from the patch entirely — not written here at all.
-    expect(update?.patch).not.toHaveProperty('subscription_status');
+    // #13: the subscription_id write is now guarded so a replayed checkout
+    // cannot resurrect an id a newer subscription.deleted cleared. This splits
+    // into two updates: unconditional stripe_customer_id link + ordering-
+    // guarded subscription_id.
+    expect(client.__updates).toHaveLength(2);
+    const customerUpdate = client.__updates.find(
+      (u) => u.patch['stripe_customer_id'] !== undefined,
+    );
+    const subIdUpdate = client.__updates.find(
+      (u) => u.patch['subscription_id'] !== undefined,
+    );
+    expect(customerUpdate?.table).toBe('profiles');
+    expect(customerUpdate?.eq).toEqual(['id', 'user_xyz']);
+    expect(customerUpdate?.patch['stripe_customer_id']).toBe('cus_222');
+    expect(subIdUpdate?.eq).toEqual(['id', 'user_xyz']);
+    expect(subIdUpdate?.patch['subscription_id']).toBe('sub_777');
+    // The subscription_id write carries the ordering guard (and does NOT bump
+    // subscription_event_at — that stays the subscription.* events' authority).
+    expect(subIdUpdate?.or).toContain('subscription_event_at');
+    expect(subIdUpdate?.patch).not.toHaveProperty('subscription_event_at');
+    // Status must be absent everywhere — not written by checkout at all.
+    for (const u of client.__updates) {
+      expect(u.patch).not.toHaveProperty('subscription_status');
+    }
   });
 
   it('checkout.session.completed (subscription) writes ONLY id columns — no status fields (H11 column-set assertion)', async () => {
-    // Defense-in-depth: enumerate the exact columns written. Catches any
-    // regression that re-introduces status, subscription_event_at, or other
-    // state fields that should only be set by the subscription.* event handlers.
+    // Defense-in-depth: enumerate the exact columns written across both writes.
+    // Catches any regression that re-introduces status, subscription_event_at,
+    // or other state fields that should only be set by the subscription.* handlers.
     const event = makeEvent('checkout.session.completed', {
       mode: 'subscription',
       client_reference_id: 'user_h11',
@@ -314,12 +341,12 @@ describe('handleStripeEvent', () => {
 
     await handleStripeEvent(event, client as unknown as never);
 
-    const patch = client.__updates[0]?.patch ?? {};
-    const writtenCols = Object.keys(patch).sort();
-    // Exactly these columns: subscription_id (link), stripe_customer_id
-    // (link), updated_at (boilerplate from updateProfile). No status, no
-    // subscription_event_at, no audit_credits — all of those are handled
-    // elsewhere.
+    const writtenCols = [
+      ...new Set(client.__updates.flatMap((u) => Object.keys(u.patch))),
+    ].sort();
+    // Union of both updates: subscription_id (link, guarded), stripe_customer_id
+    // (link), updated_at (boilerplate). No status, no subscription_event_at,
+    // no audit_credits.
     expect(writtenCols).toEqual(
       ['stripe_customer_id', 'subscription_id', 'updated_at'].sort(),
     );

@@ -76,13 +76,25 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000;
  * a fallback when `pdf-parse` returns too little text. Concatenates all
  * `BlockType === 'LINE'` blocks separated by newlines.
  *
- * For small (<5MB) buffers we use the synchronous `DetectDocumentTextCommand`.
- * For larger / multi-page buffers we use the async pattern, which requires
- * `AWS_TEXTRACT_S3_BUCKET` to be configured. The PDF is staged to S3, the
- * Textract job is started, polled, and the staged object is deleted.
+ * Routing (bug #4): Textract's synchronous `DetectDocumentText` accepts
+ * SINGLE-PAGE documents only — a multi-page PDF MUST use the async
+ * `StartDocumentTextDetection` path regardless of byte size, or Textract
+ * rejects it with `UnsupportedDocumentException`. So we only take the sync
+ * path when the document is known to be a single page AND under the 5 MB
+ * sync cap; everything else (multi-page, oversized, or unknown page count)
+ * goes async, which requires `AWS_TEXTRACT_S3_BUCKET`.
  */
-export async function extractTextWithOCR(buffer: Buffer): Promise<string> {
-  if (buffer.byteLength <= SYNC_MAX_BYTES) {
+export async function extractTextWithOCR(
+  buffer: Buffer,
+  opts?: { pageCount?: number },
+): Promise<string> {
+  const pageCount = opts?.pageCount;
+  // Require EXACTLY 1 page for sync: pdf-parse uses 0 as its "unknown page
+  // count" sentinel, and an unknown count must route async (safer for a
+  // possibly-multi-page doc) rather than risk Textract's single-page-only
+  // sync API rejecting it.
+  const knownSinglePage = pageCount === 1;
+  if (knownSinglePage && buffer.byteLength <= SYNC_MAX_BYTES) {
     return runSync(buffer);
   }
   return runAsync(buffer);

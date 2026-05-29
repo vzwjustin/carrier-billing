@@ -18,6 +18,10 @@ import type {
   ExtractedAccount,
   ExtractedLine,
 } from '@/extraction/schema';
+import {
+  translateLineIndexes,
+  type IndexTranslationStats,
+} from '@/lib/findings/translate-line-indexes';
 import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
@@ -974,41 +978,67 @@ export const processBillFn = inngest.createFunction(
         findingCount: findings.length,
       });
 
-      // Phase 5 analytics: fire `audit_completed`. Wrapped + try/catch so a
-      // PostHog outage cannot fail an already-completed audit. trackServer is
-      // already defensive but we belt-and-suspenders here.
-      try {
-        const monthlySavings = findings.reduce<number>(
-          (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
-          0,
-        );
-        const highSeverityCount = findings.filter(
-          (f) => f.severity === ('high' as Severity),
-        ).length;
-        await trackServer(
-          {
-            name: 'audit_completed',
-            properties: {
-              auditId,
-              carrier: bill.carrier,
-              finding_count: findings.length,
-              high_severity_count: highSeverityCount,
-              estimated_monthly_savings_cents: monthlySavings,
+      // Phase 5 analytics: fire `audit_completed`. #9: wrapped in step.run so
+      // Inngest MEMOIZES it. Without this, every function replay/retry that
+      // re-executes the body (to reach the later `send-trigger` step) re-ran
+      // this bare code and double-emitted the PostHog event (capture() has no
+      // dedup). The inner try/catch keeps a PostHog outage from failing the
+      // already-completed audit and from triggering step retries.
+      await step.run('track-completed', async () => {
+        try {
+          const monthlySavings = findings.reduce<number>(
+            (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
+            0,
+          );
+          const highSeverityCount = findings.filter(
+            (f) => f.severity === ('high' as Severity),
+          ).length;
+          await trackServer(
+            {
+              name: 'audit_completed',
+              properties: {
+                auditId,
+                carrier: bill.carrier,
+                finding_count: findings.length,
+                high_severity_count: highSeverityCount,
+                estimated_monthly_savings_cents: monthlySavings,
+              },
             },
-          },
-          userId,
-        );
-      } catch (analyticsErr) {
-        logger.error('processBill: trackServer failed (audit still completed)', {
-          auditId,
-          message:
-            analyticsErr instanceof Error
-              ? analyticsErr.message
-              : 'unknown analytics error',
-        });
-      }
+            userId,
+          );
+        } catch (analyticsErr) {
+          logger.error('processBill: trackServer failed (audit still completed)', {
+            auditId,
+            message:
+              analyticsErr instanceof Error
+                ? analyticsErr.message
+                : 'unknown analytics error',
+          });
+        }
+        return { ok: true };
+      });
 
-      await logTrailEvent({ userId, eventType: 'audit_completed', entityType: 'audit', entityId: auditId, metadata: { carrier: bill.carrier, finding_count: findings.length } });
+      // #9: the audit-trail INSERT has no unique constraint, so it must be
+      // memoized by step.run or a replay double-logs 'audit_completed'. Inner
+      // try/catch so a trail-write failure can't fail the completed audit.
+      await step.run('log-trail-completed', async () => {
+        try {
+          await logTrailEvent({
+            userId,
+            eventType: 'audit_completed',
+            entityType: 'audit',
+            entityId: auditId,
+            metadata: { carrier: bill.carrier, finding_count: findings.length },
+          });
+        } catch (trailErr) {
+          logger.error('processBill: logTrailEvent failed (audit still completed)', {
+            auditId,
+            message:
+              trailErr instanceof Error ? trailErr.message : 'unknown trail error',
+          });
+        }
+        return { ok: true };
+      });
 
       // ─────────────────────────────────────────────────────────────────────
       // Phase 3: send-trigger — fire `audit.completed` so the email pipeline
@@ -1478,154 +1508,8 @@ function lineToRow(
   };
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// (B1) Per-account → global line index translation
-// ───────────────────────────────────────────────────────────────────────────
-
-/**
- * Logger surface required by translateLineIndexes. Matches the subset of
- * Inngest's `logger` we actually use, so tests can pass a plain object.
- */
-type IndexTranslationLogger = {
-  warn: (message: string, ctx?: Record<string, unknown>) => void;
-};
-
-type IndexTranslationOptions = {
-  auditId: string;
-  warn: IndexTranslationLogger['warn'];
-};
-
-export type IndexTranslationStats = {
-  /** Number of (finding, localIdx) pairs dropped because the local index was
-   *  outside the account's line range. Each drop also emits a warn log. */
-  droppedLineIndexes: number;
-  /** Number of findings whose entire affected_line_indexes array was wiped
-   *  due to a bad account index. Distinct from droppedLineIndexes. */
-  findingsWithDroppedAccount: number;
-};
-
-/**
- * Translate each finding's `affected_line_indexes` from per-account-local
- * positions (what every rule under `src/rules/definitions` actually emits)
- * to globally-flat positions inside `bill.accounts.flatMap(a => a.lines)`
- * — the layout `persistFindings` expects when it indexes `flatLineIds`.
- *
- * This is the (B1) bug-class fix. The contract documented in
- * `src/rules/types.ts` says affected_line_indexes are "positions inside the
- * flattened ctx.bill.accounts[].lines[]", but every concrete rule emits
- * the inner-loop `lineIndex` from its `account.lines.forEach((line, lineIndex) => …)`
- * — i.e. local to the account. Without translation, on any multi-account
- * bill the wrong UUID gets stamped on findings.
- *
- * Returns a NEW array (does not mutate input findings). H5: also populates
- * an out-parameter with drop counts so the caller can surface aggregate
- * visibility (a finding that was dropped silently looks like a rule bug to
- * support — it produces a "Potential saving" report row with no affected
- * lines listed).
- */
-export function translateLineIndexes(
-  findings: Finding[],
-  bill: ExtractedBill,
-  opts: IndexTranslationOptions,
-  stats?: IndexTranslationStats,
-): Finding[] {
-  const accountLineCounts = bill.accounts.map((a) => a.lines.length);
-  const accountStartOffsets: number[] = [];
-  let running = 0;
-  for (const n of accountLineCounts) {
-    accountStartOffsets.push(running);
-    running += n;
-  }
-  const totalLineCount = running;
-
-  return findings.map((f) => {
-    if (f.affected_line_indexes.length === 0) {
-      // No line indexes to translate — account indexes flow through.
-      return f;
-    }
-    // M1: enforce single-account-per-finding when line indexes are
-    // present. The rules contract is "all affected_line_indexes belong
-    // to affected_account_indexes[0]"; if a rule ever emits multiple
-    // account indexes alongside line indexes, the translation here would
-    // silently misroute lines in accounts ≥ 1 against the first account's
-    // offset. Refuse to translate and drop the line indexes so persistence
-    // can't stamp the wrong UUIDs.
-    if (f.affected_account_indexes.length > 1) {
-      opts.warn(
-        'processBill: finding has line indexes spanning multiple accounts — dropping line indexes',
-        {
-          auditId: opts.auditId,
-          rule_id: f.rule_id,
-          accountIndexes: f.affected_account_indexes,
-        },
-      );
-      if (stats) stats.findingsWithDroppedAccount += 1;
-      return {
-        ...f,
-        affected_line_indexes: [],
-      };
-    }
-    const accountIdx = f.affected_account_indexes[0];
-    if (typeof accountIdx !== 'number') {
-      opts.warn(
-        'processBill: finding has line indexes but no account index — dropping line indexes',
-        { auditId: opts.auditId, rule_id: f.rule_id },
-      );
-      if (stats) stats.findingsWithDroppedAccount += 1;
-      return { ...f, affected_line_indexes: [] };
-    }
-    if (accountIdx < 0 || accountIdx >= accountLineCounts.length) {
-      opts.warn(
-        'processBill: finding affected_account_indexes[0] out of range — dropping line indexes',
-        {
-          auditId: opts.auditId,
-          rule_id: f.rule_id,
-          accountIdx,
-          accountCount: accountLineCounts.length,
-        },
-      );
-      if (stats) stats.findingsWithDroppedAccount += 1;
-      // L6: drop the bad account index too so persistFindings doesn't
-      // resolve a UUID against a finding whose line indexes were wiped.
-      return {
-        ...f,
-        affected_line_indexes: [],
-        affected_account_indexes: [],
-      };
-    }
-    const accountSize = accountLineCounts[accountIdx] ?? 0;
-    const offset = accountStartOffsets[accountIdx] ?? 0;
-    const globalIndexes: number[] = [];
-    for (const localIdx of f.affected_line_indexes) {
-      if (
-        typeof localIdx !== 'number' ||
-        localIdx < 0 ||
-        localIdx >= accountSize
-      ) {
-        opts.warn(
-          'processBill: finding has out-of-range per-account line index — dropping that index only',
-          {
-            auditId: opts.auditId,
-            rule_id: f.rule_id,
-            accountIdx,
-            localIdx,
-            accountSize,
-          },
-        );
-        if (stats) stats.droppedLineIndexes += 1;
-        continue;
-      }
-      const globalIdx = offset + localIdx;
-      if (globalIdx >= totalLineCount) {
-        // Should be unreachable given the size check above, but bail out
-        // rather than emit a corrupt index.
-        continue;
-      }
-      globalIndexes.push(globalIdx);
-    }
-    return { ...f, affected_line_indexes: globalIndexes };
-  });
-}
+export type { IndexTranslationStats } from '@/lib/findings/translate-line-indexes';
+export { translateLineIndexes } from '@/lib/findings/translate-line-indexes';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test-only exports

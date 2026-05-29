@@ -16,6 +16,7 @@ interface ContractRow {
   user_id: string;
   status: string;
   storage_path: string;
+  extract_attempt: number;
 }
 
 function isContractRow(value: unknown): value is ContractRow {
@@ -25,7 +26,8 @@ function isContractRow(value: unknown): value is ContractRow {
     typeof v.id === 'string' &&
     typeof v.user_id === 'string' &&
     typeof v.status === 'string' &&
-    typeof v.storage_path === 'string'
+    typeof v.storage_path === 'string' &&
+    typeof v.extract_attempt === 'number'
   );
 }
 
@@ -61,7 +63,7 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('contracts')
-      .select('id,user_id,status,storage_path')
+      .select('id,user_id,status,storage_path,extract_attempt')
       .eq('id', contractId)
       .maybeSingle();
 
@@ -90,15 +92,21 @@ export async function POST(
       );
     }
 
-    // Re-extract path: if the contract was previously `parsed` or `failed`,
-    // bump it back to `pending` so the worker's mark-extracting status guard
-    // can flip it forward. Bounded to the user's own row by user_id eq.
+    // #14: the idempotency key is anchored to a per-contract attempt counter,
+    // NOT Date.now() (which made every call a unique id, so Inngest never
+    // deduped concurrent /start clicks). For a re-extract we advance the
+    // counter; the initial start uses the current value. Concurrent
+    // double-clicks read the same counter → same key → Inngest collapses them,
+    // while a genuine later re-extract advances the counter → not deduped.
+    let attempt = data.extract_attempt;
     if (data.status !== 'pending') {
+      attempt = data.extract_attempt + 1;
       const { error: resetErr } = await supabase
         .from('contracts')
         .update({
           status: 'pending',
           failure_reason: null,
+          extract_attempt: attempt,
           updated_at: new Date().toISOString(),
         })
         .eq('id', contractId)
@@ -111,10 +119,8 @@ export async function POST(
       }
     }
 
-    // Idempotency key: anchored to (contractId, status) so a re-extract
-    // produces a fresh dedupe boundary. Inngest dedupes per `id`.
     await inngest.send({
-      id: `${contractId}-uploaded-${Date.now()}`,
+      id: `${contractId}-uploaded-${attempt}`,
       name: 'contract.uploaded',
       data: {
         contractId: data.id,

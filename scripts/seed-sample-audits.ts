@@ -36,7 +36,7 @@ import { loadDotEnvLocal } from './lib/env-loader';
 import { ExtractedBillSchema, type ExtractedBill } from '@/extraction/schema';
 import { ALL_RULES } from '@/rules/registry';
 import { runRules } from '@/rules/runner';
-import { translateLineIndexes } from '@/inngest/functions/process-bill';
+import { translateLineIndexes } from '@/lib/findings/translate-line-indexes';
 import type { Finding } from '@/rules/types';
 
 interface SampleSpec {

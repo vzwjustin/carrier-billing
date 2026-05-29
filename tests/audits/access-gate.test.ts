@@ -198,6 +198,25 @@ describe('POST /api/audits — access gate', () => {
     expect(decrementMock).not.toHaveBeenCalled();
   });
 
+  it('transient decrement error: 503 credit_pending, audit row kept', async () => {
+    assertCanRunAuditMock.mockResolvedValueOnce({
+      ok: true,
+      reason: 'credit',
+      remaining: 1,
+    });
+    decrementMock.mockRejectedValueOnce(new Error('connection reset'));
+
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 1024 }));
+    expect(res.status).toBe(503);
+
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('credit_pending');
+
+    expect(auditsInsertMock).toHaveBeenCalledTimes(1);
+    expect(auditsDeleteEqMock).not.toHaveBeenCalled();
+    expect(createSignedUploadUrlMock).not.toHaveBeenCalled();
+  });
+
   it('decrement race (RPC throws): 402 + audit row deleted', async () => {
     assertCanRunAuditMock.mockResolvedValueOnce({
       ok: true,

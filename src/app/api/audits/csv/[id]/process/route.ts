@@ -39,10 +39,8 @@ import { createClient } from '@/lib/supabase/server';
 
 import { parseCsvToBill } from '@/extraction/csv/parse';
 import { ColumnMappingSchema } from '@/extraction/csv/mapping';
-import type {
-  ExtractedAccount,
-  ExtractedBill,
-} from '@/extraction/schema';
+import type { ExtractedBill } from '@/extraction/schema';
+import { translateLineIndexes } from '@/lib/findings/translate-line-indexes';
 import { ALL_RULES } from '@/rules/registry';
 import { runRules } from '@/rules/runner';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
@@ -108,6 +106,11 @@ export async function POST(
   }
   const mapping = bodyParsed.data.mapping;
 
+  // Hoisted so the outer catch can refund a consumed credit on an otherwise
+  // -uncaught failure (bug #2: outer-catch credit leak).
+  let creditConsumed = false;
+  let userIdForRefund: string | null = null;
+
   try {
     const supabase = await createClient();
     const {
@@ -116,6 +119,7 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
+    userIdForRefund = user.id;
 
     const limit = await consumeRateLimit({
       key: `audit-process-csv:${user.id}`,
@@ -173,7 +177,6 @@ export async function POST(
         { status: 402 },
       );
     }
-    let creditConsumed = false;
     if (gate.reason === 'credit') {
       try {
         await consumeAuditCreditForAudit(user.id, auditId);
@@ -198,12 +201,7 @@ export async function POST(
     if (download.error || !download.data) {
       await markFailed(admin, auditId, 'csv-download-failed');
       // System-fault → refund if we took a credit.
-      if (creditConsumed) {
-        await admin.rpc('refund_failed_audit', {
-          p_audit_id: auditId,
-          p_user_id: user.id,
-        });
-      }
+      await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
       return NextResponse.json(
         { error: 'Could not read uploaded file.' },
         { status: 500 },
@@ -215,12 +213,7 @@ export async function POST(
     const parseRes = parseCsvToBill(csvText, mapping);
     if (!parseRes.ok) {
       await markFailed(admin, auditId, `csv-parse: ${parseRes.error}`);
-      if (creditConsumed) {
-        await admin.rpc('refund_failed_audit', {
-          p_audit_id: auditId,
-          p_user_id: user.id,
-        });
-      }
+      await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
       return NextResponse.json({ error: parseRes.error }, { status: 400 });
     }
     const bill = parseRes.bill;
@@ -230,12 +223,7 @@ export async function POST(
     );
     if (lineCount === 0) {
       await markFailed(admin, auditId, 'no lines extracted');
-      if (creditConsumed) {
-        await admin.rpc('refund_failed_audit', {
-          p_audit_id: auditId,
-          p_user_id: user.id,
-        });
-      }
+      await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
       return NextResponse.json(
         { error: 'CSV produced no lines.' },
         { status: 400 },
@@ -266,14 +254,16 @@ export async function POST(
           tags: { surface: 'audits.csv.process.mark_analyzing' },
           extra: { auditId },
         });
+        // Hard DB error: the row is still 'pending', so flip it to 'failed'
+        // first (refund_failed_audit requires status='failed'), then refund
+        // inline. The find-orphans sweeper is the backstop if this also fails.
+        await markFailed(admin, auditId, 'csv-analyze-error');
+        await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
       }
-      // Lost the race or hard error — refund and bail.
-      if (creditConsumed) {
-        await admin.rpc('refund_failed_audit', {
-          p_audit_id: auditId,
-          p_user_id: user.id,
-        });
-      }
+      // The else (0 matched rows) is a concurrent process POST that won the
+      // pending→analyzing flip. It owns the credit (consume_audit_credit is
+      // idempotent per audit_id, so only one credit was ever spent), so we must
+      // NOT refund or markFailed here — that would clobber the winner's run.
       return NextResponse.json(
         { error: 'Audit state changed during processing.' },
         { status: 409 },
@@ -290,12 +280,7 @@ export async function POST(
         extra: { auditId },
       });
       await markFailed(admin, auditId, 'csv-persist-failed');
-      if (creditConsumed) {
-        await admin.rpc('refund_failed_audit', {
-          p_audit_id: auditId,
-          p_user_id: user.id,
-        });
-      }
+      await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
       return NextResponse.json(
         { error: 'Failed to persist bill.' },
         { status: 500 },
@@ -309,7 +294,12 @@ export async function POST(
       carrier: bill.carrier,
     };
     const ruleResult = await runRules(ctx, ALL_RULES);
-    const findings = translatePerAccountLineIndexes(ruleResult.findings, bill);
+    const findings = translateLineIndexes(ruleResult.findings, bill, {
+      auditId,
+      warn: (message, ctx) => {
+        console.warn(message, ctx);
+      },
+    });
     try {
       await persistFindings(auditId, findings, persisted);
     } catch (findingsErr) {
@@ -318,12 +308,7 @@ export async function POST(
         extra: { auditId },
       });
       await markFailed(admin, auditId, 'csv-findings-persist-failed');
-      if (creditConsumed) {
-        await admin.rpc('refund_failed_audit', {
-          p_audit_id: auditId,
-          p_user_id: user.id,
-        });
-      }
+      await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
       return NextResponse.json(
         { error: 'Failed to persist findings.' },
         { status: 500 },
@@ -353,13 +338,44 @@ export async function POST(
       .eq('id', auditId)
       .eq('status', 'analyzing');
     if (completedErr) {
-      Sentry.captureException(completedErr, {
-        tags: { surface: 'audits.csv.process.mark_completed' },
-        extra: { auditId },
-      });
-      // The bill + findings are persisted; the audit just won't show
-      // 'completed'. Return success-ish so the user isn't left wondering
-      // — they'll see the row in their dashboard either way.
+      // #8: previously this was swallowed and the route returned ok:true,
+      // leaving the audit stuck in non-terminal 'analyzing' with the credit
+      // spent. Retry the idempotent, status-guarded flip a few times; a
+      // transient DB error usually clears. (A retry that matches 0 rows with
+      // no error means the original flip actually committed — treat as done.)
+      let flipped = false;
+      for (let attempt = 0; attempt < 3 && !flipped; attempt++) {
+        const { error: retryErr } = await admin
+          .from('audits')
+          .update({
+            status: 'completed',
+            completed_at: now,
+            finding_count: findings.length,
+            high_severity_count: highSeverityCount,
+            estimated_monthly_savings_cents: monthlySavings,
+            estimated_annual_savings_cents: monthlySavings * 12,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', auditId)
+          .eq('status', 'analyzing');
+        if (!retryErr) flipped = true;
+      }
+      if (!flipped) {
+        Sentry.captureException(completedErr, {
+          tags: { surface: 'audits.csv.process.mark_completed' },
+          extra: { auditId },
+        });
+        // Persist succeeded but finalization didn't. Surface an error (not
+        // ok:true) so the caller knows; the stuck-'analyzing' sweeper in
+        // cleanup-orphan-audits reclaims the row.
+        return NextResponse.json(
+          {
+            error:
+              'Analysis was saved but could not be finalized; it will be completed automatically shortly.',
+          },
+          { status: 500 },
+        );
+      }
     }
 
     await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'csv', account_count: bill.accounts.length, line_count: lineCount, finding_count: findings.length }, actorEmail: user.email ?? null });
@@ -373,10 +389,53 @@ export async function POST(
     });
   } catch (err) {
     Sentry.captureException(err, { tags: { surface: 'audits.csv.process' } });
+    // #2: an otherwise-uncaught failure (e.g. OOM, an unexpected throw in the
+    // rules/translate path) after the credit was consumed previously leaked
+    // it — the outer catch returned 500 with no refund. Mark failed
+    // (idempotent, status-guarded) then refund.
+    if (creditConsumed && userIdForRefund) {
+      try {
+        const admin = getAdminClient();
+        await markFailed(admin, auditId, 'csv-internal-error');
+        await refundConsumedCredit(admin, auditId, userIdForRefund, true);
+      } catch (refundErr) {
+        Sentry.captureException(refundErr, {
+          tags: { surface: 'audits.csv.process.catch_refund' },
+          extra: { auditId },
+        });
+      }
+    }
     return NextResponse.json(
       { error: 'Internal server error.' },
       { status: 500 },
     );
+  }
+}
+
+/**
+ * Refund a consumed credit for a failed CSV audit via `refund_failed_audit`,
+ * capturing the RPC error instead of discarding it (bug #2). No-op when no
+ * credit was consumed (subscription plan). The audit must already be flipped
+ * to `status='failed'` (markFailed) — the RPC's claim is gated on that, and
+ * since 0034 it raises (rolls back) on a profile mismatch so the row stays
+ * reclaimable by the sweeper rather than silently losing the credit.
+ */
+async function refundConsumedCredit(
+  admin: ReturnType<typeof getAdminClient>,
+  auditId: string,
+  userId: string,
+  creditConsumed: boolean,
+): Promise<void> {
+  if (!creditConsumed) return;
+  const { error } = await admin.rpc('refund_failed_audit', {
+    p_audit_id: auditId,
+    p_user_id: userId,
+  });
+  if (error) {
+    Sentry.captureException(error, {
+      tags: { surface: 'audits.csv.process.refund' },
+      extra: { auditId },
+    });
   }
 }
 
@@ -548,52 +607,6 @@ async function persistFindings(
   if (insErr) {
     throw new Error(`insert findings failed: ${insErr.message}`);
   }
-}
-
-/**
- * Per-account → global flat line-index translation (mirror of the helper in
- * process-bill.ts). Rules emit local-to-account indexes; persistFindings
- * resolves against a flattened list, so we translate before calling it.
- */
-function translatePerAccountLineIndexes(
-  findings: Finding[],
-  bill: ExtractedBill,
-): Finding[] {
-  const accountLineCounts = bill.accounts.map(
-    (a: ExtractedAccount) => a.lines.length,
-  );
-  const offsets: number[] = [];
-  let running = 0;
-  for (const n of accountLineCounts) {
-    offsets.push(running);
-    running += n;
-  }
-
-  return findings.map((f) => {
-    if (f.affected_line_indexes.length === 0) return f;
-    if (f.affected_account_indexes.length !== 1) {
-      // Can't safely route — drop the line indexes.
-      return { ...f, affected_line_indexes: [] };
-    }
-    const accountIdx = f.affected_account_indexes[0];
-    if (
-      typeof accountIdx !== 'number' ||
-      accountIdx < 0 ||
-      accountIdx >= accountLineCounts.length
-    ) {
-      return { ...f, affected_line_indexes: [], affected_account_indexes: [] };
-    }
-    const size = accountLineCounts[accountIdx] ?? 0;
-    const offset = offsets[accountIdx] ?? 0;
-    const out: number[] = [];
-    for (const localIdx of f.affected_line_indexes) {
-      if (typeof localIdx !== 'number' || localIdx < 0 || localIdx >= size) {
-        continue;
-      }
-      out.push(offset + localIdx);
-    }
-    return { ...f, affected_line_indexes: out };
-  });
 }
 
 async function markFailed(

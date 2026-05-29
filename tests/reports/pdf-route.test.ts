@@ -192,8 +192,12 @@ function makeRequest(opts: { token?: string } = {}): Request {
   return new Request(url);
 }
 
+function futureShareExpiry(): string {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function makeAudit(overrides: Partial<AuditFullRow> = {}): AuditFullRow {
-  return {
+  const row: AuditFullRow = {
     id: VALID_AUDIT_ID,
     user_id: 'user-uuid-1',
     status: 'completed',
@@ -212,6 +216,10 @@ function makeAudit(overrides: Partial<AuditFullRow> = {}): AuditFullRow {
     share_token_expires_at: null,
     ...overrides,
   };
+  if (row.share_token && row.share_token_expires_at === null) {
+    return { ...row, share_token_expires_at: futureShareExpiry() };
+  }
+  return row;
 }
 
 beforeEach(() => {

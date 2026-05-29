@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { formatIsoDatePeriod } from '@/lib/dates';
 import { cn, formatCents } from '@/lib/utils';
 
 interface AuditMini {
@@ -115,17 +116,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   unexplained: 'Unexplained',
 };
 
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start || !end) return '—';
-  const fmt = (s: string) =>
-    new Date(s).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  return `${fmt(start)} – ${fmt(end)}`;
-}
-
 function signedCents(cents: number): string {
   if (cents === 0) return formatCents(0);
   const sign = cents > 0 ? '+' : '-';
@@ -197,7 +187,7 @@ export function AutopsyClient({
         </h1>
         <p className="text-sm text-neutral-600">
           Current bill: <strong>{audit.original_filename}</strong> ·{' '}
-          {formatPeriod(audit.billing_period_start, audit.billing_period_end)} ·{' '}
+          {formatIsoDatePeriod(audit.billing_period_start, audit.billing_period_end)} ·{' '}
           {audit.total_charges_cents !== null
             ? formatCents(audit.total_charges_cents)
             : '—'}
@@ -223,7 +213,7 @@ export function AutopsyClient({
             >
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {formatPeriod(c.billing_period_start, c.billing_period_end)} ·{' '}
+                  {formatIsoDatePeriod(c.billing_period_start, c.billing_period_end)} ·{' '}
                   {c.total_charges_cents !== null
                     ? formatCents(c.total_charges_cents)
                     : '—'}
