@@ -35,7 +35,7 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
     expect(cleanupOrphanAuditsFn.name.length).toBeGreaterThan(0);
   });
 
-  it('find-orphans sweep excludes retried audits (retry_count=0)', () => {
+  it('find-orphans sweep TTL uses updated_at (not created_at)', () => {
     const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
     const handlerSource =
       typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
@@ -43,10 +43,11 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
       handlerSource.indexOf('find-orphans'),
       handlerSource.indexOf('logger.info(\'cleanupOrphanAudits: found orphans\''),
     );
-    expect(block).toMatch(/\.eq\(['"]retry_count['"]\s*,\s*0\)/);
+    expect(block).toMatch(/\.lt\(['"]updated_at['"]\s*,\s*cutoff\)/);
+    expect(block).not.toMatch(/\.lt\(['"]created_at['"]\s*,\s*cutoff\)/);
   });
 
-  it('fail-subscription-orphans sweep excludes retried audits (retry_count=0)', () => {
+  it('fail-subscription-orphans sweep TTL uses updated_at (not created_at)', () => {
     const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
     const handlerSource =
       typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
@@ -54,7 +55,8 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
       handlerSource.indexOf('fail-subscription-orphans'),
       handlerSource.indexOf('return { processed:'),
     );
-    expect(block).toMatch(/\.eq\(['"]retry_count['"]\s*,\s*0\)/);
+    expect(block).toMatch(/\.lt\(['"]updated_at['"]\s*,\s*cutoff\)/);
+    expect(block).not.toMatch(/\.lt\(['"]created_at['"]\s*,\s*cutoff\)/);
   });
 });
 
