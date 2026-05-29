@@ -7,6 +7,73 @@
 
 ---
 
+## Most recent pass (2026-05-15): deep-sweep remediation
+
+Five top-tier defects from the deep sweep landed. One deploy-blocker (fresh-DB
+abort), three credit-flow / pipeline correctness bugs, and the Stripe dunning
+email-spam.
+
+### Fixes
+
+- **B1** — `supabase/migrations/0011_outbound_webhook_hardening.sql` truncated
+  `inbound_email_events` before that table was created in 0013. Fresh-DB
+  `supabase db push` aborted with `relation does not exist`. Wrapped the
+  truncate in a `do $$ if exists ... end if $$` guard; idempotent across all
+  prior environments.
+
+- **C1** — Inngest step-replay could strand audits at `extracting` /
+  `analyzing` forever. `mark-extracting` now selects `inngest_run_id`; all
+  three guarded steps (`mark-extracting`, `mark-analyzing`, `mark-completed`)
+  recognise their own run id on a 0-rows-affected bail and proceed instead of
+  short-circuiting. Code: `src/inngest/functions/process-bill.ts:343-417`,
+  `:539-580`, `:710-740`. Tests: `tests/inngest/process-bill.test.ts` "C1"
+  describe block.
+
+- **C2** — `consume_audit_credit` rollback could clobber a concurrent retry's
+  just-committed `credit_consumed=true`, letting orphan-cleanup double-refund.
+  Rollback `WHERE` clause now includes `and credit_consumed = true` so a
+  losing retry only resets its own flag. Migration **0018** updated in-place
+  for fresh deploys; **0019** re-publishes the function for envs that already
+  applied buggy 0018.
+
+- **C3** — `0007_credits_hardening.sql` added the `audit_credits >= 0` CHECK
+  without a `NOT VALID` or pre-flight, so deploy to an environment that
+  exhibited the underflow race would abort. Migration now pre-zeroes
+  negatives + drops the constraint if exists before re-adding (idempotent).
+
+- **H1** — `invoice.payment_failed` fired the past-due email on every Stripe
+  dunning retry (typically 1 + 3/5/7 days), spamming the customer 3–4 times
+  per declined card. `src/lib/stripe/handlers.ts:onInvoicePaymentFailed` now
+  reads pre-UPDATE `subscription_status` and suppresses the Inngest dispatch
+  when it was already `past_due`. The `subscription_event_at` advance still
+  runs so the CAS marker stays current. Test:
+  `tests/stripe/handlers.test.ts` "H1 — dunning retry guard".
+
+### Deploy order for this pass
+
+Apply migration **0019** AFTER any environment that already shipped 0018:
+
+```sql
+-- One-shot, idempotent (uses CREATE OR REPLACE FUNCTION).
+supabase/migrations/0019_consume_audit_credit_scope_rollback.sql
+```
+
+Fresh environments get the corrected `consume_audit_credit` from 0018
+directly; 0019 is a no-op on those (function body is identical to the
+in-place-fixed 0018).
+
+The B1 + C3 fixes to **0011** and **0007** only matter for environments that
+have NOT yet applied them. Already-applied envs are unaffected (the changes
+are equivalent on-the-wire to the original definitions, just safer on first
+apply).
+
+### Static verify
+
+`pnpm typecheck` clean. `pnpm lint` clean. `pnpm test` 76 files / 706 pass /
+6 todo.
+
+---
+
 ## Most recent pass (2026-05-11): extreme-analysis remediation
 
 A full audit-and-fix pass landed 3 CRITICAL, 11 HIGH, 10 MEDIUM, and 7 LOW

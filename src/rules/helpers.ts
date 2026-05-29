@@ -167,11 +167,16 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
   // "Magenta" but NOT current "Magenta Plus" / "Magenta Max" / "Magenta Business"
   // and NOT future SKUs that happen to start with "Magenta" (Magenta 55+,
   // Magenta Military, Magenta First Responder are existing carrier-modifier
-  // SKUs that should NOT be flagged as legacy).
+  // SKUs that should NOT be flagged as legacy). Also excludes:
+  //   - "Bus" — T-Mobile's bill-line abbreviation for "Business" (e.g.
+  //     "Magenta Bus Tab 10GB Promo" — a current business tablet plan).
+  //   - "Tab" / "Tablet" — tablet-line SKUs share the "Magenta" brand stem
+  //     but are currently-sold connected-device plans, not legacy phone tiers.
+  //     Flagging them with a phone-plan migration recommendation is wrong.
   {
     carrier: 'tmobile',
     pattern:
-      /\bMagenta\b(?!\s+(Plus|Max|Business|55\+|Military|First Responder))/i,
+      /\bMagenta\b(?!\s+(Plus|Max|Bus(?:iness)?|Tab(?:let)?|55\+|Military|First Responder))/i,
     replacement_plan: 'Business Unlimited Advanced',
     estimated_monthly_savings_cents: 700,
     source_note: 'phonearena.com/news/i-just-ditched-my-grandfathered-t-mobile-magenta-plan',

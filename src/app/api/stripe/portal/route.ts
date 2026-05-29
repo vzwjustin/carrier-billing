@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import * as Sentry from '@sentry/nextjs';
 
 import { env } from '@/env';
+import { scrubString } from '@/lib/observability/redact';
 import { getStripe } from '@/lib/stripe/client';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -48,7 +49,7 @@ export async function POST(): Promise<Response> {
       return Response.json({ error: 'no_customer' }, { status: 400 });
     }
 
-    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
 
     try {
       const session = await getStripe().billingPortal.sessions.create({
@@ -78,7 +79,10 @@ export async function POST(): Promise<Response> {
       throw stripeErr;
     }
   } catch (err) {
-    console.error('[stripe.portal] unexpected error', err instanceof Error ? err.message : 'unknown');
+    console.error(
+      '[stripe.portal] unexpected error',
+      scrubString(err instanceof Error ? err.message : String(err)),
+    );
     Sentry.captureException(err, { tags: { area: 'stripe.portal' } });
     return Response.json({ error: 'internal_error' }, { status: 500 });
   }

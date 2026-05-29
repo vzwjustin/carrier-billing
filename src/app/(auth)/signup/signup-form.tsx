@@ -84,7 +84,11 @@ export function SignupForm() {
         ) : null}
       </div>
       {serverError ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p
+          role="alert"
+          aria-live="polite"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {serverError}
         </p>
       ) : null}

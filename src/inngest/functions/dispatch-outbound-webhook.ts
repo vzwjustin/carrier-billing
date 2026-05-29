@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import { inngest } from '../client';
 import { AuditCompletedDataSchema, parseEventData } from '../events';
+import { postPinnedHttps } from '@/lib/security/pinned-https';
 import { assertPublicHttpsTarget } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 import type {
@@ -225,9 +226,9 @@ async function postOutboundWebhook(
 
   // Re-validate the URL at dispatch time — checking only at submit-time
   // would let an attacker register a public DNS name now and rebind it to
-  // 127.0.0.1 / 169.254.169.254 before the worker fires. Resolve fresh
-  // here, then `fetch` the literal IP with the original Host header
-  // preserved so TLS/SNI still terminates correctly.
+  // 127.0.0.1 / 169.254.169.254 before the worker fires. Resolve fresh here,
+  // then pin the connect to the vetted IP via `postPinnedHttps` (which keeps
+  // the hostname as TLS SNI so the receiver's cert still validates).
   const target = await assertPublicHttpsTarget(url);
 
   const original = new URL(url);
@@ -235,44 +236,30 @@ async function postOutboundWebhook(
     original.port.length > 0
       ? `${original.hostname}:${original.port}`
       : original.hostname;
-  // Wrap IPv6 literal in brackets for URL syntax.
-  const ipForUrl =
-    target.family === 6 ? `[${target.resolvedIp}]` : target.resolvedIp;
-  const portSuffix = original.port.length > 0 ? `:${original.port}` : '';
-  const pinnedUrl = `https://${ipForUrl}${portSuffix}${original.pathname}${original.search}`;
 
-  // Bound the round-trip so a slow consumer doesn't park a worker.
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const { status } = await postPinnedHttps({
+    url: original,
+    resolvedIp: target.resolvedIp,
+    family: target.family,
+    headers: {
+      'Content-Type': 'application/json',
+      Host: host,
+      'X-CarrierAudit-Timestamp': String(timestamp),
+      'X-CarrierAudit-Signature': signatureHeader,
+      'X-CarrierAudit-Event': 'audit.completed',
+      'X-CarrierAudit-Audit-Id': audit.id,
+      'User-Agent': 'CarrierAudit-Webhook/1.0',
+    },
+    body,
+    timeoutMs: 15_000,
+  });
 
-  try {
-    const response = await fetch(pinnedUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Host: host,
-        'X-CarrierAudit-Timestamp': String(timestamp),
-        'X-CarrierAudit-Signature': signatureHeader,
-        'X-CarrierAudit-Event': 'audit.completed',
-        'X-CarrierAudit-Audit-Id': audit.id,
-        'User-Agent': 'CarrierAudit-Webhook/1.0',
-      },
-      body,
-      signal: controller.signal,
-      // No redirects — receivers should expose a stable URL, and silently
-      // following a 30x to a different host opens a small SSRF surface.
-      redirect: 'error',
-    });
-
-    if (!response.ok) {
-      // Throw so Inngest retries; only surface the status code, not the
-      // body, to keep PII out of logs.
-      throw new Error(`webhook ${response.status}`);
-    }
-    return { status: response.status };
-  } finally {
-    clearTimeout(timeout);
+  if (status < 200 || status >= 300) {
+    // Throw so Inngest retries; only surface the status code, not the
+    // body, to keep PII out of logs.
+    throw new Error(`webhook ${status}`);
   }
+  return { status };
 }
 
 export const __testables = { postOutboundWebhook };

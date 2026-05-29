@@ -47,6 +47,15 @@ describe('isBlockedAddress', () => {
     expect(isBlockedAddress('100.127.255.255')).toBe(true);
   });
 
+  it('rejects IPv4 special-purpose documentation and benchmarking ranges', () => {
+    expect(isBlockedAddress('192.0.2.1')).toBe(true);
+    expect(isBlockedAddress('198.18.0.1')).toBe(true);
+    expect(isBlockedAddress('198.19.255.255')).toBe(true);
+    expect(isBlockedAddress('198.51.100.1')).toBe(true);
+    expect(isBlockedAddress('203.0.113.1')).toBe(true);
+    expect(isBlockedAddress('192.88.99.1')).toBe(true);
+  });
+
   it('rejects IPv4 0.0.0.0/8 + reserved/multicast', () => {
     expect(isBlockedAddress('0.0.0.0')).toBe(true);
     expect(isBlockedAddress('0.1.2.3')).toBe(true);
@@ -73,6 +82,11 @@ describe('isBlockedAddress', () => {
 
   it('rejects IPv6 multicast (ff00::/8)', () => {
     expect(isBlockedAddress('ff02::1')).toBe(true);
+  });
+
+  it('rejects IPv6 documentation and benchmarking ranges', () => {
+    expect(isBlockedAddress('2001:db8::1')).toBe(true);
+    expect(isBlockedAddress('2001:2::1')).toBe(true);
   });
 
   it('rejects IPv4-mapped IPv6 of private addresses', () => {

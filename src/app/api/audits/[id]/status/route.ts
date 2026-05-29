@@ -1,6 +1,8 @@
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { scrubString } from '@/lib/observability/redact';
 import {
   consumeRateLimit,
   rateLimitedResponse,
@@ -122,7 +124,14 @@ export async function GET(
       failure_reason: data.failure_reason,
       page_count: data.page_count,
     });
-  } catch {
+  } catch (err) {
+    Sentry.captureException(
+      new Error(scrubString(err instanceof Error ? err.message : String(err))),
+      {
+        tags: { surface: 'audits.status' },
+        extra: { auditId: parsed.data.id },
+      },
+    );
     return NextResponse.json(
       { error: 'Internal server error.' },
       { status: 500 },

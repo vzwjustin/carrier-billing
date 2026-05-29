@@ -233,22 +233,35 @@ export default async function AuditsPage(
 
       {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
-          <p className="text-sm text-neutral-700">
+          <p className="text-sm font-medium text-neutral-900">
             {filtersActive
               ? 'No audits match those filters.'
               : after
                 ? 'No more audits to show.'
-                : 'No audits yet. Upload your first bill.'}
+                : 'No audits yet.'}
           </p>
-          <div className="mt-4">
+          {!filtersActive && !after ? (
+            <p className="mx-auto mt-2 max-w-md text-sm text-neutral-600">
+              Upload a PDF wireless bill to start. You&apos;ll get a savings
+              report in under five minutes — or browse a real sample first.
+            </p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {filtersActive ? (
               <Link href="/audits">
                 <Button>Clear filters</Button>
               </Link>
             ) : (
-              <Link href={after ? '/audits' : '/audits/new'}>
-                <Button>{after ? 'Back to start' : 'Upload a bill'}</Button>
-              </Link>
+              <>
+                <Link href={after ? '/audits' : '/audits/new'}>
+                  <Button>{after ? 'Back to start' : 'Upload a bill'}</Button>
+                </Link>
+                {!after ? (
+                  <Link href="/share/verizon_business_large_sample_v1">
+                    <Button variant="outline">See a sample audit</Button>
+                  </Link>
+                ) : null}
+              </>
             )}
           </div>
         </div>

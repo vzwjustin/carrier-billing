@@ -1,11 +1,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { env } from '@/env';
 import { createClient } from '@/lib/supabase/server';
 
-export async function POST(request: NextRequest) {
+function publicOrigin(): string {
+  return env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
+}
+
+export async function POST(_request: NextRequest) {
   const supabase = await createClient();
   await supabase.auth.signOut();
 
-  const { origin } = request.nextUrl;
-  return NextResponse.redirect(`${origin}/`, { status: 303 });
+  return NextResponse.redirect(`${publicOrigin()}/`, { status: 303 });
 }

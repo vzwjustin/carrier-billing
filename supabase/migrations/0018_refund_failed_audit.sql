@@ -159,10 +159,22 @@ begin
   if not found then
     -- The user had no credits to spend. Roll back the credit_consumed
     -- flip so the audit row stays consistent.
+    --
+    -- The rollback must be scoped to the exact row WE flipped a moment
+    -- ago (status='pending' + credit_consumed=true). Between the initial
+    -- flip above and this rollback, a concurrent worker could have
+    -- arrived for the same audit_id, observed credit_consumed=true
+    -- (idempotent retry success), and proceeded with its own work — or a
+    -- legitimate refund could have already reset the flag. Without the
+    -- predicate guard, an unrelated row state would be clobbered to
+    -- credit_consumed=false, which orphan-cleanup would then refund a
+    -- second time. Scope the rollback so it only fires when the flag is
+    -- still true (this run set it; nothing else has touched it).
     update public.audits
        set credit_consumed = false,
            updated_at = now()
-     where id = p_audit_id;
+     where id = p_audit_id
+       and credit_consumed = true;
     return query select null::boolean as granted, null::int as new_balance;
     return;
   end if;

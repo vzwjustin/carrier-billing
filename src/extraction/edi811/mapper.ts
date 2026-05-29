@@ -288,8 +288,12 @@ export function mapEdi811ToBill(
         if (amountCents === null) break;
 
         // Device installment (DPP). Always rolls up to the current line.
+        // The schema allows monthly_cents: 0 (nonnegative), so a $0 installment
+        // is a valid, retained row — dropping it would break device binding for
+        // DPP / contract-rate rules. Use >= 0 (negative amounts stay dropped,
+        // matching the schema's nonnegative invariant).
         if (serviceIdCode === SAC_DEVICE_INSTALLMENT) {
-          if (currentAccount?.currentLine && amountCents > 0) {
+          if (currentAccount?.currentLine && amountCents >= 0) {
             const dpp: ExtractedDpp = {
               device: bound(
                 description ||
@@ -551,6 +555,15 @@ function sumAccountTotal(account: ExtractedAccount): number {
   }
   for (const c of account.account_level_credits) total += c.monthly_cents;
   if (account.taxes_fees_cents) total += account.taxes_fees_cents;
+  // An arithmetically-negative subtotal is almost always an extraction error
+  // (e.g. credits parsed without a matching base charge). We still clamp to 0
+  // so the schema's nonnegative() doesn't reject the whole bill, but a silent
+  // clamp masks the corruption — surface it. account_number_last4 only, no PII.
+  if (total < 0) {
+    console.warn(
+      `[edi811] account ${account.account_number_last4 ?? 'unknown'} computed negative subtotal ${total} cents; clamping to 0`,
+    );
+  }
   return Math.max(total, 0);
 }
 

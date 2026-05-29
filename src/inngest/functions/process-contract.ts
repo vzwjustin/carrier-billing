@@ -55,6 +55,7 @@ export const processContractFn = inngest.createFunction(
         | { proceed: true }
         | { proceed: false; reason: 'not-found' }
         | { proceed: false; reason: 'ownership-mismatch' }
+        | { proceed: false; reason: 'ownership-mismatch-race' }
         | { proceed: false; reason: 'already-advanced'; observedStatus: string };
 
       const markResult = (await step.run(
@@ -74,14 +75,26 @@ export const processContractFn = inngest.createFunction(
           if (!rowData) return { proceed: false, reason: 'not-found' };
           const row = rowData as { id: string; user_id: string; status: string };
           if (row.user_id !== userId) {
-            await supabase
+            // Status-guarded so a row that advanced to 'extracting'/'parsed'
+            // between the fetch and this update is never stomped to 'failed'.
+            const { data: ownRows, error: ownErr } = await supabase
               .from('contracts')
               .update({
                 status: 'failed',
                 failure_reason: 'ownership-mismatch',
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', contractId);
+              .eq('id', contractId)
+              .eq('status', 'pending')
+              .select('id');
+            if (ownErr) {
+              throw new Error(
+                `contracts update (ownership-mismatch) failed: ${ownErr.message}`,
+              );
+            }
+            if ((ownRows ?? []).length === 0) {
+              return { proceed: false, reason: 'ownership-mismatch-race' };
+            }
             return { proceed: false, reason: 'ownership-mismatch' };
           }
           const { data: updatedRows, error: updErr } = await supabase
@@ -147,11 +160,11 @@ export const processContractFn = inngest.createFunction(
 
       // Step 3: persist. Upsert header onto `contracts`, replace any prior
       // contract_terms row, flip status to `parsed`.
-      await step.run('persist', async () => {
+      const persistResult = await step.run('persist', async () => {
         const supabase = getAdminClient();
 
         // (a) write header fields to the parent row
-        const { error: updErr } = await supabase
+        const { data: updatedRows, error: updErr } = await supabase
           .from('contracts')
           .update({
             carrier: contract.header.carrier,
@@ -167,6 +180,12 @@ export const processContractFn = inngest.createFunction(
           .select('id');
         if (updErr) {
           throw new Error(`contracts update (persist) failed: ${updErr.message}`);
+        }
+        // 0-row no-op: a concurrent run / Inngest replay already advanced the
+        // header out of 'extracting'. Short-circuit BEFORE rewriting
+        // contract_terms so we don't leave the header stale while terms churn.
+        if ((updatedRows ?? []).length === 0) {
+          return { ok: false as const, reason: 'status-guard' as const };
         }
 
         // (b) delete-then-insert contract_terms — idempotent on retry the
@@ -204,10 +223,17 @@ export const processContractFn = inngest.createFunction(
             `contract_terms insert (persist) failed: ${insErr.message}`,
           );
         }
-        return { ok: true };
+        return { ok: true as const };
       });
 
-      await logTrailEvent({ userId, eventType: 'contract_uploaded', entityType: 'contract', entityId: contractId, metadata: { carrier: contract.header.carrier ?? null } });
+      // On a 0-row persist no-op (the header already advanced out of
+      // 'extracting' via a concurrent run / Inngest replay) skip the
+      // audit-trail event — the trail is append-only and non-dedup, so the
+      // winning run already recorded the upload and emitting here would
+      // double-log.
+      if (persistResult.ok) {
+        await logTrailEvent({ userId, eventType: 'contract_uploaded', entityType: 'contract', entityId: contractId, metadata: { carrier: contract.header.carrier ?? null } });
+      }
 
       logger.info('processContract: parsed', { contractId });
       return { contractId, status: 'parsed' };

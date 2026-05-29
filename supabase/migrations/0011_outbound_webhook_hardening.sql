@@ -20,7 +20,22 @@
 -- `event_hash` is opaque so we have no schema-level way to tell them apart
 -- — clear the table entirely. Dedupe is a deliverability nicety, not a
 -- correctness invariant; losing a few hours of dedupe history is fine.
-truncate table public.inbound_email_events;
+--
+-- The table itself is created in 0013_harden_launch_blockers.sql, which runs
+-- AFTER this migration. On a fresh-DB deploy the truncate would otherwise
+-- abort with `relation does not exist`. Guard with IF EXISTS so the
+-- migration sequence is independent of when the table was first introduced
+-- (older deploys created the table earlier; new clean deploys create it in
+-- 0013). The result is identical either way.
+do $$
+begin
+  if exists (
+    select 1 from pg_tables
+    where schemaname = 'public' and tablename = 'inbound_email_events'
+  ) then
+    truncate table public.inbound_email_events;
+  end if;
+end $$;
 
 -- Defense-in-depth: enforce that webhook URLs cannot be saved with an http://
 -- scheme even at the column level. (App-level validation in

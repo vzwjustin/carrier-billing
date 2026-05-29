@@ -129,6 +129,23 @@ export function Dropzone({ onFile, disabled = false }: DropzoneProps): React.JSX
           disabled && 'cursor-not-allowed opacity-60',
         )}
       >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className={cn(
+            'mb-3 h-10 w-10',
+            isDragging ? 'text-neutral-900' : 'text-neutral-400',
+          )}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9 8.25H7.5a2.25 2.25 0 0 0-2.25 2.25v9a2.25 2.25 0 0 0 2.25 2.25h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25H15M9 12l3-3m0 0 3 3m-3-3v12"
+          />
+        </svg>
         <p className="text-sm font-medium text-neutral-900">
           Drag and drop your bill here
         </p>

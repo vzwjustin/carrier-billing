@@ -56,7 +56,7 @@ describe('processContractFn — mark-extracting status guard', () => {
   function getMarkExtractingBlock(): string {
     const idx = CONTRACT_SRC.indexOf('mark-extracting');
     expect(idx).toBeGreaterThan(-1);
-    return CONTRACT_SRC.slice(idx, idx + 3500);
+    return CONTRACT_SRC.slice(idx, idx + 4500);
   }
 
   it('selects user_id + status before flipping (ownership recheck)', () => {
@@ -92,6 +92,27 @@ describe('processContractFn — mark-extracting status guard', () => {
     expect(block).toMatch(/already-advanced/);
     expect(block).toMatch(/affected\s*===?\s*0|affected\s*<\s*1/);
   });
+
+  it('status-guards the ownership-mismatch UPDATE so a raced row is never stomped to failed', () => {
+    const block = getMarkExtractingBlock();
+    // The ownership-mismatch UPDATE must itself carry .eq('status','pending')
+    // and read back rows so a row that advanced to extracting/parsed between
+    // the fetch and this write is not clobbered to 'failed'.
+    const ownIdx = block.indexOf("failure_reason: 'ownership-mismatch'");
+    expect(ownIdx).toBeGreaterThan(-1);
+    const ownUpdate = block.slice(ownIdx, ownIdx + 600);
+    expect(ownUpdate).toMatch(/\.eq\(['"]status['"]\s*,\s*['"]pending['"]\)/);
+    expect(ownUpdate).toMatch(/\.select\(['"]id['"]\)/);
+  });
+
+  it('returns ownership-mismatch-race when the guarded UPDATE matches 0 rows', () => {
+    const block = getMarkExtractingBlock();
+    expect(block).toMatch(/ownership-mismatch-race/);
+    // The race branch is taken specifically on a 0-row ownership UPDATE.
+    expect(block).toMatch(
+      /\(ownRows \?\? \[\]\)\.length === 0[\s\S]*?ownership-mismatch-race/,
+    );
+  });
 });
 
 describe('processContractFn — persist step', () => {
@@ -120,6 +141,29 @@ describe('processContractFn — persist step', () => {
     const block = getPersistBlock();
     expect(block).toMatch(/\.from\(['"]contract_terms['"]\)\s*\.delete\(\)/);
     expect(block).toMatch(/\.from\(['"]contract_terms['"]\)\.insert\(/);
+  });
+
+  it('reads back the header rows-affected count via .select("id")', () => {
+    const block = getPersistBlock();
+    expect(block).toMatch(/const \{ data: updatedRows,[\s\S]*?\.select\(['"]id['"]\)/);
+  });
+
+  it('short-circuits on a 0-row header no-op BEFORE rewriting contract_terms', () => {
+    const block = getPersistBlock();
+    // The status-guard return must appear, and it must come before the
+    // contract_terms delete — otherwise a concurrent run / replay would churn
+    // the terms while leaving the header stale.
+    const guardIdx = block.search(
+      /\(updatedRows \?\? \[\]\)\.length === 0/,
+    );
+    expect(guardIdx).toBeGreaterThan(-1);
+    const guardBlock = block.slice(guardIdx, guardIdx + 200);
+    expect(guardBlock).toMatch(/reason:\s*['"]status-guard['"]/);
+
+    const deleteIdx = block.indexOf("from('contract_terms')");
+    expect(deleteIdx).toBeGreaterThan(-1);
+    // The 0-row guard short-circuit precedes the contract_terms mutation.
+    expect(guardIdx).toBeLessThan(deleteIdx);
   });
 });
 
@@ -172,5 +216,17 @@ describe('processContractFn — audit trail', () => {
   it('logs a contract_uploaded trail event on success', () => {
     expect(CONTRACT_SRC).toMatch(/logTrailEvent\(/);
     expect(CONTRACT_SRC).toMatch(/eventType:\s*['"]contract_uploaded['"]/);
+  });
+
+  it('gates the trail event on the persist result so a 0-row no-op does not double-log', () => {
+    // The persist step result must be captured and the append-only trail
+    // event guarded by it — otherwise a concurrent run / replay that
+    // short-circuits persist (status-guard) would still emit a duplicate
+    // contract_uploaded event.
+    expect(CONTRACT_SRC).toMatch(/const persistResult = await step\.run\(\s*['"]persist['"]/);
+    const guardIdx = CONTRACT_SRC.indexOf('if (persistResult.ok)');
+    const trailIdx = CONTRACT_SRC.indexOf('logTrailEvent({ userId');
+    expect(guardIdx).toBeGreaterThanOrEqual(0);
+    expect(guardIdx).toBeLessThan(trailIdx);
   });
 });

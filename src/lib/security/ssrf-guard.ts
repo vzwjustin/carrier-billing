@@ -10,8 +10,9 @@ import { isIP } from 'node:net';
  *      scheme is not HTTPS or any DNS-resolved address falls in a private,
  *      loopback, link-local, CGNAT, or otherwise non-public range. Returns the
  *      first resolved address so callers can pin the connect (defeats DNS
- *      rebinding by reusing the *vetted* IP and forwarding the original Host
- *      header).
+ *      rebinding by reusing the *vetted* IP). Pin via a connect-level `lookup`
+ *      (see `postPinnedHttps`) — NOT by putting the IP in the fetch URL, which
+ *      would break TLS SNI/cert validation against the hostname's certificate.
  *   2. `isBlockedAddress(ip)` — exposed for tests + callers that already have
  *      a resolved address (e.g. validating a redirect Location host).
  *
@@ -46,8 +47,11 @@ interface ResolvedTarget {
  *   - non-HTTPS schemes
  *   - hostnames whose DNS resolution returns any address in a non-public range
  *
- * Returns the first resolved address. Caller should `fetch(\`https://${ip}\`)`
- * and forward the original Host header for TLS/SNI correctness.
+ * Returns the first resolved address. Caller should pin the connect to that
+ * IP while keeping the original hostname for TLS SNI + certificate identity
+ * (see `postPinnedHttps`). Do NOT `fetch(\`https://${ip}\`)` — an IP-literal
+ * URL sends no SNI and validates the cert against the IP, which fails for any
+ * normal hostname certificate.
  */
 export async function assertPublicHttpsTarget(
   url: string,
@@ -140,6 +144,18 @@ function isBlockedV4(addr: string): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true;
   // 192.168.0.0/16 — RFC1918 private.
   if (a === 192 && b === 168) return true;
+  // 192.0.0.0/24 — IETF protocol assignments, not general public hosts.
+  if (a === 192 && b === 0 && parts[2] === 0) return true;
+  // 192.0.2.0/24 — TEST-NET-1 documentation range.
+  if (a === 192 && b === 0 && parts[2] === 2) return true;
+  // 192.88.99.0/24 — deprecated 6to4 relay anycast.
+  if (a === 192 && b === 88 && parts[2] === 99) return true;
+  // 198.18.0.0/15 — benchmarking/interconnect testing.
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  // 198.51.100.0/24 — TEST-NET-2 documentation range.
+  if (a === 198 && b === 51 && parts[2] === 100) return true;
+  // 203.0.113.0/24 — TEST-NET-3 documentation range.
+  if (a === 203 && b === 0 && parts[2] === 113) return true;
   // 100.64.0.0/10 — CGNAT (RFC6598).
   if (a === 100 && b >= 64 && b <= 127) return true;
   // 224.0.0.0/4 — multicast.
@@ -198,6 +214,10 @@ function isBlockedV6(addrIn: string): boolean {
   if ((first & 0xffc0) === 0xfe80) return true;
   // ff00::/8 — multicast.
   if ((first & 0xff00) === 0xff00) return true;
+  // 2001:db8::/32 — documentation range.
+  if (first === 0x2001 && hextets[1] === 0x0db8) return true;
+  // 2001:2::/48 — benchmarking range.
+  if (first === 0x2001 && hextets[1] === 0x0002 && hextets[2] === 0) return true;
 
   // R2-F1 fix: 6to4 prefix (2002::/16, RFC 3056). hextets[1..2] hold the
   // embedded IPv4. An attacker supplying `2002:7f00:0001::` reaches a host

@@ -27,11 +27,14 @@ export default async function PaymentFailedPage(): Promise<React.ReactElement> {
   }
 
   const admin = getAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('profiles')
     .select('subscription_status')
     .eq('id', user.id)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Failed to load billing status: ${error.message}`);
+  }
 
   const profile = (data ?? null) as ProfileRow | null;
   if (profile?.subscription_status !== 'past_due') {

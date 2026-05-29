@@ -165,4 +165,31 @@ describe('POST /api/audits', () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
+
+  it('scrubs provider error details before logging signed URL failures', async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    createSignedUploadUrlMock.mockResolvedValueOnce({
+      data: null,
+      error: {
+        message: 'storage denied user@example.com for acct 1234567890123',
+      },
+    });
+
+    try {
+      const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
+      expect(res.status).toBe(500);
+
+      const logged = consoleErrorSpy.mock.calls
+        .flat()
+        .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+        .join(' ');
+      expect(logged).not.toContain('user@example.com');
+      expect(logged).not.toContain('1234567890123');
+      expect(logged).toContain('[email]');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
 });

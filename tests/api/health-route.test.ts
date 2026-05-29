@@ -217,10 +217,21 @@ describe('GET /api/health — deep checks', () => {
     expect(body.status).toBe('degraded');
   });
 
-  it('returns status:ok when ALL three checks pass', async () => {
-    supabaseSelectMock.mockReturnValue({
+  it('returns status:ok when ALL checks pass', async () => {
+    // Deep mode also probes worker-lag and 24h success-rate, which chain
+    // .in()/.lt()/.gte()/.eq() beyond the .limit() that the db check uses.
+    // A chainable builder lets all probes resolve: db + worker-lag see
+    // count:0 (ok) and success-rate sees <5 audits in the window (skipped).
+    const okChain: Record<string, unknown> = {};
+    Object.assign(okChain, {
+      select: () => okChain,
       limit: async () => ({ error: null, count: 0 }),
+      in: () => okChain,
+      lt: async () => ({ error: null, count: 0 }),
+      gte: () => okChain,
+      eq: async () => ({ error: null, count: 0 }),
     });
+    supabaseSelectMock.mockReturnValue(okChain);
     stripeBalanceRetrieve.mockResolvedValue({ available: [] });
     anthropicKey = 'sk-ant-real-key';
 

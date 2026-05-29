@@ -43,6 +43,61 @@ const PHASE_COPY: Record<Exclude<Phase, 'idle'>, string> = {
   redirecting: 'Opening audit…',
 };
 
+const PHASE_ORDER: ReadonlyArray<Exclude<Phase, 'idle'>> = [
+  'preparing',
+  'uploading',
+  'starting',
+  'redirecting',
+];
+
+function PhaseIndicator({ phase }: { phase: Phase }): React.JSX.Element | null {
+  if (phase === 'idle') return null;
+  const activeIndex = PHASE_ORDER.indexOf(phase);
+  return (
+    <div
+      className="mt-4 flex items-center gap-2 text-xs text-neutral-600"
+      aria-live="polite"
+    >
+      {PHASE_ORDER.map((p, i) => {
+        const done = i < activeIndex;
+        const active = i === activeIndex;
+        return (
+          <React.Fragment key={p}>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={
+                  done
+                    ? 'flex h-4 w-4 items-center justify-center rounded-full bg-neutral-900 text-[10px] text-white'
+                    : active
+                      ? 'flex h-4 w-4 items-center justify-center rounded-full bg-neutral-900 text-[10px] text-white'
+                      : 'flex h-4 w-4 items-center justify-center rounded-full border border-neutral-300 text-[10px] text-neutral-400'
+                }
+                aria-hidden="true"
+              >
+                {done ? '✓' : i + 1}
+              </span>
+              <span
+                className={
+                  active
+                    ? 'font-medium text-neutral-900'
+                    : done
+                      ? 'text-neutral-500'
+                      : 'text-neutral-400'
+                }
+              >
+                {PHASE_COPY[p].replace('…', '')}
+              </span>
+            </div>
+            {i < PHASE_ORDER.length - 1 ? (
+              <span className="h-px w-4 bg-neutral-200" aria-hidden="true" />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 export function UploadForm(): React.JSX.Element {
   const router = useRouter();
   const [file, setFile] = React.useState<File | null>(null);
@@ -118,13 +173,16 @@ export function UploadForm(): React.JSX.Element {
     <form onSubmit={handleSubmit} className="space-y-6">
       <Dropzone onFile={setFile} disabled={busy} />
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-neutral-500" aria-live="polite">
-          {phase === 'idle' ? '' : PHASE_COPY[phase]}
-        </p>
-        <Button type="submit" size="lg" disabled={!file || busy}>
-          {busy ? 'Working…' : 'Run audit'}
-        </Button>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-neutral-500" aria-live="polite">
+            {phase === 'idle' ? '' : PHASE_COPY[phase]}
+          </p>
+          <Button type="submit" size="lg" disabled={!file || busy}>
+            {busy ? 'Working…' : 'Run audit'}
+          </Button>
+        </div>
+        <PhaseIndicator phase={phase} />
       </div>
     </form>
   );

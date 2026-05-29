@@ -10,6 +10,7 @@ type GetUserResult = {
 type AuditTokenRow = {
   id: string;
   user_id: string;
+  status: string;
   share_token: string | null;
   share_token_expires_at: string | null;
 };
@@ -18,12 +19,16 @@ type MaybeSingleResult =
   | { data: AuditTokenRow; error: null }
   | { data: null; error: null }
   | { data: null; error: { message: string } };
+type UpdateResult =
+  | { data: Array<{ id: string }>; error: null }
+  | { data: null; error: { message: string } };
 
 // --- Mocks ------------------------------------------------------------------
 
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const maybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
-const updateEqMock = vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
+const updateEqMock = vi.fn<() => Promise<UpdateResult>>();
+const updateFilters: Array<[string, unknown]> = [];
 
 const eqSelectMock = vi.fn(() => ({
   maybeSingle: () => maybeSingleMock(),
@@ -33,9 +38,20 @@ const selectMock = vi.fn((_cols: string) => ({
   eq: (_col: string, _val: string) => eqSelectMock(),
 }));
 
-const updateMock = vi.fn((_row: Record<string, unknown>) => ({
-  eq: (_col: string, _val: string) => updateEqMock(),
-}));
+const updateMock = vi.fn((_row: Record<string, unknown>) => {
+  const builder = {
+    eq: (col: string, val: unknown) => {
+      updateFilters.push([col, val]);
+      return builder;
+    },
+    then: (
+      onFulfilled: (value: UpdateResult) => unknown,
+      onRejected?: (reason: unknown) => unknown,
+    ) => updateEqMock().then(onFulfilled, onRejected),
+    select: (_cols: string) => updateEqMock(),
+  };
+  return builder;
+});
 
 const fromMock = vi.fn((_table: string) => ({
   select: (cols: string) => selectMock(cols),
@@ -65,6 +81,11 @@ vi.mock('@/env', () => ({
   },
 }));
 
+const sentryCaptureMock = vi.fn();
+vi.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => sentryCaptureMock(...args),
+}));
+
 // Import after mocks are registered.
 import { DELETE, POST } from '@/app/api/audits/[id]/share/route';
 
@@ -85,16 +106,18 @@ beforeEach(() => {
   getUserMock.mockReset();
   maybeSingleMock.mockReset();
   updateEqMock.mockReset();
+  updateFilters.length = 0;
   eqSelectMock.mockClear();
   selectMock.mockClear();
   updateMock.mockClear();
   fromMock.mockClear();
+  sentryCaptureMock.mockReset();
 
   getUserMock.mockResolvedValue({
     data: { user: { id: OWNER_USER_ID, email: 'test@example.com' } },
     error: null,
   });
-  updateEqMock.mockResolvedValue({ data: null, error: null });
+  updateEqMock.mockResolvedValue({ data: [{ id: VALID_AUDIT_ID }], error: null });
 });
 
 describe('POST /api/audits/[id]/share', () => {
@@ -122,6 +145,7 @@ describe('POST /api/audits/[id]/share', () => {
       data: {
         id: VALID_AUDIT_ID,
         user_id: 'someone-else',
+        status: 'completed',
         share_token: null,
         share_token_expires_at: null,
       },
@@ -132,11 +156,32 @@ describe('POST /api/audits/[id]/share', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
+  it('returns 409 without issuing a token when the audit is not completed', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: VALID_AUDIT_ID,
+        user_id: OWNER_USER_ID,
+        status: 'extracting',
+        share_token: null,
+        share_token_expires_at: null,
+      },
+      error: null,
+    });
+
+    const res = await POST(makeRequest(), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('audit_not_completed');
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   it('generates a new token AND an expiry when the audit has no share_token (H11)', async () => {
     maybeSingleMock.mockResolvedValueOnce({
       data: {
         id: VALID_AUDIT_ID,
         user_id: OWNER_USER_ID,
+        status: 'completed',
         share_token: null,
         share_token_expires_at: null,
       },
@@ -164,6 +209,45 @@ describe('POST /api/audits/[id]/share', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(typeof json['url']).toBe('string');
     expect(json['url']).toBe(`https://app.carrieraudit.test/share/${generatedToken as string}`);
+    expect(updateFilters).toContainEqual(['id', VALID_AUDIT_ID]);
+    expect(updateFilters).toContainEqual(['user_id', OWNER_USER_ID]);
+    expect(updateFilters).toContainEqual(['status', 'completed']);
+  });
+
+  it('reports unexpected POST failures with a scrubbed message', async () => {
+    getUserMock.mockRejectedValueOnce(new Error('boom for customer@example.com'));
+
+    const res = await POST(makeRequest(), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(500);
+    const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+      Error,
+      { tags?: { surface?: string }; extra?: { auditId?: string } },
+    ];
+    expect(err.message).toContain('[email]');
+    expect(err.message).not.toContain('customer@example.com');
+    expect(ctx.tags?.surface).toBe('audits.share.post');
+    expect(ctx.extra?.auditId).toBe(VALID_AUDIT_ID);
+  });
+
+  it('fails closed when the service-role token update matches no completed audit', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: VALID_AUDIT_ID,
+        user_id: OWNER_USER_ID,
+        status: 'completed',
+        share_token: null,
+        share_token_expires_at: null,
+      },
+      error: null,
+    });
+    updateEqMock.mockResolvedValueOnce({ data: [], error: null });
+
+    const res = await POST(makeRequest(), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('audit_not_completed');
   });
 
   it('returns the existing token without regenerating when one is still valid', async () => {
@@ -172,6 +256,7 @@ describe('POST /api/audits/[id]/share', () => {
       data: {
         id: VALID_AUDIT_ID,
         user_id: OWNER_USER_ID,
+        status: 'completed',
         share_token: 'existing-token-123',
         share_token_expires_at: futureExpiry,
       },
@@ -197,6 +282,7 @@ describe('POST /api/audits/[id]/share', () => {
       data: {
         id: VALID_AUDIT_ID,
         user_id: OWNER_USER_ID,
+        status: 'completed',
         share_token: 'stale-token',
         share_token_expires_at: pastExpiry,
       },
@@ -220,6 +306,7 @@ describe('DELETE /api/audits/[id]/share', () => {
       data: {
         id: VALID_AUDIT_ID,
         user_id: OWNER_USER_ID,
+        status: 'completed',
         share_token: 'live-token',
         share_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
       },
@@ -237,6 +324,27 @@ describe('DELETE /api/audits/[id]/share', () => {
     expect(arg['share_token_expires_at']).toBeNull();
   });
 
+  it('returns 404 when the service-role revoke update matches no audit', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: VALID_AUDIT_ID,
+        user_id: OWNER_USER_ID,
+        status: 'completed',
+        share_token: 'live-token',
+        share_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      },
+      error: null,
+    });
+    updateEqMock.mockResolvedValueOnce({ data: [], error: null });
+    const req = new Request(`http://localhost/api/audits/${VALID_AUDIT_ID}/share`, {
+      method: 'DELETE',
+    });
+
+    const res = await DELETE(req, makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(404);
+  });
+
   it('returns 401 when there is no authenticated user', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
     const req = new Request(`http://localhost/api/audits/${VALID_AUDIT_ID}/share`, {
@@ -252,6 +360,7 @@ describe('DELETE /api/audits/[id]/share', () => {
       data: {
         id: VALID_AUDIT_ID,
         user_id: 'someone-else',
+        status: 'completed',
         share_token: 'live-token',
         share_token_expires_at: null,
       },
@@ -281,5 +390,24 @@ describe('DELETE /api/audits/[id]/share', () => {
     });
     const res = await DELETE(req, makeContext('not-a-uuid'));
     expect(res.status).toBe(400);
+  });
+
+  it('reports unexpected DELETE failures with a scrubbed message', async () => {
+    getUserMock.mockRejectedValueOnce(new Error('boom for customer@example.com'));
+    const req = new Request(`http://localhost/api/audits/${VALID_AUDIT_ID}/share`, {
+      method: 'DELETE',
+    });
+
+    const res = await DELETE(req, makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(500);
+    const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+      Error,
+      { tags?: { surface?: string }; extra?: { auditId?: string } },
+    ];
+    expect(err.message).toContain('[email]');
+    expect(err.message).not.toContain('customer@example.com');
+    expect(ctx.tags?.surface).toBe('audits.share.delete');
+    expect(ctx.extra?.auditId).toBe(VALID_AUDIT_ID);
   });
 });

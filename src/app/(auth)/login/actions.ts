@@ -35,6 +35,7 @@ function safeNextPath(input: string | undefined): string | null {
   // Reject anything that looks like it carries a scheme (`/foo:bar` — the
   // colon could be misparsed by edge proxies). Cheap, safe over-rejection.
   if (input.includes(':')) return null;
+  if (/[\u0000-\u001f\u007f]/.test(input)) return null;
   return input;
 }
 

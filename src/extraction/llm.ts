@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import Anthropic from '@anthropic-ai/sdk';
 import * as Sentry from '@sentry/nextjs';
 import { env } from '@/env';
@@ -138,6 +139,15 @@ type Message =
  * user turn appended. `not_a_wireless_bill` is NOT retried.
  */
 export async function extractBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
+  // Dev-only fast path: bypass the LLM entirely and return a pre-canned
+  // fixture bill. Used for testing the rules engine, persistence, and UI
+  // without paying for tokens or waiting on the CLI subprocess. The fixture
+  // is picked to match the carrier we detect in the PDF text so the UI
+  // shows a coherent result.
+  if (process.env.USE_LLM_STUB === '1') {
+    return loadStubBill(pdfBuffer);
+  }
+
   const base64 = pdfBuffer.toString('base64');
 
   // The PDF document block is the largest stable prefix of the request, so it
@@ -227,6 +237,26 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function callModel(messages: Message[]): Promise<string> {
+  // Dev-only escape hatch: route through OpenRouter (OpenAI-compatible API)
+  // when `USE_OPENROUTER=1`. This is useful when the ANTHROPIC_API_KEY has
+  // no credits or you want to use a cheaper/faster model (e.g. Gemini Flash).
+  // Gemini supports native PDF input via the `file` content block — quality
+  // is comparable to Sonnet on text-heavy bills at ~2x lower cost and ~30s
+  // wall-clock for a typical multi-account bill.
+  if (process.env.USE_OPENROUTER === '1') {
+    return callModelViaOpenRouter(messages);
+  }
+
+  // Dev-only escape hatch: route through the local `claude` CLI when the
+  // ANTHROPIC_API_KEY is missing/invalid but the operator has Claude Code
+  // installed and logged in to a Claude.ai subscription. The CLI uses its
+  // own OAuth credentials and bills against the subscription, not the API.
+  // PDFs are downgraded to extracted text (the CLI cannot accept native PDF
+  // input), so this is for local testing only.
+  if (process.env.USE_CLAUDE_CLI === '1') {
+    return callModelViaClaudeCli(messages);
+  }
+
   const client = getClient();
   // The SDK's typed `messages.create` is happy to accept these block shapes,
   // but the union types vary by SDK version — cast at the boundary only.
@@ -358,9 +388,14 @@ function tryParseAndValidate(raw: string): ParseResult {
       .slice(0, 5)
       .map((i) => `${i.path.join('.')}: ${i.message}`)
       .join('; ');
+    // L: do NOT store `raw: parsed` here — `parsed` is the full LLM-parsed
+    // bill candidate and can carry un-truncated phone/account numbers. An
+    // outer `Sentry.captureException(error)` would serialize `details.raw`
+    // BEFORE `deriveFailureReason` runs `redactDetails`, leaking PII (see
+    // CLAUDE.md §1#5). The Zod `issues` (paths + messages) are sufficient for
+    // diagnostics and never contain bill values.
     const error = new ExtractionError('Schema validation failed', {
       issues,
-      raw: parsed,
     });
     return { kind: 'error', error, reason };
   }
@@ -447,4 +482,343 @@ function reconcileAccountTotals(
     delta_cents: computed - expected,
     tolerance_cents: tolerance,
   };
+}
+
+// ---------------------------------------------------------------------------
+// OpenRouter fallback (USE_OPENROUTER=1) — OpenAI-compatible API.
+// ---------------------------------------------------------------------------
+//
+// Routes the extraction call through OpenRouter, which fronts a marketplace
+// of LLMs behind a single OpenAI-compatible chat-completions endpoint. The
+// default model is `google/gemini-3.5-flash` (configurable via env), which
+// supports native PDF input and runs ~2x cheaper than Sonnet 4 for this
+// workload while delivering comparable extraction quality on text-heavy
+// bills.
+//
+// Trade-offs:
+//   - +Works without a paid ANTHROPIC_API_KEY.
+//   - +~2x cheaper per extraction (~$0.07 for a 25-line bill vs ~$0.15 on
+//     Sonnet 4) and ~30s wall clock.
+//   - -No prompt-caching (Anthropic-specific feature). Each request pays
+//     full input-token cost.
+//   - -Schema validation retry path still works (the model field error path
+//     in extractBill is provider-agnostic).
+
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_TIMEOUT_MS = 4 * 60 * 1000;
+
+async function callModelViaOpenRouter(messages: Message[]): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey || apiKey.length === 0) {
+    throw new ExtractionError(
+      'OPENROUTER_API_KEY is not set but USE_OPENROUTER=1',
+    );
+  }
+  const model = process.env.OPENROUTER_MODEL || 'google/gemini-3.5-flash';
+
+  // Translate Anthropic-shaped messages into OpenAI-shaped messages. The
+  // system prompt becomes a top-level system message. The document/text
+  // blocks become an array on a single user message — OpenRouter accepts
+  // `file` blocks with base64-encoded `file_data` for PDF input.
+  const openaiMessages: Array<Record<string, unknown>> = [
+    { role: 'system', content: SYSTEM_PROMPT },
+  ];
+  for (const msg of messages) {
+    if (msg.role === 'assistant') {
+      openaiMessages.push({ role: 'assistant', content: msg.content });
+      continue;
+    }
+    const content: Array<Record<string, unknown>> = [];
+    for (const block of msg.content) {
+      if (block.type === 'text') {
+        content.push({ type: 'text', text: block.text });
+      } else if (block.type === 'document') {
+        content.push({
+          type: 'file',
+          file: {
+            filename: 'bill.pdf',
+            file_data: `data:application/pdf;base64,${block.source.data}`,
+          },
+        });
+      }
+    }
+    openaiMessages.push({ role: 'user', content });
+  }
+
+  const body = {
+    model,
+    messages: openaiMessages,
+    max_tokens: MAX_TOKENS,
+    // Hard-enforce JSON object output so the model never wraps the bill in
+    // prose or markdown fences. tryParseAndValidate still strips fences
+    // defensively, but this catches the common failure mode upstream.
+    response_format: { type: 'json_object' as const },
+  };
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+    try {
+      const res = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          // Attribution headers recommended by OpenRouter so the call shows
+          // up under this app's name in the operator's OpenRouter dashboard.
+          'HTTP-Referer':
+            process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
+          'X-Title': 'CarrierAudit',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        const status = res.status;
+        // Mirror the Anthropic retry policy for transient upstream errors.
+        if (RETRYABLE_STATUSES.has(status) && attempt < MAX_LLM_ATTEMPTS) {
+          await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 250);
+          lastErr = new ExtractionError(
+            `OpenRouter HTTP ${status} (attempt ${attempt})`,
+            { status, snippet: errText.slice(0, 300) },
+          );
+          continue;
+        }
+        throw new ExtractionError(`OpenRouter HTTP ${status}`, {
+          status,
+          snippet: errText.slice(0, 300),
+        });
+      }
+      const json = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        error?: { message?: string };
+      };
+      const text = json.choices?.[0]?.message?.content;
+      if (typeof text !== 'string' || text.length === 0) {
+        throw new ExtractionError('OpenRouter returned empty content', {
+          provider_error: json.error?.message,
+        });
+      }
+      return text;
+    } catch (err) {
+      lastErr = err;
+      // AbortError = timeout; treat as retryable.
+      const name = (err as { name?: unknown }).name;
+      if (
+        attempt < MAX_LLM_ATTEMPTS &&
+        typeof name === 'string' &&
+        (name === 'AbortError' || /Network|Fetch|Connection/.test(name))
+      ) {
+        await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 250);
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new ExtractionError('OpenRouter exhausted retries');
+}
+
+// ---------------------------------------------------------------------------
+// Claude CLI fallback (USE_CLAUDE_CLI=1) — local dev only.
+// ---------------------------------------------------------------------------
+//
+// Shells out to the `claude` CLI in non-interactive print mode, using the
+// operator's local Claude.ai subscription credentials instead of an
+// ANTHROPIC_API_KEY. The CLI cannot accept native PDF input, so the document
+// block is decoded inline and re-parsed to text via pdf-parse before being
+// concatenated into a single text prompt.
+//
+// Trade-offs:
+//   - +Works without a paid ANTHROPIC_API_KEY (uses subscription quota).
+//   - -No native PDF understanding (image-only / scanned bills extract poorly).
+//   - -~2s CLI startup overhead per call.
+//   - -OAuth tokens expire ~hourly; if the CLI's stored token is stale, the
+//     operator must run `claude` once interactively to refresh.
+
+const CLI_TIMEOUT_MS = 5 * 60 * 1000;
+
+async function callModelViaClaudeCli(messages: Message[]): Promise<string> {
+  const prompt = await buildCliPromptFromMessages(messages);
+
+  return new Promise<string>((resolve, reject) => {
+    const args = [
+      '--print',
+      '--output-format',
+      'json',
+      '--system-prompt',
+      SYSTEM_PROMPT,
+      '--model',
+      'sonnet',
+      '--no-session-persistence',
+      '--disable-slash-commands',
+      '--exclude-dynamic-system-prompt-sections',
+    ];
+    const child = spawn('claude', args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      // Detach from any stale Claude config in cwd; run from a tmp working dir.
+      cwd: process.env.TMPDIR ?? '/tmp',
+    });
+
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new ExtractionError('claude CLI timed out', { timeout_ms: CLI_TIMEOUT_MS }));
+    }, CLI_TIMEOUT_MS);
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf-8');
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf-8');
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(new ExtractionError(`claude CLI spawn failed: ${err.message}`));
+    });
+
+    child.on('exit', (code) => {
+      clearTimeout(timeout);
+      if (code !== 0) {
+        reject(
+          new ExtractionError(`claude CLI exited with code ${code}`, {
+            stderr: stderr.slice(-500),
+          }),
+        );
+        return;
+      }
+      try {
+        // The --output-format=json wraps the assistant's response in:
+        //   { "type": "result", "subtype": "success", "is_error": false,
+        //     "result": "<assistant text>", "session_id": "...", ... }
+        const parsed = JSON.parse(stdout) as {
+          is_error?: boolean;
+          result?: string;
+          subtype?: string;
+        };
+        if (parsed.is_error) {
+          reject(
+            new ExtractionError('claude CLI returned error', {
+              subtype: parsed.subtype,
+              snippet: stdout.slice(0, 500),
+            }),
+          );
+          return;
+        }
+        if (typeof parsed.result !== 'string') {
+          reject(
+            new ExtractionError('claude CLI returned no result field', {
+              snippet: stdout.slice(0, 500),
+            }),
+          );
+          return;
+        }
+        resolve(parsed.result);
+      } catch (err) {
+        reject(
+          new ExtractionError(
+            `claude CLI JSON parse failed: ${err instanceof Error ? err.message : String(err)}`,
+            { snippet: stdout.slice(0, 500) },
+          ),
+        );
+      }
+    });
+
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
+
+async function buildCliPromptFromMessages(messages: Message[]): Promise<string> {
+  const parts: string[] = [];
+  for (const msg of messages) {
+    if (msg.role === 'assistant') {
+      // Echo the previous attempt so the retry path has context.
+      parts.push(`<previous_attempt>\n${msg.content}\n</previous_attempt>`);
+      continue;
+    }
+    for (const block of msg.content) {
+      if (block.type === 'text') {
+        parts.push(block.text);
+      } else if (block.type === 'document') {
+        const pdfBuffer = Buffer.from(block.source.data, 'base64');
+        // Lazy-load pdf-parse — only used in the CLI path.
+        const { default: pdfParse } = (await import('pdf-parse')) as unknown as {
+          default: (b: Buffer) => Promise<{ text: string; numpages: number }>;
+        };
+        const { text, numpages } = await pdfParse(pdfBuffer);
+        parts.push(
+          `<bill_text pages="${numpages}">\n${text.trim()}\n</bill_text>`,
+        );
+      }
+    }
+  }
+  return parts.join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// Fixture stub (USE_LLM_STUB=1) — local dev only.
+// ---------------------------------------------------------------------------
+//
+// Detects the carrier from the uploaded PDF's text and returns a pre-canned
+// fixture bill that matches that carrier (verizon / att / tmobile). On
+// `unknown` we fall back to verizon. Useful for exercising the rules engine,
+// persistence, and UI without making a real LLM call — and crucially the
+// returned bill's `carrier` matches what the user uploaded.
+
+const STUB_FIXTURES: Record<'verizon' | 'att' | 'tmobile', string> = {
+  verizon: 'tests/fixtures/bills/verizon-business-large.expected.json',
+  att: 'tests/fixtures/bills/att-business-medium.expected.json',
+  tmobile: 'tests/fixtures/bills/tmobile-business-large.expected.json',
+};
+
+const stubCache = new Map<string, ExtractedBill>();
+
+async function loadStubBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
+  // 1. Extract PDF text once and run the same heuristic carrier detector the
+  //    real pipeline uses. We can't import from `@/extraction/detect` at the
+  //    top of this module without a circular-ish look, but detect.ts is leaf
+  //    so a dynamic import is cheap.
+  const [{ detectCarrier }, { default: pdfParse }] = await Promise.all([
+    import('@/extraction/detect'),
+    import('pdf-parse') as unknown as Promise<{
+      default: (b: Buffer) => Promise<{ text: string; numpages: number }>;
+    }>,
+  ]);
+
+  let detected: 'verizon' | 'att' | 'tmobile' = 'verizon';
+  try {
+    const { text } = await pdfParse(pdfBuffer);
+    const carrier = detectCarrier(text);
+    if (carrier === 'verizon' || carrier === 'att' || carrier === 'tmobile') {
+      detected = carrier;
+    }
+  } catch {
+    // PDF parse failed — keep the verizon default.
+  }
+
+  const cached = stubCache.get(detected);
+  if (cached) return cached;
+
+  const { readFile } = await import('node:fs/promises');
+  const { resolve } = await import('node:path');
+  const filePath = resolve(process.cwd(), STUB_FIXTURES[detected]);
+  const raw = await readFile(filePath, 'utf-8');
+  const parsed = JSON.parse(raw) as unknown;
+  const result = ExtractedBillSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new ExtractionError('Stub fixture failed schema validation', {
+      carrier: detected,
+      issues: result.error.issues,
+    });
+  }
+  stubCache.set(detected, result.data);
+  return result.data;
 }
