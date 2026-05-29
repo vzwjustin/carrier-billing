@@ -590,6 +590,33 @@ describe('handleStripeEvent', () => {
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
+  it('invoice.payment_failed skips past_due flip when profile is canceled', async () => {
+    client.__nextSelectRows = [
+      {
+        id: 'profile_canceled',
+        subscription_event_at: new Date(
+          Date.UTC(2026, 4, 9, 11, 0, 0),
+        ).toISOString(),
+        subscription_status: 'canceled',
+      },
+    ];
+
+    const event = makeEvent(
+      'invoice.payment_failed',
+      {
+        id: 'in_after_cancel',
+        customer: 'cus_canceled',
+        amount_due: 1500,
+      },
+      Math.floor(Date.UTC(2026, 4, 12, 12, 0, 0) / 1000),
+    );
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    expect(client.__updates).toHaveLength(0);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
   it('invoice.payment_failed swallows inngest.send errors so past_due update sticks', async () => {
     stageInvoiceSelects('profile_send_err', 'send-err@example.com');
     inngestSendMock.mockRejectedValueOnce(new Error('inngest down'));

@@ -34,6 +34,17 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
     expect(typeof cleanupOrphanAuditsFn.name).toBe('string');
     expect(cleanupOrphanAuditsFn.name.length).toBeGreaterThan(0);
   });
+
+  it('fail-subscription-orphans sweep excludes retried audits (retry_count=0)', () => {
+    const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
+    const handlerSource =
+      typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
+    const block = handlerSource.slice(
+      handlerSource.indexOf('fail-subscription-orphans'),
+      handlerSource.indexOf('return { processed:'),
+    );
+    expect(block).toMatch(/\.eq\(['"]retry_count['"]\s*,\s*0\)/);
+  });
 });
 
 // --- refundOrphanAudit ----------------------------------------------------

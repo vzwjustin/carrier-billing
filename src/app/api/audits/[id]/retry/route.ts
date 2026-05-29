@@ -3,6 +3,8 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { assertCanRunAudit } from '@/lib/access/gate';
+import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -21,6 +23,7 @@ interface AuditRow {
   storage_path: string;
   retry_count: number;
   failure_reason: string | null;
+  credit_consumed: boolean;
 }
 
 function isAuditRow(value: unknown): value is AuditRow {
@@ -32,7 +35,8 @@ function isAuditRow(value: unknown): value is AuditRow {
     typeof v.status === 'string' &&
     typeof v.storage_path === 'string' &&
     typeof v.retry_count === 'number' &&
-    (typeof v.failure_reason === 'string' || v.failure_reason === null)
+    (typeof v.failure_reason === 'string' || v.failure_reason === null) &&
+    typeof v.credit_consumed === 'boolean'
   );
 }
 
@@ -69,7 +73,9 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('audits')
-      .select('id,user_id,status,storage_path,retry_count,failure_reason')
+      .select(
+        'id,user_id,status,storage_path,retry_count,failure_reason,credit_consumed',
+      )
       .eq('id', auditId)
       .maybeSingle();
 
@@ -99,6 +105,65 @@ export async function POST(
     });
     if (!limit.ok) {
       return rateLimitedResponse(limit.resetAt);
+    }
+
+    // Re-anchor credit when a system-side failure refunded it
+    // (`refund_failed_audit` flips credit_consumed false). User-fault
+    // failures keep credit_consumed=true — the user already paid and
+    // retry is free. Subscription users always have credit_consumed=false
+    // but gate on `subscription`, not `credit`, so no decrement there.
+    if (!data.credit_consumed) {
+      const gate = await assertCanRunAudit(user.id);
+      if (!gate.ok) {
+        if (gate.reason === 'past_due') {
+          return NextResponse.json(
+            {
+              error: 'subscription_past_due',
+              message:
+                'Your subscription is past due. Please update payment to continue.',
+            },
+            { status: 402 },
+          );
+        }
+        return NextResponse.json(
+          {
+            error: 'no_plan',
+            message: 'No active plan or audit credits.',
+            upgrade_url: '/pricing',
+          },
+          { status: 402 },
+        );
+      }
+      if (gate.reason === 'credit') {
+        try {
+          await consumeAuditCreditForAudit(user.id, auditId);
+        } catch (decrementErr) {
+          const isDefinitiveRefusal =
+            decrementErr instanceof Error &&
+            decrementErr.message === 'no_credits';
+          Sentry.captureException(decrementErr, {
+            tags: {
+              surface: 'audits.retry.decrement',
+              transient: isDefinitiveRefusal ? 'false' : 'true',
+            },
+            extra: { userId: user.id, auditId },
+          });
+          if (isDefinitiveRefusal) {
+            return NextResponse.json(
+              {
+                error: 'no_plan',
+                message: 'No active plan or audit credits.',
+                upgrade_url: '/pricing',
+              },
+              { status: 402 },
+            );
+          }
+          return NextResponse.json(
+            { error: 'Failed to reserve audit credit.' },
+            { status: 503 },
+          );
+        }
+      }
     }
 
     // M-A3 — invalidate the cached PDF for this audit (if any) before resetting

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { processBillFn } from '@/inngest/functions/process-bill';
+import { processBillFn, __testables } from '@/inngest/functions/process-bill';
 import { functions } from '@/inngest/functions';
 
 describe('processBillFn', () => {
@@ -123,12 +123,11 @@ describe('processBillFn — H6 mark-analyzing status guard', () => {
   it('audit.completed Inngest send carries a stable idempotency key', () => {
     // (H5) The send-trigger step must pass `id: \`${auditId}-completed\``
     // so a retried function cannot fire `audit.completed` twice.
-    const src = getHandlerSource();
-    const idx = src.indexOf('audit.completed');
-    expect(idx).toBeGreaterThan(-1);
-    // Search a wide window to allow for surrounding properties.
-    const block = src.slice(Math.max(0, idx - 500), idx + 500);
-    expect(block).toMatch(/id:\s*`\$\{auditId\}-completed`/);
+    // Side effects live in emitCompletedAuditSideEffects (shared with C1
+    // downstream-only recovery).
+    const src = __testables.emitCompletedAuditSideEffects.toString();
+    expect(src).toMatch(/name:\s*['"]audit\.completed['"]/);
+    expect(src).toMatch(/id:\s*`\$\{auditId\}-completed`/);
   });
 });
 
@@ -191,10 +190,12 @@ describe('processBillFn — C1 Inngest step-replay self-recognition', () => {
     const src = getHandlerSource();
     const idx = src.indexOf('mark-extracting');
     expect(idx).toBeGreaterThan(-1);
-    const block = src.slice(idx, idx + 3500);
-    // On affected===0, the bail must short-circuit with proceed:true when
-    // the row's run id matches this run's event id.
+    const block = src.slice(idx, idx + 4000);
     expect(block).toMatch(/inngest_run_id\s*===?\s*event\.id/);
+    // Completed audits recover downstream side effects only — no re-extract.
+    expect(block).toMatch(/row\.status\s*===?\s*['"]completed['"]/);
+    expect(block).toMatch(/proceed:\s*['"]downstream-only['"]/);
+    // Mid-pipeline replay (extracting/analyzing) still proceeds.
     expect(block).toMatch(/proceed:\s*true/);
   });
 
