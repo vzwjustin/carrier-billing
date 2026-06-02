@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   runEdi811Pipeline,
   Edi811PipelineError,
+  isLikelyEdi811Buffer,
   MAX_EDI_BYTES,
 } from '@/extraction/edi811/pipeline';
 import { MAX_EDI_SEGMENTS } from '@/extraction/edi811/parser';
@@ -53,6 +54,29 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
     const result = await runEdi811Pipeline({ buffer: bufferOf(interchange) });
     expect(result.detectedCarrier).toBe('verizon');
     expect(() => ExtractedBillSchema.parse(result.bill)).not.toThrow();
+  });
+
+  it('detects raw, BOM-prefixed, and whitespace-prefixed EDI buffers', () => {
+    expect(isLikelyEdi811Buffer(bufferOf(interchange))).toBe(true);
+    expect(isLikelyEdi811Buffer(bufferOf(`\uFEFF${interchange}`))).toBe(true);
+    expect(isLikelyEdi811Buffer(bufferOf(` \r\n\t${interchange}`))).toBe(true);
+  });
+
+  it('does not classify PDFs or prose starting with ISA letters as EDI', () => {
+    expect(isLikelyEdi811Buffer(Buffer.from('%PDF-1.7\n', 'utf8'))).toBe(false);
+    expect(isLikelyEdi811Buffer(Buffer.from('  ISABELLA is not an envelope', 'utf8'))).toBe(false);
+  });
+
+  it('runs the EDI pipeline for BOM-prefixed and whitespace-prefixed interchanges', async () => {
+    const bomResult = await runEdi811Pipeline({
+      buffer: bufferOf(`\uFEFF${interchange}`),
+    });
+    const whitespaceResult = await runEdi811Pipeline({
+      buffer: bufferOf(` \r\n\t${interchange}`),
+    });
+
+    expect(bomResult.detectedCarrier).toBe('verizon');
+    expect(whitespaceResult.detectedCarrier).toBe('verizon');
   });
 
   it('captures billing period from DTM 150/151', async () => {

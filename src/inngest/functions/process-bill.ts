@@ -9,6 +9,7 @@ import {
 } from '@/extraction/pipeline';
 import {
   MAX_EDI_BYTES,
+  isLikelyEdi811Buffer,
   runEdi811Pipeline,
   Edi811PipelineError,
 } from '@/extraction/edi811/pipeline';
@@ -250,20 +251,6 @@ type ExtractionStepResult = {
   /** Which ingest pipeline produced the bill — useful for log triage. */
   source: 'pdf' | 'edi811';
 };
-
-/**
- * Sniff the first bytes of an uploaded file to decide which pipeline to run.
- *
- * EDI 811 files start with the ASCII literal `ISA` (the X12 interchange
- * envelope). PDF files start with `%PDF-`. We branch on the buffer rather
- * than the filename so a confusingly-named EDI file (`.txt`/`.dat`) still
- * routes correctly, and a PDF mistakenly labelled `.edi` doesn't get fed
- * to the X12 parser.
- */
-function isEdi811Buffer(buffer: Buffer): boolean {
-  if (buffer.length < 3) return false;
-  return buffer.slice(0, 3).toString('ascii') === 'ISA';
-}
 
 /**
  * Output of the persist-bill step. Returned (and therefore Inngest-cached)
@@ -586,7 +573,7 @@ export const processBillFn = inngest.createFunction(
         // outer error handler could mark the audit failed. On expiry we
         // throw an ExtractionTimeoutError, which deriveFailureReason maps to
         // `extraction-timeout: <ms>ms` in `audits.failure_reason`.
-        if (isEdi811Buffer(buffer)) {
+        if (isLikelyEdi811Buffer(buffer)) {
           if (buffer.byteLength > MAX_EDI_BYTES) {
             throw new Edi811PipelineError(
               `EDI exceeds ${MAX_EDI_BYTES} byte limit (got ${buffer.byteLength})`,
@@ -1520,6 +1507,7 @@ export const __testables = {
   withGeneratedId,
   isUserFaultFailure,
   emitCompletedAuditSideEffects,
+  isLikelyEdi811Buffer,
 };
 
 function withGeneratedId<T extends Record<string, unknown>>(
