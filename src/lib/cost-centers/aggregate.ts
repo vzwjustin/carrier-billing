@@ -44,6 +44,7 @@ export function aggregateCostCenters(
     string,
     { line_count: number; monthly_total_cents: number }
   >();
+  let total = 0;
 
   for (const line of lines) {
     const label =
@@ -58,12 +59,8 @@ export function aggregateCostCenters(
     } else {
       buckets.set(label, { line_count: 1, monthly_total_cents: cents });
     }
+    total += cents;
   }
-
-  const total = Array.from(buckets.values()).reduce(
-    (acc, b) => acc + b.monthly_total_cents,
-    0,
-  );
 
   const rows: CostCenterRollupRow[] = Array.from(buckets.entries()).map(
     ([cost_center, b]) => ({

@@ -42,6 +42,7 @@ export function aggregateSpendByCarrier(
   audits: ReadonlyArray<AuditCarrierSpendInput>,
 ): CarrierSpendRow[] {
   const buckets = new Map<string, number>();
+  let total = 0;
 
   for (const audit of audits) {
     if (audit.total_charges_cents === null) continue;
@@ -50,9 +51,8 @@ export function aggregateSpendByCarrier(
         ? UNKNOWN_CARRIER
         : audit.carrier;
     buckets.set(carrier, (buckets.get(carrier) ?? 0) + audit.total_charges_cents);
+    total += audit.total_charges_cents;
   }
-
-  const total = Array.from(buckets.values()).reduce((acc, c) => acc + c, 0);
 
   const rows: CarrierSpendRow[] = Array.from(buckets.entries()).map(
     ([carrier, total_cents]) => ({
