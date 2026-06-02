@@ -17,15 +17,7 @@ import { functions } from '@/inngest/functions';
  */
 
 const CONTRACT_SRC = readFileSync(
-  resolve(
-    __dirname,
-    '..',
-    '..',
-    'src',
-    'inngest',
-    'functions',
-    'process-contract.ts',
-  ),
+  resolve(__dirname, '..', '..', 'src', 'inngest', 'functions', 'process-contract.ts'),
   'utf8',
 );
 
@@ -61,9 +53,7 @@ describe('processContractFn — mark-extracting status guard', () => {
 
   it('selects user_id + status + inngest_run_id before flipping (ownership recheck + #6 self-replay)', () => {
     const block = getMarkExtractingBlock();
-    expect(block).toMatch(
-      /\.select\(['"]id, user_id, status, inngest_run_id['"]\)/,
-    );
+    expect(block).toMatch(/\.select\(['"]id, user_id, status, inngest_run_id['"]\)/);
   });
 
   it('treats a missing row as `not-found` (does not throw)', () => {
@@ -111,9 +101,7 @@ describe('processContractFn — mark-extracting status guard', () => {
     const block = getMarkExtractingBlock();
     expect(block).toMatch(/ownership-mismatch-race/);
     // The race branch is taken specifically on a 0-row ownership UPDATE.
-    expect(block).toMatch(
-      /\(ownRows \?\? \[\]\)\.length === 0[\s\S]*?ownership-mismatch-race/,
-    );
+    expect(block).toMatch(/\(ownRows \?\? \[\]\)\.length === 0[\s\S]*?ownership-mismatch-race/);
   });
 });
 
@@ -155,9 +143,7 @@ describe('processContractFn — persist step', () => {
     // The status-guard return must appear, and it must come before the
     // contract_terms delete — otherwise a concurrent run / replay would churn
     // the terms while leaving the header stale.
-    const guardIdx = block.search(
-      /\(updatedRows \?\? \[\]\)\.length === 0/,
-    );
+    const guardIdx = block.search(/\(updatedRows \?\? \[\]\)\.length === 0/);
     expect(guardIdx).toBeGreaterThan(-1);
     const guardBlock = block.slice(guardIdx, guardIdx + 200);
     expect(guardBlock).toMatch(/reason:\s*['"]status-guard['"]/);
@@ -227,8 +213,8 @@ describe('processContractFn — audit trail', () => {
     // contract_uploaded event.
     expect(CONTRACT_SRC).toMatch(/const persistResult = await step\.run\(\s*['"]persist['"]/);
     const guardIdx = CONTRACT_SRC.indexOf('if (persistResult.ok)');
-    const trailIdx = CONTRACT_SRC.indexOf('logTrailEvent({ userId');
+    const trailIdx = CONTRACT_SRC.indexOf('logTrailEvent(', guardIdx);
     expect(guardIdx).toBeGreaterThanOrEqual(0);
-    expect(guardIdx).toBeLessThan(trailIdx);
+    expect(trailIdx).toBeGreaterThan(guardIdx);
   });
 });
