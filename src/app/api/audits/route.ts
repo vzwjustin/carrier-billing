@@ -240,17 +240,6 @@ export async function POST(request: Request): Promise<Response> {
             auditId,
             'audits.create.rollback_orphan',
           );
-        }
-        // For transient errors (network drop between RPC commit and
-        // response, PostgREST 5xx, etc.) we deliberately LEAVE the audit
-        // row in place with status='pending'. If the RPC actually
-        // committed server-side, `credit_consumed=true` will be set;
-        // the orphan-cleanup cron sweeps such rows after 30 minutes and
-        // refunds the credit. If the RPC failed before committing, the
-        // row sits idle with `credit_consumed=false`, and orphan-
-        // cleanup will also reap it (no refund path needed — credit
-        // was never decremented). Either way, no credit is lost.
-        if (isDefinitiveRefusal) {
           return NextResponse.json(
             {
               error: 'no_plan',
@@ -260,6 +249,7 @@ export async function POST(request: Request): Promise<Response> {
             { status: 402 },
           );
         }
+        // Transient RPC failure — leave the pending row for orphan cleanup.
         return NextResponse.json(
           {
             error: 'credit_pending',

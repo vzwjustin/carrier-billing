@@ -34,6 +34,30 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
     expect(typeof cleanupOrphanAuditsFn.name).toBe('string');
     expect(cleanupOrphanAuditsFn.name.length).toBeGreaterThan(0);
   });
+
+  it('find-orphans sweep TTL uses updated_at (not created_at)', () => {
+    const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
+    const handlerSource =
+      typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
+    const block = handlerSource.slice(
+      handlerSource.indexOf('find-orphans'),
+      handlerSource.indexOf('logger.info(\'cleanupOrphanAudits: found orphans\''),
+    );
+    expect(block).toMatch(/\.lt\(['"]updated_at['"]\s*,\s*cutoff\)/);
+    expect(block).not.toMatch(/\.lt\(['"]created_at['"]\s*,\s*cutoff\)/);
+  });
+
+  it('fail-subscription-orphans sweep TTL uses updated_at (not created_at)', () => {
+    const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
+    const handlerSource =
+      typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
+    const block = handlerSource.slice(
+      handlerSource.indexOf('fail-subscription-orphans'),
+      handlerSource.indexOf('return { processed:'),
+    );
+    expect(block).toMatch(/\.lt\(['"]updated_at['"]\s*,\s*cutoff\)/);
+    expect(block).not.toMatch(/\.lt\(['"]created_at['"]\s*,\s*cutoff\)/);
+  });
 });
 
 // --- refundOrphanAudit ----------------------------------------------------

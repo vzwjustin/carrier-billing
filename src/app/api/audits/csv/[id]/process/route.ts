@@ -32,6 +32,8 @@ import { z } from 'zod';
 
 import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { assertCanRunAudit } from '@/lib/access/gate';
+import { dispatchAuditCompletedSideEffects } from '@/lib/audits/completed-side-effects';
+import { loadParsedContractsForUser } from '@/lib/audits/load-parsed-contracts';
 import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
@@ -288,10 +290,12 @@ export async function POST(
     }
 
     // 7. Run rules + translate indexes + persist findings.
+    const loadedContracts = await loadParsedContractsForUser(user.id);
     const ctx: RuleContext = {
       bill,
       today: new Date(),
       carrier: bill.carrier,
+      contracts: loadedContracts,
     };
     const ruleResult = await runRules(ctx, ALL_RULES);
     const findings = translateLineIndexes(ruleResult.findings, bill, {
@@ -324,7 +328,7 @@ export async function POST(
       (f) => f.severity === ('high' as Severity),
     ).length;
     const now = new Date().toISOString();
-    const { error: completedErr } = await admin
+    const { data: completedRows, error: completedErr } = await admin
       .from('audits')
       .update({
         status: 'completed',
@@ -336,16 +340,13 @@ export async function POST(
         updated_at: now,
       })
       .eq('id', auditId)
-      .eq('status', 'analyzing');
-    if (completedErr) {
-      // #8: previously this was swallowed and the route returned ok:true,
-      // leaving the audit stuck in non-terminal 'analyzing' with the credit
-      // spent. Retry the idempotent, status-guarded flip a few times; a
-      // transient DB error usually clears. (A retry that matches 0 rows with
-      // no error means the original flip actually committed — treat as done.)
-      let flipped = false;
+      .eq('status', 'analyzing')
+      .select('id');
+
+    let flipped = !completedErr && (completedRows ?? []).length > 0;
+    if (!flipped) {
       for (let attempt = 0; attempt < 3 && !flipped; attempt++) {
-        const { error: retryErr } = await admin
+        const { data: retryRows, error: retryErr } = await admin
           .from('audits')
           .update({
             status: 'completed',
@@ -357,17 +358,19 @@ export async function POST(
             updated_at: new Date().toISOString(),
           })
           .eq('id', auditId)
-          .eq('status', 'analyzing');
-        if (!retryErr) flipped = true;
+          .eq('status', 'analyzing')
+          .select('id');
+        if (!retryErr && (retryRows ?? []).length > 0) {
+          flipped = true;
+        }
       }
       if (!flipped) {
-        Sentry.captureException(completedErr, {
-          tags: { surface: 'audits.csv.process.mark_completed' },
-          extra: { auditId },
-        });
-        // Persist succeeded but finalization didn't. Surface an error (not
-        // ok:true) so the caller knows; the stuck-'analyzing' sweeper in
-        // cleanup-orphan-audits reclaims the row.
+        if (completedErr) {
+          Sentry.captureException(completedErr, {
+            tags: { surface: 'audits.csv.process.mark_completed' },
+            extra: { auditId },
+          });
+        }
         return NextResponse.json(
           {
             error:
@@ -377,6 +380,15 @@ export async function POST(
         );
       }
     }
+
+    await dispatchAuditCompletedSideEffects({
+      auditId,
+      userId: user.id,
+      carrier: bill.carrier,
+      findingCount: findings.length,
+      highSeverityCount,
+      monthlySavingsCents: monthlySavings,
+    });
 
     await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'csv', account_count: bill.accounts.length, line_count: lineCount, finding_count: findings.length }, actorEmail: user.email ?? null });
 

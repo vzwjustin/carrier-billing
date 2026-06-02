@@ -70,12 +70,16 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
       //   - resilience to future column drift (a code path that sets
       //     credit_consumed=true on a sub audit would otherwise quietly
       //     mint a credit via this cron)
+      // TTL is anchored on `updated_at`, not `created_at`. Retried audits
+      // (POST /api/audits/[id]/retry) reset to `pending` and bump
+      // `updated_at`, so the 30-minute window restarts from the retry — we
+      // neither falsely refund a fresh retry nor strand a stuck one forever.
       const { data, error } = await supabase
         .from('audits')
         .select('id, user_id, created_at')
         .eq('status', 'pending')
         .eq('credit_consumed', true)
-        .lt('created_at', cutoff);
+        .lt('updated_at', cutoff);
       if (error) {
         throw new Error(`audits select (find-orphans) failed: ${error.message}`);
       }
@@ -105,7 +109,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
     //
     // Status-guarded UPDATE: only `pending` rows are touched, so a row that
     // advanced to `extracting` after the find-orphans select cannot be
-    // clobbered. Same TTL cutoff applies.
+    // clobbered. Same `updated_at` TTL cutoff as the credit sweep above.
     const subOrphanCount = await step.run('fail-subscription-orphans', async () => {
       const supabase = getAdminClient();
       const cutoff = new Date(Date.now() - TTL_MINUTES * 60_000).toISOString();
@@ -118,7 +122,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
         })
         .eq('status', 'pending')
         .eq('credit_consumed', false)
-        .lt('created_at', cutoff)
+        .lt('updated_at', cutoff)
         .select('id');
       if (error) {
         throw new Error(

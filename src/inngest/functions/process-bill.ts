@@ -25,9 +25,9 @@ import {
 import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
-import type { ContractWithTerms, ContractTerms } from '@/contracts/schema';
-import { trackServer } from '@/lib/analytics/events';
-import { logTrailEvent } from '@/lib/audit-trail/log';
+import type { ContractWithTerms } from '@/contracts/schema';
+import { dispatchAuditCompletedSideEffects } from '@/lib/audits/completed-side-effects';
+import { loadParsedContractsForUser } from '@/lib/audits/load-parsed-contracts';
 import { BillUploadedDataSchema, parseEventData } from '../events';
 
 /**
@@ -231,6 +231,7 @@ function isNotAWirelessBill(err: unknown): boolean {
  */
 function isUserFaultFailure(failureReason: string): boolean {
   if (failureReason.startsWith('encrypted-pdf')) return true;
+  if (failureReason === 'no lines extracted') return true;
   if (
     /Document does not appear to be a US business wireless bill/i.test(
       failureReason,
@@ -282,6 +283,41 @@ type RuleStepResult = {
   errors: Array<{ rule_id: string; message: string }>;
 };
 
+type InngestStepRunner = {
+  run: (name: string, fn: () => Promise<unknown>) => Promise<unknown>;
+};
+
+type SideEffectsLogger = {
+  error: (message: string, ctx?: Record<string, unknown>) => void;
+};
+
+/**
+ * Post-completion side effects shared by the normal completion path and the
+ * C1 downstream-only recovery path (worker crashed after mark-completed
+ * committed but before the step result was persisted).
+ */
+async function emitCompletedAuditSideEffects(opts: {
+  auditId: string;
+  userId: string;
+  carrier: string | null;
+  findingCount: number;
+  highSeverityCount: number;
+  monthlySavingsCents: number;
+  step: InngestStepRunner;
+  logger: SideEffectsLogger;
+}): Promise<void> {
+  await dispatchAuditCompletedSideEffects({
+    auditId: opts.auditId,
+    userId: opts.userId,
+    carrier: opts.carrier,
+    findingCount: opts.findingCount,
+    highSeverityCount: opts.highSeverityCount,
+    monthlySavingsCents: opts.monthlySavingsCents,
+    logger: opts.logger,
+    runInStep: (name, fn) => opts.step.run(name, fn),
+  });
+}
+
 export const processBillFn = inngest.createFunction(
   {
     id: 'process-bill',
@@ -331,6 +367,7 @@ export const processBillFn = inngest.createFunction(
       // ─────────────────────────────────────────────────────────────────────
       type MarkExtractingResult =
         | { proceed: true }
+        | { proceed: 'downstream-only' }
         | { proceed: false; reason: 'not-found' }
         | { proceed: false; reason: 'ownership-mismatch' }
         | { proceed: false; reason: 'ownership-mismatch-race' }
@@ -430,7 +467,21 @@ export const processBillFn = inngest.createFunction(
             // own self-replay checks. Without this branch, a rare worker
             // crash between DB commit and Inngest result-write strands the
             // audit in `extracting` forever.
+            //
+            // When the row is already `completed`, only the post-completion
+            // side effects (email + analytics) may need recovery — do NOT
+            // re-run extraction.
             if (event.id && row.inngest_run_id === event.id) {
+              if (row.status === 'completed') {
+                return { proceed: 'downstream-only' };
+              }
+              if (row.status === 'failed') {
+                return {
+                  proceed: false,
+                  reason: 'already-advanced',
+                  observedStatus: row.status,
+                };
+              }
               return { proceed: true };
             }
             return {
@@ -443,7 +494,61 @@ export const processBillFn = inngest.createFunction(
         },
       )) as MarkExtractingResult;
 
-      if (!markResult.proceed) {
+      if (markResult.proceed === 'downstream-only') {
+        const supabase = getAdminClient();
+        const { data: auditRow, error: loadErr } = await supabase
+          .from('audits')
+          .select(
+            'status, carrier, finding_count, high_severity_count, estimated_monthly_savings_cents',
+          )
+          .eq('id', auditId)
+          .maybeSingle();
+        if (loadErr) {
+          throw new Error(
+            `audits select (downstream-recovery) failed: ${loadErr.message}`,
+          );
+        }
+        const row = auditRow as
+          | {
+              status: string;
+              carrier: string | null;
+              finding_count: number | null;
+              high_severity_count: number | null;
+              estimated_monthly_savings_cents: number | null;
+            }
+          | null;
+        if (!row || row.status !== 'completed') {
+          logger.warn('processBill: downstream-only recovery but audit not completed', {
+            auditId,
+            observedStatus: row?.status ?? 'missing',
+          });
+          return {
+            auditId,
+            skipped: true,
+            reason: 'downstream-recovery-mismatch',
+          };
+        }
+        logger.info('processBill: downstream-only recovery (skip re-extract)', {
+          auditId,
+        });
+        await emitCompletedAuditSideEffects({
+          auditId,
+          userId,
+          carrier: row.carrier,
+          findingCount: row.finding_count ?? 0,
+          highSeverityCount: row.high_severity_count ?? 0,
+          monthlySavingsCents: row.estimated_monthly_savings_cents ?? 0,
+          step,
+          logger,
+        });
+        return {
+          auditId,
+          findingCount: row.finding_count ?? 0,
+          status: 'downstream-recovery',
+        };
+      }
+
+      if (markResult.proceed !== true) {
         // Bail out gracefully — another runner has it, or ownership/route
         // safety already handled this audit. We log enough to triage but
         // never re-throw, so Inngest does not retry.
@@ -664,7 +769,9 @@ export const processBillFn = inngest.createFunction(
               probe &&
               event.id &&
               probe.inngest_run_id === event.id &&
-              (probe.status === 'analyzing' || probe.status === 'completed')
+              (probe.status === 'extracting' ||
+                probe.status === 'analyzing' ||
+                probe.status === 'completed')
             ) {
               return { ok: true };
             }
@@ -718,52 +825,9 @@ export const processBillFn = inngest.createFunction(
       // query fails, we log and proceed with an empty array so the rest of
       // the rules engine still runs.
       const loadedContracts = (await step.run('load-contracts', async () => {
-        try {
-          const supabase = getAdminClient();
-          const { data, error } = await supabase
-            .from('contracts')
-            .select(
-              'id,carrier,ban_last4,effective_date,expiration_date,status,contract_terms(plan_name,contracted_monthly_rate_cents,discount_percentage_bps,waived_fees,promo_credit_cents,promo_duration_months,device_credit_terms,line_minimums,upgrade_fee_rules,activation_fee_rules,international_package_terms,early_termination_terms,notes)',
-            )
-            .eq('user_id', userId)
-            .eq('status', 'parsed');
-          if (error) {
-            logger.warn('processBill: load-contracts failed (continuing without)', {
-              auditId,
-              message: error.message,
-            });
-            return [] as ContractWithTerms[];
-          }
-          const rows = (data ?? []) as Array<{
-            id: string;
-            carrier: string | null;
-            ban_last4: string | null;
-            effective_date: string | null;
-            expiration_date: string | null;
-            contract_terms: ContractTerms[] | ContractTerms | null;
-          }>;
-          return rows.map<ContractWithTerms>((r) => {
-            const termsField = r.contract_terms;
-            const terms = Array.isArray(termsField)
-              ? (termsField[0] ?? null)
-              : (termsField ?? null);
-            return {
-              id: r.id,
-              carrier: r.carrier,
-              ban_last4: r.ban_last4,
-              effective_date: r.effective_date,
-              expiration_date: r.expiration_date,
-              terms,
-            };
-          });
-        } catch (loadErr) {
-          logger.warn('processBill: load-contracts threw (continuing without)', {
-            auditId,
-            message:
-              loadErr instanceof Error ? loadErr.message : 'unknown error',
-          });
-          return [] as ContractWithTerms[];
-        }
+        return loadParsedContractsForUser(userId, {
+          warn: (message, ctx) => logger.warn(message, { auditId, ...ctx }),
+        });
       })) as ContractWithTerms[];
 
       // ─────────────────────────────────────────────────────────────────────
@@ -983,98 +1047,21 @@ export const processBillFn = inngest.createFunction(
         findingCount: findings.length,
       });
 
-      // Phase 5 analytics: fire `audit_completed`. #9: wrapped in step.run so
-      // Inngest MEMOIZES it. Without this, every function replay/retry that
-      // re-executes the body (to reach the later `send-trigger` step) re-ran
-      // this bare code and double-emitted the PostHog event (capture() has no
-      // dedup). The inner try/catch keeps a PostHog outage from failing the
-      // already-completed audit and from triggering step retries.
-      await step.run('track-completed', async () => {
-        try {
-          const monthlySavings = findings.reduce<number>(
-            (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
-            0,
-          );
-          const highSeverityCount = findings.filter(
-            (f) => f.severity === ('high' as Severity),
-          ).length;
-          await trackServer(
-            {
-              name: 'audit_completed',
-              properties: {
-                auditId,
-                carrier: bill.carrier,
-                finding_count: findings.length,
-                high_severity_count: highSeverityCount,
-                estimated_monthly_savings_cents: monthlySavings,
-              },
-            },
-            userId,
-          );
-        } catch (analyticsErr) {
-          logger.error('processBill: trackServer failed (audit still completed)', {
-            auditId,
-            message:
-              analyticsErr instanceof Error
-                ? analyticsErr.message
-                : 'unknown analytics error',
-          });
-        }
-        return { ok: true };
+      await emitCompletedAuditSideEffects({
+        auditId,
+        userId,
+        carrier: bill.carrier,
+        findingCount: findings.length,
+        highSeverityCount: findings.filter(
+          (f) => f.severity === ('high' as Severity),
+        ).length,
+        monthlySavingsCents: findings.reduce<number>(
+          (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
+          0,
+        ),
+        step,
+        logger,
       });
-
-      // #9: the audit-trail INSERT has no unique constraint, so it must be
-      // memoized by step.run or a replay double-logs 'audit_completed'. Inner
-      // try/catch so a trail-write failure can't fail the completed audit.
-      await step.run('log-trail-completed', async () => {
-        try {
-          await logTrailEvent({
-            userId,
-            eventType: 'audit_completed',
-            entityType: 'audit',
-            entityId: auditId,
-            metadata: { carrier: bill.carrier, finding_count: findings.length },
-          });
-        } catch (trailErr) {
-          logger.error('processBill: logTrailEvent failed (audit still completed)', {
-            auditId,
-            message:
-              trailErr instanceof Error ? trailErr.message : 'unknown trail error',
-          });
-        }
-        return { ok: true };
-      });
-
-      // ─────────────────────────────────────────────────────────────────────
-      // Phase 3: send-trigger — fire `audit.completed` so the email pipeline
-      // can deliver the report. Wrapped in try/catch + step.run so:
-      //   - the audit is already 'completed' before this runs (email is
-      //     best-effort and must not regress the audit's status), and
-      //   - Inngest gives us retry isolation + dedupe via step.run.
-      // ─────────────────────────────────────────────────────────────────────
-      try {
-        await step.run('send-trigger', async () => {
-          // (H5) Stable idempotency key — Inngest dedupes events by `id`, so
-          // a retried `send-trigger` step (or a retried outer function that
-          // re-enters this block) cannot fire `audit.completed` twice and
-          // double-send the report email. The same pattern is used at the
-          // upload site (`${auditId}-uploaded`) — keep the convention.
-          await inngest.send({
-            id: `${auditId}-completed`,
-            name: 'audit.completed',
-            data: { auditId, userId },
-          });
-          return { ok: true };
-        });
-      } catch (sendErr) {
-        // Email is best-effort — never fail a completed audit because of it.
-        logger.error('processBill: send-trigger failed (audit still completed)', {
-          auditId,
-          userId,
-          message:
-            sendErr instanceof Error ? sendErr.message : 'unknown send error',
-        });
-      }
 
       return {
         auditId,
@@ -1532,6 +1519,7 @@ export const __testables = {
   EXTRACTION_TIMEOUT_MS,
   withGeneratedId,
   isUserFaultFailure,
+  emitCompletedAuditSideEffects,
 };
 
 function withGeneratedId<T extends Record<string, unknown>>(

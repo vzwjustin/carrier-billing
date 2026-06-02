@@ -6,6 +6,10 @@ import { inngest } from '@/inngest/client';
 import { trackServer } from '@/lib/analytics/events';
 import { scrubString } from '@/lib/observability/redact';
 import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
+import {
+  isSubscriptionStatus,
+  type SubscriptionStatus,
+} from '@/types/db-enums';
 
 /**
  * Stripe event handler. Branches on `event.type` and applies the corresponding
@@ -431,6 +435,32 @@ async function onInvoicePaymentFailed(
   // H11: account was already deleted locally; no past_due flip, no email.
   if (matchedForGuard === NO_MATCH) return;
 
+  const previousStatus = matchedForGuard.subscription_status ?? null;
+
+  // Terminal subscription states must not be resurrected to past_due by a
+  // late invoice.payment_failed (common after customer.subscription.deleted
+  // when Stripe retries the final invoice).
+  const NON_REVIVABLE = new Set<SubscriptionStatus>([
+    'canceled',
+    'incomplete',
+    'incomplete_expired',
+    'unpaid',
+  ]);
+  if (
+    previousStatus !== null &&
+    isSubscriptionStatus(previousStatus) &&
+    NON_REVIVABLE.has(previousStatus)
+  ) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message:
+        'invoice.payment_failed: profile in terminal status, skipping past_due flip',
+      level: 'info',
+      data: { customerId, previousStatus, userId: matchedForGuard.id },
+    });
+    return;
+  }
+
   const currentEventAt = matchedForGuard.subscription_event_at ?? null;
   if (currentEventAt !== null && currentEventAt >= eventCreatedAt) {
     Sentry.addBreadcrumb({
@@ -488,7 +518,6 @@ async function onInvoicePaymentFailed(
   // the profile was already past_due (set by a prior invoice.payment_failed
   // or a subscription.updated→past_due that crossed the wire first), skip
   // the email; the user has already been notified about this dunning cycle.
-  const previousStatus = matchedForGuard.subscription_status ?? null;
   if (previousStatus === 'past_due') {
     Sentry.addBreadcrumb({
       category: 'stripe',

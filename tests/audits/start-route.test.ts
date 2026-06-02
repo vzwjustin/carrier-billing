@@ -33,12 +33,19 @@ const {
   auditsSelectMock,
   inngestSendMock,
   sentryCaptureMock,
+  consumeRateLimitMock,
   assertCanStartPendingAuditMock,
 } = vi.hoisted(() => ({
   getUserMock: vi.fn<() => Promise<GetUserResult>>(),
   auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
   inngestSendMock: vi.fn(async (_event: unknown) => undefined),
   sentryCaptureMock: vi.fn(),
+  consumeRateLimitMock: vi.fn<
+    (config: { key: string; limit: number; windowSeconds: number }) => Promise<
+      | { ok: true; remaining: number; resetAt: string }
+      | { ok: false; remaining: number; resetAt: string }
+    >
+  >(),
   assertCanStartPendingAuditMock: vi.fn<
     () => Promise<{ ok: true } | { ok: false; reason: 'past_due' }>
   >(),
@@ -81,6 +88,18 @@ vi.mock('@/env', () => ({
   },
 }));
 
+vi.mock('@/lib/security/rate-limit', () => ({
+  consumeRateLimit: (config: {
+    key: string;
+    limit: number;
+    windowSeconds: number;
+  }) => consumeRateLimitMock(config),
+  rateLimitedResponse: (resetAt: string) =>
+    new Response(JSON.stringify({ error: 'rate_limited', resetAt }), {
+      status: 429,
+    }),
+}));
+
 // Import after mocks register.
 import { POST } from '@/app/api/audits/[id]/start/route';
 
@@ -96,6 +115,12 @@ beforeEach(() => {
   auditsSelectMock.mockReset();
   inngestSendMock.mockReset();
   sentryCaptureMock.mockReset();
+  consumeRateLimitMock.mockReset();
+  consumeRateLimitMock.mockResolvedValue({
+    ok: true,
+    remaining: 9,
+    resetAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
   assertCanStartPendingAuditMock.mockReset();
   assertCanStartPendingAuditMock.mockResolvedValue({ ok: true });
 
@@ -139,6 +164,49 @@ describe('POST /api/audits/[id]/start', () => {
     expect(sent?.data?.userId).toBe(TEST_USER_ID);
     expect(sent?.data?.storagePath).toBe(`${TEST_USER_ID}/audit/bill.pdf`);
     expect(sent?.data?.retryCount).toBe(0);
+  });
+
+  it('uses retry-scoped idempotency id when retry_count > 0', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: {
+        id: TEST_AUDIT_ID,
+        user_id: TEST_USER_ID,
+        status: 'pending',
+        storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+        retry_count: 2,
+      },
+      error: null,
+    });
+
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(200);
+
+    const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
+    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-2`);
+  });
+
+  it('returns 429 when the per-user start rate limit is exceeded', async () => {
+    consumeRateLimitMock.mockResolvedValueOnce({
+      ok: false,
+      remaining: 0,
+      resetAt: '2026-05-30T12:00:00.000Z',
+    });
+
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+
+    expect(res.status).toBe(429);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+    expect(consumeRateLimitMock).toHaveBeenCalledWith({
+      key: `audit-start:${TEST_USER_ID}`,
+      limit: 10,
+      windowSeconds: 60 * 60,
+    });
   });
 
   it('duplicate POST sends two events with the SAME idempotency id (Inngest dedupes)', async () => {

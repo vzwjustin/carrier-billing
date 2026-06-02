@@ -238,4 +238,5 @@ describe('POST /api/audits — access gate', () => {
     // back the audit row immediately and never sign a URL.
     expect(createSignedUploadUrlMock).not.toHaveBeenCalled();
   });
+
 });

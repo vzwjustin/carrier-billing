@@ -3,6 +3,8 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { inngest } from '@/inngest/client';
+import { assertCanRunAudit } from '@/lib/access/gate';
+import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -21,6 +23,7 @@ interface AuditRow {
   storage_path: string;
   retry_count: number;
   failure_reason: string | null;
+  credit_consumed: boolean;
 }
 
 function isAuditRow(value: unknown): value is AuditRow {
@@ -32,7 +35,8 @@ function isAuditRow(value: unknown): value is AuditRow {
     typeof v.status === 'string' &&
     typeof v.storage_path === 'string' &&
     typeof v.retry_count === 'number' &&
-    (typeof v.failure_reason === 'string' || v.failure_reason === null)
+    (typeof v.failure_reason === 'string' || v.failure_reason === null) &&
+    typeof v.credit_consumed === 'boolean'
   );
 }
 
@@ -44,6 +48,29 @@ function isRetryCountRow(value: unknown): value is RetryCountRow {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return typeof v.retry_count === 'number';
+}
+
+async function rollbackPendingRetry(
+  admin: ReturnType<typeof getAdminClient>,
+  auditId: string,
+  failureReason: string | null,
+  originalRetryCount: number,
+  pendingRetryCount: number,
+): Promise<void> {
+  const { error: rollbackError } = await admin
+    .from('audits')
+    .update({
+      status: 'failed',
+      failure_reason: failureReason,
+      retry_count: originalRetryCount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', auditId)
+    .eq('status', 'pending')
+    .eq('retry_count', pendingRetryCount);
+  if (rollbackError) {
+    throw new Error(`Audit retry rollback failed: ${rollbackError.message}`);
+  }
 }
 
 export async function POST(
@@ -69,7 +96,9 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('audits')
-      .select('id,user_id,status,storage_path,retry_count,failure_reason')
+      .select(
+        'id,user_id,status,storage_path,retry_count,failure_reason,credit_consumed',
+      )
       .eq('id', auditId)
       .maybeSingle();
 
@@ -101,10 +130,41 @@ export async function POST(
       return rateLimitedResponse(limit.resetAt);
     }
 
+    // Pre-flight access when a system-side failure refunded the credit.
+    // Actual consume happens AFTER the row flips to `pending` — the RPC
+    // gates on status='pending'. User-fault failures keep credit_consumed=true
+    // (free retry). Subscription users pass gate on `subscription`, not credit.
+    let needsCreditReconsume = false;
+    if (!data.credit_consumed) {
+      const gate = await assertCanRunAudit(user.id);
+      if (!gate.ok) {
+        if (gate.reason === 'past_due') {
+          return NextResponse.json(
+            {
+              error: 'subscription_past_due',
+              message:
+                'Your subscription is past due. Please update payment to continue.',
+            },
+            { status: 402 },
+          );
+        }
+        return NextResponse.json(
+          {
+            error: 'no_plan',
+            message: 'No active plan or audit credits.',
+            upgrade_url: '/pricing',
+          },
+          { status: 402 },
+        );
+      }
+      needsCreditReconsume = gate.reason === 'credit';
+    }
+
+    const admin = getAdminClient();
+
     // M-A3 — invalidate the cached PDF for this audit (if any) before resetting
     // state. A never-completed audit may not have a cached PDF; ignore the
     // result. A storage outage shouldn't block retry — capture and continue.
-    const admin = getAdminClient();
     try {
       const { error: storageError } = await admin.storage
         .from('reports')
@@ -124,9 +184,6 @@ export async function POST(
 
     // H7 — CAS-increment retry_count atomically. Concurrent retry attempts
     // can't both win this update because we filter on the previous count.
-    // The new retry_count value anchors the Inngest idempotency key so
-    // distinct retries get distinct keys, while a duplicated POST within the
-    // same retry collapses onto one Inngest run.
     const nextRetryCount = data.retry_count + 1;
     const { data: updated, error: updateError } = await admin
       .from('audits')
@@ -148,7 +205,6 @@ export async function POST(
       );
     }
 
-    // CAS lost — a concurrent retry already won. Don't double-enqueue.
     if (!updated || updated.length === 0) {
       return NextResponse.json(
         {
@@ -160,7 +216,59 @@ export async function POST(
     }
 
     const winningRow = updated[0];
-    const retryCount = isRetryCountRow(winningRow) ? winningRow.retry_count : nextRetryCount;
+    const retryCount = isRetryCountRow(winningRow)
+      ? winningRow.retry_count
+      : nextRetryCount;
+
+    let creditReconsumed = false;
+    if (needsCreditReconsume) {
+      try {
+        await consumeAuditCreditForAudit(user.id, auditId);
+        creditReconsumed = true;
+      } catch (decrementErr) {
+        const isDefinitiveRefusal =
+          decrementErr instanceof Error &&
+          decrementErr.message === 'no_credits';
+        Sentry.captureException(decrementErr, {
+          tags: {
+            surface: 'audits.retry.decrement',
+            transient: isDefinitiveRefusal ? 'false' : 'true',
+          },
+          extra: { userId: user.id, auditId },
+        });
+        try {
+          await rollbackPendingRetry(
+            admin,
+            auditId,
+            data.failure_reason,
+            data.retry_count,
+            nextRetryCount,
+          );
+        } catch (rollbackErr) {
+          Sentry.captureException(rollbackErr, {
+            tags: { surface: 'audits.retry.decrement_rollback' },
+            extra: { auditId },
+          });
+        }
+        if (isDefinitiveRefusal) {
+          return NextResponse.json(
+            {
+              error: 'no_plan',
+              message: 'No active plan or audit credits.',
+              upgrade_url: '/pricing',
+            },
+            { status: 402 },
+          );
+        }
+        return NextResponse.json(
+          {
+            error: 'credit_decrement_unavailable',
+            message: 'Failed to reserve audit credit. Please try again.',
+          },
+          { status: 503 },
+        );
+      }
+    }
 
     try {
       await inngest.send({
@@ -178,22 +286,25 @@ export async function POST(
         tags: { surface: 'audits.retry.inngest_send' },
         extra: { auditId },
       });
-      // Best-effort rollback: reset audit to failed with original retry_count so
-      // the user can attempt again rather than being stuck in pending forever.
       try {
-        const { error: rollbackError } = await admin
-          .from('audits')
-          .update({
-            status: 'failed',
-            failure_reason: data.failure_reason,
-            retry_count: data.retry_count,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', auditId)
-          .eq('status', 'pending')
-          .eq('retry_count', nextRetryCount);
-        if (rollbackError) {
-          throw new Error(`Audit retry rollback failed: ${rollbackError.message}`);
+        await rollbackPendingRetry(
+          admin,
+          auditId,
+          data.failure_reason,
+          data.retry_count,
+          nextRetryCount,
+        );
+        if (creditReconsumed) {
+          const { error: refundErr } = await admin.rpc('refund_failed_audit', {
+            p_audit_id: auditId,
+            p_user_id: user.id,
+          });
+          if (refundErr) {
+            Sentry.captureException(refundErr, {
+              tags: { surface: 'audits.retry.refund_after_enqueue_fail' },
+              extra: { auditId, userId: user.id },
+            });
+          }
         }
       } catch (rollbackErr) {
         Sentry.captureException(rollbackErr, {
