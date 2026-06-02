@@ -351,6 +351,30 @@ describe('ExtractedBillSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts DPP where remaining_payments equals total_payments', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 3333, remaining_payments: 24, total_payments: 24 }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects DPP where remaining_payments exceeds total_payments', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 3333, remaining_payments: 25, total_payments: 24 }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts DPP with remaining_payments set but total_payments null (not printed)', () => {
+    const bill = minimalBill();
+    const line = bill.accounts[0]!.lines[0]!;
+    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 3333, remaining_payments: 12, total_payments: null }];
+    const result = ExtractedBillSchema.safeParse(bill);
+    expect(result.success).toBe(true);
+  });
+
   it('rejects plan_base_cents above 10,000,000 ($100k cap)', () => {
     const bill = minimalBill();
     const line = bill.accounts[0]!.lines[0]!;
