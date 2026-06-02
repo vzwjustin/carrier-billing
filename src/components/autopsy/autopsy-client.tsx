@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { sanitizeUserLabel } from '@/extraction/schema';
 import { formatIsoDatePeriod } from '@/lib/dates';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -585,37 +586,40 @@ function DriverDetail({
                 </tr>
               </thead>
               <tbody>
-                {lines.map((ln, i) => (
-                  <tr key={i} className="border-b border-neutral-100">
-                    <td className="py-1 pr-3 font-mono text-neutral-700">
-                      {ln.account_last4 ? `…${ln.account_last4}` : '—'}
-                      {' / '}
-                      {ln.mdn_last4 ? `*${ln.mdn_last4}` : '(no MDN)'}
-                      {ln.user_label ? (
-                        <span className="ml-1 text-neutral-500">
-                          ({ln.user_label})
+                {lines.map((ln, i) => {
+                  const safeUserLabel = sanitizeUserLabel(ln.user_label);
+                  return (
+                    <tr key={i} className="border-b border-neutral-100">
+                      <td className="py-1 pr-3 font-mono text-neutral-700">
+                        {ln.account_last4 ? `…${ln.account_last4}` : '—'}
+                        {' / '}
+                        {ln.mdn_last4 ? `*${ln.mdn_last4}` : '(no MDN)'}
+                        {safeUserLabel ? (
+                          <span className="ml-1 text-neutral-500">
+                            ({safeUserLabel})
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-1 pr-3 tabular-nums text-neutral-700">
+                        {formatCents(ln.previous_cents)}
+                      </td>
+                      <td className="py-1 pr-3 tabular-nums text-neutral-700">
+                        {formatCents(ln.current_cents)}
+                      </td>
+                      <td className="py-1 pr-3 tabular-nums">
+                        <span
+                          className={cn(
+                            ln.difference_cents > 0 && 'text-red-700',
+                            ln.difference_cents < 0 && 'text-green-700',
+                          )}
+                        >
+                          {signedCents(ln.difference_cents)}
                         </span>
-                      ) : null}
-                    </td>
-                    <td className="py-1 pr-3 tabular-nums text-neutral-700">
-                      {formatCents(ln.previous_cents)}
-                    </td>
-                    <td className="py-1 pr-3 tabular-nums text-neutral-700">
-                      {formatCents(ln.current_cents)}
-                    </td>
-                    <td className="py-1 pr-3 tabular-nums">
-                      <span
-                        className={cn(
-                          ln.difference_cents > 0 && 'text-red-700',
-                          ln.difference_cents < 0 && 'text-green-700',
-                        )}
-                      >
-                        {signedCents(ln.difference_cents)}
-                      </span>
-                    </td>
-                    <td className="py-1 text-neutral-600">{ln.note ?? '—'}</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-1 text-neutral-600">{ln.note ?? '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

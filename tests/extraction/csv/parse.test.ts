@@ -219,4 +219,52 @@ describe('parseCsvToBill', () => {
       expect(labelRaw.length).toBeLessThanOrEqual(40);
     }
   });
+
+  it('nulls likely subscriber names from mapped user_label cells', () => {
+    const csv =
+      'Wireless Number,User Name,Plan,Monthly Plan Charge\n' +
+      '5551111111,Alice,Plan A,$10.00\n' +
+      '5552222222,JANE DOE,Plan A,$10.00\n' +
+      '5553333333,John Smith,Plan A,$10.00\n';
+    const mapping: ColumnMapping = {
+      mdn_last4: 'Wireless Number',
+      user_label: 'User Name',
+      plan_name: 'Plan',
+      plan_base_cents: 'Monthly Plan Charge',
+    };
+    const res = parseCsvToBill(csv, mapping);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const labels = res.bill.accounts[0]!.lines.map((line) => line.user_label);
+    expect(labels).toEqual([null, null, null]);
+  });
+
+  it('preserves safe non-human user_label cells', () => {
+    const csv =
+      'Wireless Number,User Name,Plan,Monthly Plan Charge\n' +
+      '5551111111,Department,Plan A,$10.00\n' +
+      '5552222222,Store,Plan A,$10.00\n' +
+      '5553333333,Line 12,Plan A,$10.00\n' +
+      '5554444444,Tablet,Plan A,$10.00\n' +
+      '5555555555,Router,Plan A,$10.00\n' +
+      '5556666666,CC-1001,Plan A,$10.00\n';
+    const mapping: ColumnMapping = {
+      mdn_last4: 'Wireless Number',
+      user_label: 'User Name',
+      plan_name: 'Plan',
+      plan_base_cents: 'Monthly Plan Charge',
+    };
+    const res = parseCsvToBill(csv, mapping);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const labels = res.bill.accounts[0]!.lines.map((line) => line.user_label);
+    expect(labels).toEqual([
+      'Department',
+      'Store',
+      'Line 12',
+      'Tablet',
+      'Router',
+      'CC-1001',
+    ]);
+  });
 });

@@ -27,6 +27,7 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
     // Subscriber #1
     'HL*2*1*B~',
     'REF*MN*5551234567~',
+    'REF*EM*John Smith~',
     'PID*F****iPhone 15~',
     'IT1**1*EA*60.00**VP*Business Unlimited Pro 2.0~',
     buildSac({ indicator: 'A', code: 'F050', amount: '10.00', description: 'Q1 promo credit' }),
@@ -35,6 +36,7 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
     // Subscriber #2
     'HL*3*1*B~',
     'REF*MN*5559876543~',
+    'REF*EM*Store 42~',
     'PID*F****iPhone 14~',
     'IT1**1*EA*45.00**VP*Business Unlimited Plus 2.0~',
     buildSac({ indicator: 'C', code: 'F305', amount: '6.00', description: 'Verizon Cloud' }),
@@ -94,12 +96,14 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
 
     const [line1, line2] = account.lines;
     expect(line1!.mdn_last4).toBe('4567');
+    expect(line1!.user_label).toBeNull();
     expect(line1!.device).toBe('iPhone 15');
     expect(line1!.plan_name).toBe('Business Unlimited Pro 2.0');
     expect(line1!.plan_base_cents).toBe(6_000);
     expect(line1!.data_used_gb).toBe(22);
 
     expect(line2!.mdn_last4).toBe('6543');
+    expect(line2!.user_label).toBe('Store 42');
     expect(line2!.plan_name).toBe('Business Unlimited Plus 2.0');
     expect(line2!.plan_base_cents).toBe(4_500);
   });

@@ -33,6 +33,7 @@ import type {
   ExtractedFeature,
   ExtractedLine,
 } from '@/extraction/schema';
+import { sanitizeUserLabel } from '@/extraction/schema';
 
 import type {
   AutopsyResult,
@@ -242,7 +243,7 @@ function recordLine(
   acc.lines.push({
     account_last4,
     mdn_last4: mdn,
-    user_label: line?.user_label ?? other?.user_label ?? null,
+    user_label: sanitizeUserLabel(line?.user_label ?? other?.user_label ?? null),
     previous_cents,
     current_cents,
     difference_cents: current_cents - previous_cents,

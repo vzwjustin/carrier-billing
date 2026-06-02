@@ -91,17 +91,47 @@ export const ExtractedDppSchema = z
 export type ExtractedDpp = z.infer<typeof ExtractedDppSchema>;
 
 // H10: defense-in-depth name redaction. The LLM prompt instructs the model to
-// strip personal names from user_label, but a single missed bill (especially
-// from carriers that print "Firstname Lastname - Department") can leak names
-// into findings, descriptions, PDF reports, and downstream webhook payloads.
-// CLAUDE.md §1#9 forbids employee names in logs/reports. Pattern: two or more
-// capitalized words separated by spaces — covers "John Smith", "Mary J Doe",
-// "Jose Garcia-Lopez" (the hyphen falls in the second word). False positives
-// (e.g. "Sales Department") get redacted too; acceptable trade-off.
-const FULL_NAME_RE = /\b[A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){1,3}\b/g;
-function redactNamesInLabel(label: string | null): string | null {
+// strip personal names from user_label, but EDI REF*EM and CSV "User Name"
+// columns can carry names verbatim. Ambiguous human-looking labels are nulled
+// before persistence; operational labels remain useful for routing work back
+// to a department, store, line number, device pool, or cost center.
+const SAFE_USER_LABEL_RE =
+  /^(?:department|dept(?:artment)?(?:\s*[#:-]?\s*[a-z0-9]+)?|store(?:\s*[#:-]?\s*[a-z0-9]+)?|line\s+\d+|tablet|router|employee\s+[a-z]|\w{2,8}[-_]\d{2,}|cost\s*center(?:\s*[#:-]?\s*[a-z0-9]+)?|cc[-_\s]?\d{2,}|sales|finance|legal|hr|ops|field\s+tech|warehouse|office|admin|support|marketing|engineering|dispatch|fleet)$/i;
+
+const COMMON_GIVEN_NAMES = new Set([
+  'alice',
+  'bob',
+  'carol',
+  'dana',
+  'eve',
+  'frank',
+  'grace',
+  'jane',
+  'john',
+  'mary',
+]);
+
+function isNameToken(token: string): boolean {
+  const normalized = token.toLowerCase().replace(/[^a-z'-]/g, '');
+  if (COMMON_GIVEN_NAMES.has(normalized)) return true;
+  return /^[A-Z][a-z]+(?:['-][A-Z]?[a-z]+)?$/.test(token) || /^[A-Z]{2,}$/.test(token);
+}
+
+export function sanitizeUserLabel(label: string | null): string | null {
   if (label === null) return null;
-  return label.replace(FULL_NAME_RE, '[redacted-name]');
+  const trimmed = label.trim();
+  if (trimmed.length === 0) return null;
+  if (SAFE_USER_LABEL_RE.test(trimmed)) return trimmed;
+
+  const tokens = trimmed.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
+  if (tokens.length === 1 && COMMON_GIVEN_NAMES.has(tokens[0]!.toLowerCase())) {
+    return null;
+  }
+  if (tokens.length >= 2 && tokens.length <= 4 && tokens.every(isNameToken)) {
+    return null;
+  }
+
+  return trimmed;
 }
 
 export const ExtractedLineSchema = z.object({
@@ -111,13 +141,13 @@ export const ExtractedLineSchema = z.object({
     .nullable(),
   // Free-text PII risk: X12 REF*EM emits subscriber names verbatim.
   // Bound length so an oversized payload can't be persisted or echoed in logs.
-  // H10: transform applies FULL_NAME_RE to scrub two-or-more capitalized
-  // tokens (likely full names) regardless of what the LLM produced.
+  // H10: transform nulls likely human subscriber names while preserving
+  // operational labels that help operators identify safe non-human lines.
   user_label: z
     .string()
     .max(40)
     .nullable()
-    .transform(redactNamesInLabel),
+    .transform(sanitizeUserLabel),
   device: z.string().max(40).nullable(),
   plan_name: z.string().max(120).nullable(),
   plan_base_cents: z.number().int().nonnegative().max(10_000_000).nullable(),

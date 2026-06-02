@@ -48,6 +48,54 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
     expect(newLines?.affected_lines_count).toBe(1);
   });
 
+  it('redacts subscriber names from driver line evidence while preserving safe labels', () => {
+    const prev = makeBill({
+      total_charges_cents: 9000,
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              mdn_last4: '1111',
+              user_label: 'John Smith',
+              plan_base_cents: 4500,
+            }),
+            makeLine({
+              mdn_last4: '2222',
+              user_label: 'Store 42',
+              plan_base_cents: 4500,
+            }),
+          ],
+        }),
+      ],
+    });
+    const curr = makeBill({
+      total_charges_cents: 11000,
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              mdn_last4: '1111',
+              user_label: 'John Smith',
+              plan_base_cents: 5500,
+            }),
+            makeLine({
+              mdn_last4: '2222',
+              user_label: 'Store 42',
+              plan_base_cents: 5500,
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const result = compareBills(prev, curr);
+    const planChange = result.drivers.find((d) => d.category === 'plan_changes');
+    expect(planChange?.evidence.lines?.map((line) => line.user_label)).toEqual([
+      null,
+      'Store 42',
+    ]);
+  });
+
   it('attributes a removed line as a "removed_lines" driver (negative diff)', () => {
     const prev = makeBill({
       total_charges_cents: 13500,

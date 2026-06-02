@@ -69,6 +69,46 @@ describe('ExtractedBillSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('nulls likely single-token subscriber names in user_label', () => {
+    const bill = minimalBill();
+    bill.accounts[0]!.lines[0]!.user_label = 'Alice';
+    const result = ExtractedBillSchema.parse(bill);
+    expect(result.accounts[0]!.lines[0]!.user_label).toBeNull();
+  });
+
+  it('nulls all-caps subscriber names in user_label', () => {
+    const bill = minimalBill();
+    bill.accounts[0]!.lines[0]!.user_label = 'JANE DOE';
+    const result = ExtractedBillSchema.parse(bill);
+    expect(result.accounts[0]!.lines[0]!.user_label).toBeNull();
+  });
+
+  it('nulls two-token subscriber names in user_label', () => {
+    const bill = minimalBill();
+    bill.accounts[0]!.lines[0]!.user_label = 'John Smith';
+    const result = ExtractedBillSchema.parse(bill);
+    expect(result.accounts[0]!.lines[0]!.user_label).toBeNull();
+  });
+
+  it('preserves safe operational user_label values', () => {
+    const safeLabels = [
+      'Department',
+      'Store',
+      'Line 12',
+      'Tablet',
+      'Router',
+      'CC-1001',
+      'Cost Center 42',
+    ];
+
+    for (const label of safeLabels) {
+      const bill = minimalBill();
+      bill.accounts[0]!.lines[0]!.user_label = label;
+      const result = ExtractedBillSchema.parse(bill);
+      expect(result.accounts[0]!.lines[0]!.user_label).toBe(label);
+    }
+  });
+
   it('rejects when a required top-level field is missing', () => {
     const bill = minimalBill() as Partial<ReturnType<typeof minimalBill>>;
     delete bill.billing_period_start;
