@@ -409,25 +409,34 @@ function tryParseAndValidate(raw: string): ParseResult {
 }
 
 /**
- * H6: Reconcile per-account totals against the line-item arithmetic and
- * downgrade overall confidence one tier when the math doesn't add up. We do
- * NOT throw — the audit still ships, just marked suspect.
+ * Post-parse sanity pass. Both checks below catch JSON that passes Zod but is
+ * internally inconsistent — the schema only validates structure, not
+ * arithmetic drift or date ordering. Neither check throws: the audit still
+ * ships, just with a downgraded `confidence` (and, for the date check, an
+ * explanatory note) so the suspect extraction is observable downstream.
  *
- * Rationale: an attacker (or a malformed bill) can produce JSON that passes
- * Zod but is internally inconsistent. The schema only catches structural
- * problems, not arithmetic drift.
+ *  - H6: per-account totals must reconcile to the line-item arithmetic.
+ *  - Billing-period coherence: `billing_period_start` must not fall after
+ *    `billing_period_end`. The schema validates ISO-date *syntax* but not
+ *    ordering, so a transposed cycle (a common LLM/OCR slip on bills that
+ *    print "end – start") would otherwise silently corrupt any "days in
+ *    cycle" / proration math downstream.
  */
 function finalizeBill(bill: ExtractedBill): ExtractedBill {
-  const mismatches = bill.accounts
+  let result = bill;
+
+  result = checkBillingPeriodOrder(result);
+
+  const mismatches = result.accounts
     .map((account, index) => ({
       index,
       mismatch: reconcileAccountTotals(account),
     }))
     .filter((entry) => entry.mismatch !== null);
 
-  if (mismatches.length === 0) return bill;
+  if (mismatches.length === 0) return result;
 
-  const current: BillConfidence = bill.confidence ?? 'high';
+  const current: BillConfidence = result.confidence ?? 'high';
 
   // Sentry warn — observable but not paging. The redactor handles any PII
   // that might bleed through here; we only emit account index + cents deltas.
@@ -443,7 +452,49 @@ function finalizeBill(bill: ExtractedBill): ExtractedBill {
     },
   });
 
-  return { ...bill, confidence: downgradeConfidence(current) };
+  return { ...result, confidence: downgradeConfidence(current) };
+}
+
+// Defense-in-depth cap mirroring ExtractedBillSchema (notes: max 50). We
+// append after Zod has run, so re-enforce the bound rather than risk an
+// invariant the rest of the system assumes.
+const MAX_NOTES = 50;
+
+/**
+ * Detect a transposed billing period (start strictly after end). When found,
+ * downgrade confidence one tier and append an explanatory note. Returns the
+ * bill unchanged when the period is coherent.
+ */
+function checkBillingPeriodOrder(bill: ExtractedBill): ExtractedBill {
+  const start = Date.parse(bill.billing_period_start);
+  const end = Date.parse(bill.billing_period_end);
+  // The schema guarantees valid ISO dates; bail defensively if that ever
+  // changes rather than flagging on a NaN comparison.
+  if (Number.isNaN(start) || Number.isNaN(end)) return bill;
+  if (start <= end) return bill;
+
+  const current: BillConfidence = bill.confidence ?? 'high';
+  Sentry.captureMessage(
+    'Extraction billing period out of order — confidence downgraded',
+    {
+      level: 'warning',
+      tags: { surface: 'extraction-period-check' },
+      extra: {
+        billing_period_start: bill.billing_period_start,
+        billing_period_end: bill.billing_period_end,
+        original_confidence: current,
+      },
+    },
+  );
+
+  const note = `Billing period start (${bill.billing_period_start}) is after end (${bill.billing_period_end}); the cycle dates may be transposed — treat any per-cycle math as approximate.`;
+  // `notes` carries a schema default of [], but guard defensively so a future
+  // schema change (or a hand-built bill) can't crash this post-parse pass.
+  const currentNotes = bill.notes ?? [];
+  const notes =
+    currentNotes.length < MAX_NOTES ? [...currentNotes, note] : currentNotes;
+
+  return { ...bill, notes, confidence: downgradeConfidence(current) };
 }
 
 function downgradeConfidence(c: BillConfidence): BillConfidence {
