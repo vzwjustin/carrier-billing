@@ -49,7 +49,13 @@ export const dataOveragePatternRule: Rule = {
 
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
-        const used = line.data_used_gb ?? 0;
+        // M5: null-vs-zero discipline. A null data_used_gb means the carrier
+        // never reported usage for this line — NOT that the line used 0 GB.
+        // Coercing null→0 silently suppresses any overage finding on a line
+        // whose usage failed extraction (false-negative). Skip the line,
+        // matching zero-usage-phone-line.ts / unused-mifi-line.ts.
+        if (line.data_used_gb === null) return;
+        const used = line.data_used_gb;
         const softCap = findSoftCap(line.plan_name);
 
         // Branch S: known soft cap match — uses the actual per-tier threshold

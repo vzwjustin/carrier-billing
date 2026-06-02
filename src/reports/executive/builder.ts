@@ -267,16 +267,20 @@ export function buildExecutiveReport(input: BuildExecutiveReportInput): Executiv
   }));
 
   // ── 2. Lifetime aggregates ────────────────────────────────────────────
+  let total_spend_cents = 0;
+  let monthly_savings_cents = 0;
+  let annual_savings_cents = 0;
+
+  for (const a of audits) {
+    total_spend_cents += a.total_charges_cents ?? 0;
+    monthly_savings_cents += a.estimated_monthly_savings_cents ?? 0;
+    annual_savings_cents += a.estimated_annual_savings_cents ?? 0;
+  }
+
   const lifetime: ExecutiveLifetimeSummary = {
-    total_spend_cents: audits.reduce((acc, a) => acc + (a.total_charges_cents ?? 0), 0),
-    monthly_savings_cents: audits.reduce(
-      (acc, a) => acc + (a.estimated_monthly_savings_cents ?? 0),
-      0,
-    ),
-    annual_savings_cents: audits.reduce(
-      (acc, a) => acc + (a.estimated_annual_savings_cents ?? 0),
-      0,
-    ),
+    total_spend_cents,
+    monthly_savings_cents,
+    annual_savings_cents,
     finding_count_by_severity: emptySeverityCounts(),
   };
   for (const f of findings) {

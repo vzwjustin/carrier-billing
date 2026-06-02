@@ -289,6 +289,14 @@ async function markFailure(
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
   const safe = scrubString(message).slice(0, LAST_ERROR_MAX);
+  // M1: CAS-gate the demotion on processed_status='in_flight' — the state
+  // markInFlight claimed before the handler ran. Without it a plain UPDATE
+  // WHERE id could demote a terminal 'success' row (one a concurrent replay-cron
+  // tick or duplicate delivery already finalized) back to 'failed', which the
+  // replay cron's (null|failed) claim then re-picks → handler re-runs →
+  // unprotected inngest.send + subscription writes re-fire. 0 rows here now
+  // means the row already reached a terminal state concurrently — a benign
+  // no-op, not an error.
   const { data, error } = await supabase
     .from('billing_events')
     .update({
@@ -296,6 +304,7 @@ async function markFailure(
       last_error: safe,
     })
     .eq('id', billingEventId)
+    .eq('processed_status', 'in_flight')
     .select('id');
   if (error) {
     Sentry.captureException(error, {
@@ -305,7 +314,7 @@ async function markFailure(
     return;
   }
   const rows = (data ?? []) as Array<{ id: string }>;
-  if (rows.length !== 1) {
+  if (rows.length > 1) {
     Sentry.captureMessage('stripe webhook markFailure matched unexpected row count', {
       level: 'error',
       tags: { area: 'stripe.webhook.mark_failure' },

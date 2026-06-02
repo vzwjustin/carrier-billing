@@ -191,6 +191,12 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
         .select('id')
         .eq('status', 'analyzing')
         .eq('source_format', 'csv')
+        // O1: only reclaim CSV audits that were NOT handed to an Inngest worker
+        // (synchronous CSV path leaves inngest_run_id NULL). Excludes any row a
+        // worker might still be writing findings to, closing the narrow race
+        // where the query-time finding_count recompute could read a partial
+        // findings set while persist-findings is in flight.
+        .is('inngest_run_id', null)
         .lt('updated_at', cutoff);
       if (error) {
         throw new Error(`audits select (complete-stuck-csv-analyzing) failed: ${error.message}`);

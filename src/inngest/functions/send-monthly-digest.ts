@@ -449,19 +449,29 @@ export const sendMonthlyDigestFn = inngest.createFunction(
           const rendered = buildMonthlyDigest(props);
 
           const resend = getResend();
-          const response = await resend.emails.send({
-            from: FROM_ADDRESS,
-            to: fresh.email,
-            subject: rendered.subject,
-            html: rendered.html,
-            text: rendered.text,
-            headers: {
-              // RFC 8058 one-click unsubscribe metadata. Gmail / Apple Mail
-              // surface this header as a native button.
-              'List-Unsubscribe': `<${unsubscribeUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          // M7: an Inngest step retry that lands AFTER resend.emails.send
+          // committed but BEFORE the digest_last_sent_at stamp persisted would
+          // re-read the un-stamped row, pass the gate, and send a second email.
+          // A per-recipient-per-period idempotency key makes Resend dedupe the
+          // duplicate send server-side — preventing the double-send without the
+          // under-delivery risk of stamping before the send.
+          const idempotencyKey = `digest-${recipient.id}-${periodLabel.replace(/\s+/g, '-')}`;
+          const response = await resend.emails.send(
+            {
+              from: FROM_ADDRESS,
+              to: fresh.email,
+              subject: rendered.subject,
+              html: rendered.html,
+              text: rendered.text,
+              headers: {
+                // RFC 8058 one-click unsubscribe metadata. Gmail / Apple Mail
+                // surface this header as a native button.
+                'List-Unsubscribe': `<${unsubscribeUrl}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
             },
-          });
+            { idempotencyKey },
+          );
 
           if (response.error) {
             const code =

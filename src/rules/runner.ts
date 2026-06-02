@@ -27,6 +27,26 @@ const SAVINGS_ARBITRATION_RULES: readonly ArbitrationRule[] = [
     dominantRuleId: 'insurance_after_device_payoff',
     suppressedRuleIds: ['duplicate_protection_features'],
   },
+  // M4: the feature-only-zombie branch of orphan_insurance (plan_base 0/null,
+  // not suspended, not BYOD) can co-fire with insurance_after_device_payoff on
+  // a line with a paid-off DPP + insurance — both emit the full insurance total
+  // as savings, double-counting one recoverable removal ($30 claimed vs $15
+  // real). orphan_insurance is the higher-level "this whole line is dead"
+  // finding, so it dominates.
+  {
+    dominantRuleId: 'orphan_insurance',
+    suppressedRuleIds: ['insurance_after_device_payoff'],
+  },
+  // F4: high_cost_low_usage_phone and underutilized_phone_on_premium_plan can
+  // both fire on the SAME premium low-usage line, summing two savings estimates
+  // for one downgrade action ($20 + $10 = $30 for what is a single change).
+  // The higher-dollar, tighter-criteria rule dominates — same posture as the
+  // zero_usage entries above. (Arbitration is per-line via affectedLineKeys, so
+  // genuinely separate lines that each trip only one of the two are untouched.)
+  {
+    dominantRuleId: 'high_cost_low_usage_phone',
+    suppressedRuleIds: ['underutilized_phone_on_premium_plan'],
+  },
 ] as const;
 
 function ruleApplies(rule: Rule, ctx: RuleContext): boolean {
