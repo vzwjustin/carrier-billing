@@ -228,6 +228,7 @@ describe('handleStripeEvent', () => {
   it('checkout.session.completed (payment) calls grant_credit_once and stores customer id (C1)', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
+      payment_status: 'paid',
       client_reference_id: 'user_abc',
       customer: 'cus_111',
     });
@@ -260,6 +261,7 @@ describe('handleStripeEvent', () => {
   it('checkout.session.completed (payment) on a retry still calls grant_credit_once (C1 — RPC is idempotent)', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
+      payment_status: 'paid',
       client_reference_id: 'user_replay',
       customer: 'cus_replay',
     });
@@ -285,6 +287,91 @@ describe('handleStripeEvent', () => {
     // Idempotent customer-id write still happens.
     expect(client.__updates).toHaveLength(1);
     expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_replay');
+  });
+
+  it('checkout.session.completed (payment) skips credit when payment is not settled', async () => {
+    const event = makeEvent('checkout.session.completed', {
+      id: 'cs_async_pending',
+      mode: 'payment',
+      payment_status: 'unpaid',
+      client_reference_id: 'user_pending',
+      customer: 'cus_pending',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_pending',
+    });
+
+    expect(client.__rpcs).toHaveLength(0);
+    expect(client.__updates).toHaveLength(0);
+  });
+
+  it('checkout.session.completed (payment) grants credit when no payment is required', async () => {
+    const event = makeEvent('checkout.session.completed', {
+      mode: 'payment',
+      payment_status: 'no_payment_required',
+      client_reference_id: 'user_free',
+      customer: 'cus_free',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_free',
+    });
+
+    expect(client.__rpcs).toHaveLength(1);
+    expect(client.__rpcs[0]).toEqual({
+      name: 'grant_credit_once',
+      args: {
+        p_event_id: 'evt_row_free',
+        p_profile_id: 'user_free',
+        p_delta: 1,
+      },
+    });
+    expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_free');
+  });
+
+  it('checkout.session.async_payment_succeeded grants settled one-time credit exactly through grant_credit_once', async () => {
+    const event = makeEvent('checkout.session.async_payment_succeeded', {
+      mode: 'payment',
+      payment_status: 'paid',
+      client_reference_id: 'user_async',
+      customer: 'cus_async',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_async',
+    });
+
+    expect(client.__rpcs).toHaveLength(1);
+    expect(client.__rpcs[0]).toEqual({
+      name: 'grant_credit_once',
+      args: {
+        p_event_id: 'evt_row_async',
+        p_profile_id: 'user_async',
+        p_delta: 1,
+      },
+    });
+    expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_async');
+  });
+
+  it('checkout.session.async_payment_failed does not grant one-time credit', async () => {
+    const event = makeEvent('checkout.session.async_payment_failed', {
+      mode: 'payment',
+      payment_status: 'unpaid',
+      client_reference_id: 'user_async_fail',
+      customer: 'cus_async_fail',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_async_fail',
+    });
+
+    expect(client.__rpcs).toHaveLength(0);
+    expect(client.__updates).toHaveLength(0);
   });
 
   it('checkout.session.completed (subscription) records subscription_id + customer link without writing subscription_status (H11)', async () => {

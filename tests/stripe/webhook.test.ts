@@ -168,6 +168,70 @@ describe('POST /api/stripe/webhook', () => {
     expect(inserted['user_id']).toBe('user_123');
   });
 
+  it('returns 200 and dispatches checkout.session.async_payment_succeeded events', async () => {
+    constructEventMock.mockReturnValue({
+      id: 'evt_async_success',
+      type: 'checkout.session.async_payment_succeeded',
+      data: {
+        object: {
+          client_reference_id: 'user_async',
+          customer: 'cus_async',
+          mode: 'payment',
+          payment_status: 'paid',
+        },
+      },
+    });
+
+    maybeSingleMock.mockResolvedValue({ data: null, error: null });
+    insertMock.mockResolvedValue({
+      data: { id: 'be_async_success', processed_status: null },
+      error: null,
+    });
+
+    const res = await POST(makeRequest('{}', 'sig_ok'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { received: boolean; deduped?: boolean };
+    expect(json).toEqual({ received: true });
+
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const inserted = insertMock.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+    expect(inserted['stripe_event_id']).toBe('evt_async_success');
+    expect(inserted['type']).toBe('checkout.session.async_payment_succeeded');
+    expect(inserted['user_id']).toBe('user_async');
+  });
+
+  it('returns 200 and dispatches checkout.session.async_payment_failed events', async () => {
+    constructEventMock.mockReturnValue({
+      id: 'evt_async_failed',
+      type: 'checkout.session.async_payment_failed',
+      data: {
+        object: {
+          client_reference_id: 'user_async_fail',
+          customer: 'cus_async_fail',
+          mode: 'payment',
+          payment_status: 'unpaid',
+        },
+      },
+    });
+
+    maybeSingleMock.mockResolvedValue({ data: null, error: null });
+    insertMock.mockResolvedValue({
+      data: { id: 'be_async_failed', processed_status: null },
+      error: null,
+    });
+
+    const res = await POST(makeRequest('{}', 'sig_ok'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { received: boolean; deduped?: boolean };
+    expect(json).toEqual({ received: true });
+
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const inserted = insertMock.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+    expect(inserted['stripe_event_id']).toBe('evt_async_failed');
+    expect(inserted['type']).toBe('checkout.session.async_payment_failed');
+    expect(inserted['user_id']).toBe('user_async_fail');
+  });
+
   it('returns 200 with { deduped: true } when the event already exists with processed_status=success', async () => {
     constructEventMock.mockReturnValue({
       id: 'evt_test_dup',

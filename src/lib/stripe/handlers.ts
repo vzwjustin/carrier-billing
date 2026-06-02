@@ -20,7 +20,7 @@ import {
  * that the same Stripe event id is never persisted twice. On retry, callers
  * pass `previousStatus` in the context, but it is now informational-only — no
  * remaining mutation gates on it. The atomic `grant_credit_once` RPC is the
- * durable idempotency guard for the credit grant in checkout.session.completed.
+ * durable idempotency guard for settled one-time checkout credit grants.
  *
  * Throwing from here surfaces a 5xx out of the webhook route so Stripe
  * automatically retries (H8). Each branch is written to be safe under retry:
@@ -56,6 +56,18 @@ export async function handleStripeEvent(
         // #13: pass event.created so the subscription_id write can refuse to
         // resurrect an id a newer subscription.deleted already cleared.
         event.created,
+      );
+      return;
+    case 'checkout.session.async_payment_succeeded':
+      await onCheckoutSessionAsyncPaymentSucceeded(
+        event.data.object as Stripe.Checkout.Session,
+        supabase,
+        context,
+      );
+      return;
+    case 'checkout.session.async_payment_failed':
+      await onCheckoutSessionAsyncPaymentFailed(
+        event.data.object as Stripe.Checkout.Session,
       );
       return;
     case 'customer.subscription.created':
@@ -113,47 +125,7 @@ async function onCheckoutSessionCompleted(
   const customerId = readCustomerId(session.customer);
 
   if (session.mode === 'payment') {
-    // C1: atomic grant-once via `grant_credit_once(event_id, profile_id, delta)`.
-    // The RPC flips `billing_events.credit_granted` from false→true and
-    // increments `profiles.audit_credits` in a single transaction. Returns
-    // true if this call performed the grant, false if a prior call already
-    // did. Both branches mean "credit is now applied" — only the boolean
-    // tells us whether this attempt mutated state.
-    //
-    // This replaces the old previousStatus-gated approach which lost the
-    // credit permanently if the very first RPC call failed before bookkeeping
-    // could land. Retries (Stripe delivery + replay cron) now safely re-attempt
-    // until credit_granted=true.
-    if (!context.billingEventId) {
-      throw new Error(
-        'onCheckoutSessionCompleted: missing billingEventId in context (caller must pass it)',
-      );
-    }
-    const { data: granted, error: rpcError } = await supabase.rpc(
-      'grant_credit_once',
-      {
-        p_event_id: context.billingEventId,
-        p_profile_id: userId,
-        p_delta: 1,
-      },
-    );
-    if (rpcError) {
-      throw new Error(`grant_credit_once failed: ${rpcError.message}`);
-    }
-    if (granted === false) {
-      Sentry.addBreadcrumb({
-        category: 'stripe',
-        message: 'checkout.session.completed: credit already granted (idempotent retry)',
-        level: 'info',
-        data: { userId, billingEventId: context.billingEventId },
-      });
-    }
-
-    if (customerId) {
-      await updateProfile(supabase, userId, {
-        stripe_customer_id: customerId,
-      });
-    }
+    await settleOneTimeCheckoutCredit(session, supabase, context);
     await trackCheckoutCompleted('one_time', userId);
     return;
   }
@@ -199,6 +171,103 @@ async function onCheckoutSessionCompleted(
   }
 
   // session.mode === 'setup' or other — not used by our checkout, ignore.
+}
+
+async function onCheckoutSessionAsyncPaymentSucceeded(
+  session: Stripe.Checkout.Session,
+  supabase: SupabaseClient,
+  context: HandlerContext,
+): Promise<void> {
+  if (session.mode !== 'payment') return;
+  await settleOneTimeCheckoutCredit(session, supabase, context);
+}
+
+async function onCheckoutSessionAsyncPaymentFailed(
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  if (session.mode !== 'payment') return;
+
+  const userId = readUserIdFromSession(session);
+  if (!userId) {
+    Sentry.captureMessage(
+      'checkout.session.async_payment_failed without resolvable userId',
+      { level: 'warning', extra: { session_id: session.id } },
+    );
+  }
+}
+
+async function settleOneTimeCheckoutCredit(
+  session: Stripe.Checkout.Session,
+  supabase: SupabaseClient,
+  context: HandlerContext,
+): Promise<void> {
+  const userId = readUserIdFromSession(session);
+  if (!userId) {
+    Sentry.captureMessage(
+      'one-time checkout session without resolvable userId',
+      { level: 'warning', extra: { session_id: session.id } },
+    );
+    return;
+  }
+
+  if (!isSettledPaymentSession(session)) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'one-time checkout session not settled; credit grant skipped',
+      level: 'info',
+      data: {
+        session_id: session.id,
+        payment_status: session.payment_status,
+        userId,
+      },
+    });
+    return;
+  }
+
+  // C1: atomic grant-once via `grant_credit_once(event_id, profile_id, delta)`.
+  // The RPC flips `billing_events.credit_granted` from false→true and
+  // increments `profiles.audit_credits` in a single transaction. Returns
+  // true if this call performed the grant, false if a prior call already
+  // did. Both branches mean "credit is now applied" — only the boolean
+  // tells us whether this attempt mutated state.
+  if (!context.billingEventId) {
+    throw new Error(
+      'settleOneTimeCheckoutCredit: missing billingEventId in context (caller must pass it)',
+    );
+  }
+  const { data: granted, error: rpcError } = await supabase.rpc(
+    'grant_credit_once',
+    {
+      p_event_id: context.billingEventId,
+      p_profile_id: userId,
+      p_delta: 1,
+    },
+  );
+  if (rpcError) {
+    throw new Error(`grant_credit_once failed: ${rpcError.message}`);
+  }
+  if (granted === false) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'one-time checkout session: credit already granted (idempotent retry)',
+      level: 'info',
+      data: { userId, billingEventId: context.billingEventId },
+    });
+  }
+
+  const customerId = readCustomerId(session.customer);
+  if (customerId) {
+    await updateProfile(supabase, userId, {
+      stripe_customer_id: customerId,
+    });
+  }
+}
+
+function isSettledPaymentSession(session: Stripe.Checkout.Session): boolean {
+  return (
+    session.payment_status === 'paid' ||
+    session.payment_status === 'no_payment_required'
+  );
 }
 
 async function onSubscriptionUpserted(
