@@ -27,23 +27,23 @@ describe('generateInboundToken', () => {
 
 describe('parseInboundRecipient', () => {
   it('extracts token + domain from a plain address', () => {
-    expect(
-      parseInboundRecipient('bills+abcdefgh23456pqr@inbound.example.com'),
-    ).toEqual({ token: 'abcdefgh23456pqr', domain: 'inbound.example.com' });
+    expect(parseInboundRecipient('bills+abcdefgh23456pqr@inbound.example.com')).toEqual({
+      token: 'abcdefgh23456pqr',
+      domain: 'inbound.example.com',
+    });
   });
 
   it('handles angle-bracket-wrapped addresses with display name', () => {
     expect(
-      parseInboundRecipient(
-        'CarrierAudit <bills+xyzpdq2345abcdef@inbound.example.com>',
-      ),
+      parseInboundRecipient('CarrierAudit <bills+xyzpdq2345abcdef@inbound.example.com>'),
     ).toEqual({ token: 'xyzpdq2345abcdef', domain: 'inbound.example.com' });
   });
 
   it('lower-cases token + domain', () => {
-    expect(
-      parseInboundRecipient('Bills+ABCDE2345FGHIJ23@INBOUND.example.com'),
-    ).toEqual({ token: 'abcde2345fghij23', domain: 'inbound.example.com' });
+    expect(parseInboundRecipient('Bills+ABCDE2345FGHIJ23@INBOUND.example.com')).toEqual({
+      token: 'abcde2345fghij23',
+      domain: 'inbound.example.com',
+    });
   });
 
   it('returns null when local-part has no token suffix', () => {
@@ -52,23 +52,15 @@ describe('parseInboundRecipient', () => {
 
   it('returns null when token is too short (not exactly 16)', () => {
     expect(parseInboundRecipient('bills+abc@inbound.example.com')).toBeNull();
-    expect(
-      parseInboundRecipient('bills+abc234567@inbound.example.com'),
-    ).toBeNull();
+    expect(parseInboundRecipient('bills+abc234567@inbound.example.com')).toBeNull();
   });
 
   it('returns null when token is too long (not exactly 16)', () => {
-    expect(
-      parseInboundRecipient(
-        'bills+abcdefghij234567abc@inbound.example.com',
-      ),
-    ).toBeNull();
+    expect(parseInboundRecipient('bills+abcdefghij234567abc@inbound.example.com')).toBeNull();
   });
 
   it('returns null when local-part is wrong (e.g. reports+token)', () => {
-    expect(
-      parseInboundRecipient('reports+abcdefgh23456789@inbound.example.com'),
-    ).toBeNull();
+    expect(parseInboundRecipient('reports+abcdefgh23456789@inbound.example.com')).toBeNull();
   });
 
   it('returns null on garbage input', () => {
@@ -87,9 +79,7 @@ describe('verifyHmac', () => {
   });
 
   it('returns false for a different signature', () => {
-    expect(
-      verifyHmac(body, goodSig.replace(/^./, '0'), secret),
-    ).toBe(false);
+    expect(verifyHmac(body, goodSig.replace(/^./, '0'), secret)).toBe(false);
   });
 
   it('returns false when length differs (timing-safe)', () => {
@@ -109,9 +99,7 @@ describe('verifyHmac', () => {
   });
 
   it('accepts uppercase hex with a sha256= prefix', () => {
-    expect(verifyHmac(body, `sha256=${goodSig.toUpperCase()}`, secret)).toBe(
-      true,
-    );
+    expect(verifyHmac(body, `sha256=${goodSig.toUpperCase()}`, secret)).toBe(true);
   });
 
   it('returns false on junk (non-hex) input', () => {
@@ -119,15 +107,11 @@ describe('verifyHmac', () => {
   });
 
   it('returns false when input has wrong length even with the prefix', () => {
-    expect(verifyHmac(body, `sha256=${goodSig.slice(0, -2)}`, secret)).toBe(
-      false,
-    );
+    expect(verifyHmac(body, `sha256=${goodSig.slice(0, -2)}`, secret)).toBe(false);
   });
 
   it('does not throw on non-string signature', () => {
-    expect(
-      verifyHmac(body, undefined as unknown as string, secret),
-    ).toBe(false);
+    expect(verifyHmac(body, undefined as unknown as string, secret)).toBe(false);
   });
 });
 
@@ -141,10 +125,7 @@ describe('getOrCreateInboundToken', () => {
     error: { message: string; code?: string } | null;
   };
 
-  function makeAdmin(
-    selectResults: SelectResult[],
-    updateResults: UpdateResult[],
-  ): SupabaseClient {
+  function makeAdmin(selectResults: SelectResult[], updateResults: UpdateResult[]): SupabaseClient {
     return {
       from: () => ({
         select: () => ({
