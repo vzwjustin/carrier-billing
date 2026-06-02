@@ -188,7 +188,10 @@ async function postOutboundWebhook(
     delivered_at: new Date().toISOString(),
     audit: {
       id: audit.id,
-      user_id: audit.user_id,
+      // M3: do NOT ship the internal Supabase auth user_id to the operator's
+      // external endpoint — it's a persistent cross-service identifier, is not
+      // needed by receivers (dispatch-finding-webhook omits it), and violates
+      // the "account IDs + rule IDs only, no PII" discipline (CLAUDE.md §5).
       status: audit.status,
       carrier: audit.carrier,
       billing_period_start: audit.billing_period_start,

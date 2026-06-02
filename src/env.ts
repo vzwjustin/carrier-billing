@@ -57,11 +57,32 @@ export function assertNoPlaceholderSecrets(
   }
 }
 
+// M2: ALLOW_PARTIAL_SCHEMA is a demo/under-migrated-DB escape hatch read raw
+// from process.env in three places (rate-limit.ts, audits/route.ts,
+// process-bill.ts) where `=== '1'` flips a fail-OPEN branch — disabling rate
+// limiting, the credit gate, and a worker guard respectively. Left unvalidated
+// it lets a single env var put a security control + billing path + durable
+// worker into fail-open with no production tripwire. Refuse to start in
+// production when it's enabled, so the fail-open can never ship silently.
+export function assertPartialSchemaNotInProduction(
+  source: NodeJS.ProcessEnv = process.env,
+): void {
+  if (source.NODE_ENV === 'production' && source.ALLOW_PARTIAL_SCHEMA === '1') {
+    throw new Error(
+      'Refusing to start: ALLOW_PARTIAL_SCHEMA=1 is set in production. This ' +
+        'flag enables fail-open behavior (rate limiting, credit gate, worker ' +
+        'guards) and is intended only for local/demo environments with an ' +
+        'under-migrated database. Unset it in production.',
+    );
+  }
+}
+
 // Skip the runtime placeholder check inside the Vitest harness — `tests/setup.ts`
 // intentionally fills client-only NEXT_PUBLIC_* vars with placeholder strings,
 // and required server secrets are simply absent under tests.
 if (process.env.NODE_ENV !== 'test') {
   assertNoPlaceholderSecrets();
+  assertPartialSchemaNotInProduction();
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +172,12 @@ export const env = createEnv({
     // the due-user count but sends no email). Set to 'true' ONLY once a
     // verified Resend sender domain is configured (see FROM_ADDRESS TODO).
     BILL_REMINDER_ENABLED: z.enum(['true', 'false']).optional(),
+
+    // M2: demo/under-migrated-DB escape hatch. '1' flips fail-OPEN branches in
+    // rate-limit.ts, audits/route.ts, and process-bill.ts. Declared here so it
+    // passes through env validation rather than being read entirely raw; the
+    // production tripwire lives in assertPartialSchemaNotInProduction() above.
+    ALLOW_PARTIAL_SCHEMA: z.enum(['0', '1']).optional(),
   },
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -187,6 +214,7 @@ export const env = createEnv({
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
     HEALTH_SECRET: process.env.HEALTH_SECRET,
     BILL_REMINDER_ENABLED: process.env.BILL_REMINDER_ENABLED,
+    ALLOW_PARTIAL_SCHEMA: process.env.ALLOW_PARTIAL_SCHEMA,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

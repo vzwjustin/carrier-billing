@@ -340,9 +340,14 @@ describe('runRules — full pipeline', () => {
     const byRule = result.findings.map((f) => f.rule_id);
 
     expect(result.errors).toEqual([]);
+    // These three live on DIFFERENT lines (zero-usage line, premium low-usage
+    // line, dup-insurance line), so per-line arbitration preserves each.
     expect(byRule).toContain('zero_usage_phone_line');
     expect(byRule).toContain('high_cost_low_usage_phone');
-    expect(byRule).toContain('underutilized_phone_on_premium_plan');
     expect(byRule).toContain('duplicate_protection_features');
+    // F4: underutilized_phone_on_premium_plan co-fires with
+    // high_cost_low_usage_phone on the SAME premium low-usage line, so the
+    // higher-dollar rule suppresses it (one downgrade action, not two).
+    expect(byRule).not.toContain('underutilized_phone_on_premium_plan');
   });
 });

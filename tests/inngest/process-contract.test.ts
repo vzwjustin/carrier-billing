@@ -121,7 +121,7 @@ describe('processContractFn — persist step', () => {
   function getPersistBlock(): string {
     const idx = CONTRACT_SRC.indexOf("'persist'");
     expect(idx).toBeGreaterThan(-1);
-    return CONTRACT_SRC.slice(idx, idx + 3500);
+    return CONTRACT_SRC.slice(idx, idx + 4500);
   }
 
   it('UPDATE chains .eq("status", "extracting") so a retry of an already-parsed contract is a no-op', () => {
@@ -150,22 +150,30 @@ describe('processContractFn — persist step', () => {
     expect(block).toMatch(/const \{ data: updatedRows,[\s\S]*?\.select\(['"]id['"]\)/);
   });
 
-  it('short-circuits on a 0-row header no-op BEFORE rewriting contract_terms', () => {
+  it('writes contract_terms BEFORE the status→parsed commit (retry-safe)', () => {
     const block = getPersistBlock();
-    // The status-guard return must appear, and it must come before the
-    // contract_terms delete — otherwise a concurrent run / replay would churn
-    // the terms while leaving the header stale.
-    const guardIdx = block.search(
-      /\(updatedRows \?\? \[\]\)\.length === 0/,
-    );
-    expect(guardIdx).toBeGreaterThan(-1);
-    const guardBlock = block.slice(guardIdx, guardIdx + 200);
-    expect(guardBlock).toMatch(/reason:\s*['"]status-guard['"]/);
-
+    // M6: contract_terms must be (re)written BEFORE the header UPDATE that flips
+    // status extracting→parsed. The status flip is the single commit point —
+    // keeping status at 'extracting' until terms succeed means a retry after a
+    // terms-write failure re-admits (the `.eq('status','extracting')` guard
+    // still matches) and rewrites terms, instead of stranding the contract in
+    // 'parsed' with missing terms.
     const deleteIdx = block.indexOf("from('contract_terms')");
     expect(deleteIdx).toBeGreaterThan(-1);
-    // The 0-row guard short-circuit precedes the contract_terms mutation.
-    expect(guardIdx).toBeLessThan(deleteIdx);
+
+    // The committing header UPDATE is the one that sets status: 'parsed'.
+    const commitIdx = block.search(/status:\s*['"]parsed['"]/);
+    expect(commitIdx).toBeGreaterThan(-1);
+
+    // Terms write precedes the status commit.
+    expect(deleteIdx).toBeLessThan(commitIdx);
+
+    // The 0-row guard still short-circuits with status-guard, now AFTER the
+    // terms write (a no-op commit means a concurrent run already advanced).
+    const guardIdx = block.search(/\(updatedRows \?\? \[\]\)\.length === 0/);
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(block).toMatch(/reason:\s*['"]status-guard['"]/);
+    expect(commitIdx).toBeLessThan(guardIdx);
   });
 });
 

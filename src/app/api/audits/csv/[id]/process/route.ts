@@ -133,8 +133,12 @@ export async function POST(
     }
 
     // 1. Look up the audit and verify ownership + state.
+    // Use the RLS-scoped user client for the ownership FETCH (as every other
+    // audit route does) so RLS enforces ownership as a second layer, not the
+    // app-level user_id check alone. The admin client is reserved for the
+    // privileged writes further down.
     const admin = getAdminClient();
-    const { data: rowData, error: fetchErr } = await admin
+    const { data: rowData, error: fetchErr } = await supabase
       .from('audits')
       .select('id,user_id,status,storage_path,source_format')
       .eq('id', auditId)
