@@ -15,11 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 
-const {
-  getUserMock,
-  updateMock,
-  generateTokenMock,
-} = vi.hoisted(() => ({
+const { getUserMock, updateMock, generateTokenMock } = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   updateMock: vi.fn(),
   generateTokenMock: vi.fn(),
@@ -122,10 +118,7 @@ describe('POST /api/settings/inbound-token — generate', () => {
       .mockResolvedValueOnce({ error: { code: '23505', message: 'unique' } })
       .mockResolvedValueOnce({ error: { code: '23505', message: 'unique' } })
       .mockResolvedValueOnce({ error: null });
-    generateTokenMock
-      .mockReturnValueOnce('t1')
-      .mockReturnValueOnce('t2')
-      .mockReturnValueOnce('t3');
+    generateTokenMock.mockReturnValueOnce('t1').mockReturnValueOnce('t2').mockReturnValueOnce('t3');
 
     const res = await POST(makeReq({ action: 'generate' }));
     expect(res.status).toBe(200);

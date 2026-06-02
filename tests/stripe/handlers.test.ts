@@ -56,14 +56,8 @@ interface MockClient {
   __nextUpdateError: { message: string } | null;
   __nextSelectError: { message: string } | null;
   __nextRpcError: { message: string } | null;
-  __nextUpdateRows:
-    | Array<Record<string, unknown>>
-    | (() => Array<Record<string, unknown>>)
-    | null;
-  __nextSelectRows:
-    | Array<Record<string, unknown>>
-    | (() => Array<Record<string, unknown>>)
-    | null;
+  __nextUpdateRows: Array<Record<string, unknown>> | (() => Array<Record<string, unknown>>) | null;
+  __nextSelectRows: Array<Record<string, unknown>> | (() => Array<Record<string, unknown>>) | null;
 }
 
 function makeClient(): MockClient {
@@ -104,11 +98,7 @@ function makeClient(): MockClient {
           };
         },
         update(patch: Record<string, unknown>) {
-          const recordCall = (
-            eq: [string, unknown],
-            select?: string,
-            or?: string,
-          ) => {
+          const recordCall = (eq: [string, unknown], select?: string, or?: string) => {
             state.__updates.push({ table, patch, eq, select, or });
           };
           const consumeRows = (): Array<Record<string, unknown>> => {
@@ -126,9 +116,7 @@ function makeClient(): MockClient {
             eq(col: string, value: unknown) {
               const eqArgs: [string, unknown] = [col, value];
               const directThenable = {
-                then(
-                  resolve: (v: { error: typeof state.__nextUpdateError }) => void,
-                ) {
+                then(resolve: (v: { error: typeof state.__nextUpdateError }) => void) {
                   recordCall(eqArgs);
                   resolve({ error: consumeError() });
                 },
@@ -157,11 +145,7 @@ function makeClient(): MockClient {
                     // Awaited directly (no .select) — real PostgREST resolves
                     // an ordering-guarded UPDATE to `{ error }`. Used by the
                     // #13 checkout subscription_id guard.
-                    then(
-                      resolve: (v: {
-                        error: typeof state.__nextUpdateError;
-                      }) => void,
-                    ) {
+                    then(resolve: (v: { error: typeof state.__nextUpdateError }) => void) {
                       recordCall(eqArgs, undefined, orExpr);
                       resolve({ error: consumeError() });
                     },
@@ -397,9 +381,7 @@ describe('handleStripeEvent', () => {
     const customerUpdate = client.__updates.find(
       (u) => u.patch['stripe_customer_id'] !== undefined,
     );
-    const subIdUpdate = client.__updates.find(
-      (u) => u.patch['subscription_id'] !== undefined,
-    );
+    const subIdUpdate = client.__updates.find((u) => u.patch['subscription_id'] !== undefined);
     expect(customerUpdate?.table).toBe('profiles');
     expect(customerUpdate?.eq).toEqual(['id', 'user_xyz']);
     expect(customerUpdate?.patch['stripe_customer_id']).toBe('cus_222');
@@ -428,15 +410,11 @@ describe('handleStripeEvent', () => {
 
     await handleStripeEvent(event, client as unknown as never);
 
-    const writtenCols = [
-      ...new Set(client.__updates.flatMap((u) => Object.keys(u.patch))),
-    ].sort();
+    const writtenCols = [...new Set(client.__updates.flatMap((u) => Object.keys(u.patch)))].sort();
     // Union of both updates: subscription_id (link, guarded), stripe_customer_id
     // (link), updated_at (boilerplate). No status, no subscription_event_at,
     // no audit_credits.
-    expect(writtenCols).toEqual(
-      ['stripe_customer_id', 'subscription_id', 'updated_at'].sort(),
-    );
+    expect(writtenCols).toEqual(['stripe_customer_id', 'subscription_id', 'updated_at'].sort());
   });
 
   it('customer.subscription.updated propagates the new status', async () => {
@@ -588,20 +566,14 @@ describe('handleStripeEvent', () => {
     // H1: also reads `subscription_status` so the email-dispatch gate can
     // suppress duplicate emails on Stripe's dunning retries.
     expect(client.__selects).toHaveLength(1);
-    expect(client.__selects[0]?.cols).toBe(
-      'id, subscription_event_at, subscription_status',
-    );
+    expect(client.__selects[0]?.cols).toBe('id, subscription_event_at, subscription_status');
     expect(update?.select).toBe('id, email');
   });
 
   it('invoice.payment_failed skips past_due flip when fresher subscription event already landed (H2)', async () => {
     // Profile already has a fresher subscription_event_at than this invoice.
-    const fresherTs = new Date(
-      Date.UTC(2026, 4, 9, 13, 0, 0),
-    ).toISOString();
-    client.__nextSelectRows = [
-      { id: 'profile_fresh', subscription_event_at: fresherTs },
-    ];
+    const fresherTs = new Date(Date.UTC(2026, 4, 9, 13, 0, 0)).toISOString();
+    client.__nextSelectRows = [{ id: 'profile_fresh', subscription_event_at: fresherTs }];
     const staleEvent = makeEvent(
       'invoice.payment_failed',
       { id: 'in_stale', customer: 'cus_stale' },
@@ -640,10 +612,7 @@ describe('handleStripeEvent', () => {
     const firstCall = inngestSendMock.mock.calls[0] as unknown as
       | [{ data?: Record<string, unknown> }]
       | undefined;
-    const dispatchedData = (firstCall?.[0]?.data ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const dispatchedData = (firstCall?.[0]?.data ?? {}) as Record<string, unknown>;
     expect(dispatchedData).not.toHaveProperty('customerEmail');
   });
 
@@ -674,15 +643,11 @@ describe('handleStripeEvent', () => {
     client.__nextSelectRows = [
       {
         id: 'profile_already_pd',
-        subscription_event_at: new Date(
-          Date.UTC(2026, 4, 9, 11, 0, 0),
-        ).toISOString(),
+        subscription_event_at: new Date(Date.UTC(2026, 4, 9, 11, 0, 0)).toISOString(),
         subscription_status: 'past_due',
       },
     ];
-    client.__nextUpdateRows = [
-      { id: 'profile_already_pd', email: 'spam-me-not@example.com' },
-    ];
+    client.__nextUpdateRows = [{ id: 'profile_already_pd', email: 'spam-me-not@example.com' }];
 
     const retryEvent = makeEvent(
       'invoice.payment_failed',
@@ -708,9 +673,7 @@ describe('handleStripeEvent', () => {
     client.__nextSelectRows = [
       {
         id: 'profile_incomplete',
-        subscription_event_at: new Date(
-          Date.UTC(2026, 4, 9, 11, 0, 0),
-        ).toISOString(),
+        subscription_event_at: new Date(Date.UTC(2026, 4, 9, 11, 0, 0)).toISOString(),
         subscription_status: 'incomplete',
       },
     ];
@@ -735,9 +698,7 @@ describe('handleStripeEvent', () => {
     client.__nextSelectRows = [
       {
         id: 'profile_canceled',
-        subscription_event_at: new Date(
-          Date.UTC(2026, 4, 9, 11, 0, 0),
-        ).toISOString(),
+        subscription_event_at: new Date(Date.UTC(2026, 4, 9, 11, 0, 0)).toISOString(),
         subscription_status: 'canceled',
       },
     ];
@@ -767,9 +728,7 @@ describe('handleStripeEvent', () => {
       amount_due: 2500,
     });
 
-    await expect(
-      handleStripeEvent(event, client as unknown as never),
-    ).resolves.toBeUndefined();
+    await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
 
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
     expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
@@ -797,9 +756,9 @@ describe('handleStripeEvent', () => {
       customer: 'cus_err',
     });
 
-    await expect(
-      handleStripeEvent(event, client as unknown as never),
-    ).rejects.toThrow(/past_due update failed/);
+    await expect(handleStripeEvent(event, client as unknown as never)).rejects.toThrow(
+      /past_due update failed/,
+    );
   });
 
   // --- H9: ordering guard for subscription events --------------------------
@@ -878,9 +837,7 @@ describe('handleStripeEvent', () => {
     });
 
     it('applies the first subscription event when subscription_event_at is null', async () => {
-      client.__nextSelectRows = [
-        { id: 'profile_h9_first', subscription_event_at: null },
-      ];
+      client.__nextSelectRows = [{ id: 'profile_h9_first', subscription_event_at: null }];
 
       const event = makeEvent(
         'customer.subscription.created',
@@ -921,9 +878,7 @@ describe('handleStripeEvent', () => {
     const ACTIVE_TS = Math.floor(Date.UTC(2026, 4, 9, 12, 0, 0) / 1000);
 
     it('subscription update sends `.or(...)` ordering predicate to the database', async () => {
-      client.__nextSelectRows = [
-        { id: 'profile_h4', subscription_event_at: null },
-      ];
+      client.__nextSelectRows = [{ id: 'profile_h4', subscription_event_at: null }];
 
       const event = makeEvent(
         'customer.subscription.updated',
@@ -947,9 +902,7 @@ describe('handleStripeEvent', () => {
       // Pre-check passes (snapshot says null), but the CAS UPDATE returns 0
       // rows because a concurrent fresher writer landed between SELECT and
       // UPDATE. The handler must not throw — it logs a breadcrumb and returns.
-      client.__nextSelectRows = [
-        { id: 'profile_h4_race', subscription_event_at: null },
-      ];
+      client.__nextSelectRows = [{ id: 'profile_h4_race', subscription_event_at: null }];
       client.__nextUpdateRows = [];
 
       const event = makeEvent(
@@ -958,9 +911,7 @@ describe('handleStripeEvent', () => {
         ACTIVE_TS,
       );
 
-      await expect(
-        handleStripeEvent(event, client as unknown as never),
-      ).resolves.toBeUndefined();
+      await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
 
       // The UPDATE was attempted (recorded), but no exception thrown.
       expect(client.__updates).toHaveLength(1);
@@ -1038,9 +989,7 @@ describe('handleStripeEvent', () => {
 
       it('1 row matched: succeeds', async () => {
         setRows([{ id: 'profile_one', email: 'a@b.co' }]);
-        await expect(
-          handleStripeEvent(event, client as unknown as never),
-        ).resolves.toBeUndefined();
+        await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
       });
 
       if (isTerminal) {
@@ -1053,9 +1002,9 @@ describe('handleStripeEvent', () => {
       } else {
         it('0 rows matched: throws so Stripe retries', async () => {
           setRows([]);
-          await expect(
-            handleStripeEvent(event, client as unknown as never),
-          ).rejects.toThrow(expectedThrow as RegExp);
+          await expect(handleStripeEvent(event, client as unknown as never)).rejects.toThrow(
+            expectedThrow as RegExp,
+          );
         });
       }
 
@@ -1064,9 +1013,9 @@ describe('handleStripeEvent', () => {
           { id: 'profile_one', email: 'a@b.co' },
           { id: 'profile_two', email: 'c@d.co' },
         ]);
-        await expect(
-          handleStripeEvent(event, client as unknown as never),
-        ).rejects.toThrow(multiThrow);
+        await expect(handleStripeEvent(event, client as unknown as never)).rejects.toThrow(
+          multiThrow,
+        );
       });
     },
   );

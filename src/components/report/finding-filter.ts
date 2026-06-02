@@ -17,12 +17,7 @@ import type { Finding, FindingStatus, Severity } from '@/rules/types';
 
 import { FINDING_STATUS_VALUES } from './finding-status-meta';
 
-export const SEVERITY_VALUES: readonly Severity[] = [
-  'high',
-  'medium',
-  'low',
-  'info',
-];
+export const SEVERITY_VALUES: readonly Severity[] = ['high', 'medium', 'low', 'info'];
 
 export const SORT_VALUES = ['savings', 'severity', 'updated'] as const;
 export type SortKey = (typeof SORT_VALUES)[number];
@@ -90,10 +85,7 @@ function dedupe<T>(values: readonly T[]): T[] {
  * Parse a comma-separated string like "high,medium" against an allow-list,
  * dropping unknown / empty entries. Returns an empty array on `null`.
  */
-function parseCsvEnum<T extends string>(
-  raw: string | null,
-  guard: (v: string) => v is T,
-): T[] {
+function parseCsvEnum<T extends string>(raw: string | null, guard: (v: string) => v is T): T[] {
   if (!raw) return [];
   return dedupe(
     raw
@@ -108,16 +100,13 @@ function parseCsvEnum<T extends string>(
  * defaults. The caller (`useSearchParams`) hands us a `URLSearchParams`
  * which we read keys off of.
  */
-export function parseFilterState(
-  params: URLSearchParams | null | undefined,
-): FindingsFilterState {
+export function parseFilterState(params: URLSearchParams | null | undefined): FindingsFilterState {
   if (!params) return EMPTY_FILTER_STATE;
   const severities = parseCsvEnum(params.get('sev'), isSeverity);
   const statuses = parseCsvEnum(params.get('status'), isStatus);
   const query = (params.get('q') ?? '').trim();
   const rawSort = params.get('sort');
-  const sort: SortKey =
-    rawSort && isSortKey(rawSort) ? rawSort : DEFAULT_SORT;
+  const sort: SortKey = rawSort && isSortKey(rawSort) ? rawSort : DEFAULT_SORT;
   return { severities, statuses, query, sort };
 }
 
@@ -184,10 +173,7 @@ export function applyFindingsFilter(
   return sortFindings(filtered, state.sort, meta);
 }
 
-function metaUpdatedAt(
-  finding: Finding,
-  meta: FindingMetaMap,
-): number | null {
+function metaUpdatedAt(finding: Finding, meta: FindingMetaMap): number | null {
   if (!finding.id) return null;
   const m = meta[finding.id];
   if (!m?.updatedAt) return null;
@@ -204,14 +190,8 @@ export function sortFindings(
   switch (sort) {
     case 'savings':
       copy.sort((a, b) => {
-        if (
-          b.estimated_monthly_savings_cents !==
-          a.estimated_monthly_savings_cents
-        ) {
-          return (
-            b.estimated_monthly_savings_cents -
-            a.estimated_monthly_savings_cents
-          );
+        if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
+          return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
         }
         return a.title.localeCompare(b.title);
       });
@@ -221,14 +201,8 @@ export function sortFindings(
         const ra = SEVERITY_RANK[a.severity];
         const rb = SEVERITY_RANK[b.severity];
         if (ra !== rb) return ra - rb;
-        if (
-          b.estimated_monthly_savings_cents !==
-          a.estimated_monthly_savings_cents
-        ) {
-          return (
-            b.estimated_monthly_savings_cents -
-            a.estimated_monthly_savings_cents
-          );
+        if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
+          return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
         }
         return a.title.localeCompare(b.title);
       });
@@ -251,9 +225,7 @@ export function sortFindings(
  * Re-bucket a flat list back into the severity-keyed shape `FindingsList`
  * already renders. Buckets are always present (empty array if none).
  */
-export function bucketBySeverity(
-  findings: readonly Finding[],
-): Record<Severity, Finding[]> {
+export function bucketBySeverity(findings: readonly Finding[]): Record<Severity, Finding[]> {
   const buckets: Record<Severity, Finding[]> = {
     high: [],
     medium: [],

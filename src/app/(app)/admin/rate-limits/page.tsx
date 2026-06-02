@@ -56,17 +56,16 @@ export default async function AdminRateLimitsPage(): Promise<React.JSX.Element> 
         </h2>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
           Top {TOP_N} buckets by current count (from
-          <code className="mx-1">rate_limit_buckets</code>). Window length is
-          set per-call by the limiter; the column shows when the current
-          window opened.
+          <code className="mx-1">rate_limit_buckets</code>). Window length is set per-call by the
+          limiter; the column shows when the current window opened.
         </p>
       </div>
       <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+          <thead className="bg-neutral-50 text-left text-xs tracking-wide text-neutral-500 uppercase dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
               <th className="px-4 py-2 font-medium">Key</th>
-              <th className="px-4 py-2 font-medium text-right">Count</th>
+              <th className="px-4 py-2 text-right font-medium">Count</th>
               <th className="px-4 py-2 font-medium">Window opened</th>
               <th className="px-4 py-2 font-medium">Last hit</th>
             </tr>
@@ -74,14 +73,9 @@ export default async function AdminRateLimitsPage(): Promise<React.JSX.Element> 
           <tbody>
             {rows.map((r) => {
               const truncated =
-                r.key.length > KEY_TRUNCATE
-                  ? `${r.key.slice(0, KEY_TRUNCATE)}…`
-                  : r.key;
+                r.key.length > KEY_TRUNCATE ? `${r.key.slice(0, KEY_TRUNCATE)}…` : r.key;
               return (
-                <tr
-                  key={r.key}
-                  className="border-t border-neutral-200 dark:border-neutral-800"
-                >
+                <tr key={r.key} className="border-t border-neutral-200 dark:border-neutral-800">
                   <td
                     className="px-4 py-2 font-mono text-xs text-neutral-800 dark:text-neutral-200"
                     title={r.key}
@@ -91,10 +85,10 @@ export default async function AdminRateLimitsPage(): Promise<React.JSX.Element> 
                   <td className="px-4 py-2 text-right tabular-nums">
                     {r.count.toLocaleString('en-US')}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-xs text-neutral-600 dark:text-neutral-400">
+                  <td className="px-4 py-2 text-xs whitespace-nowrap text-neutral-600 dark:text-neutral-400">
                     {formatRelative(r.window_start)}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-xs text-neutral-600 dark:text-neutral-400">
+                  <td className="px-4 py-2 text-xs whitespace-nowrap text-neutral-600 dark:text-neutral-400">
                     {r.updated_at ? formatRelative(r.updated_at) : '—'}
                   </td>
                 </tr>

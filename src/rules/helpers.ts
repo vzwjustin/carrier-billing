@@ -36,11 +36,7 @@ export function isExpired(date: Date | string | null, today: Date): boolean {
  * True iff `date` is in the next `days` days inclusive of today, AND not
  * already expired. Returns false for null.
  */
-export function expiresWithinDays(
-  date: Date | string | null,
-  today: Date,
-  days: number,
-): boolean {
+export function expiresWithinDays(date: Date | string | null, today: Date, days: number): boolean {
   if (date === null) return false;
   const delta = daysUntil(date, today);
   return delta >= 0 && delta <= days;
@@ -55,10 +51,7 @@ export function findFeatureByCategory(
 }
 
 /** Test a plan name against a list of "deprecated" regex patterns. */
-export function isPlanNameDeprecated(
-  planName: string | null,
-  patterns: RegExp[],
-): boolean {
+export function isPlanNameDeprecated(planName: string | null, patterns: RegExp[]): boolean {
   if (planName === null) return false;
   return patterns.some((re) => re.test(planName));
 }
@@ -103,8 +96,7 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
   // that happen to share the prefix (e.g. "Verizon Plan Unlimited Edge").
   {
     carrier: 'verizon',
-    pattern:
-      /\bVerizon\s+Plan\s+Unlimited\b(?!\s+(Pro|Plus|Start|Edge|Premium|Ultimate))/i,
+    pattern: /\bVerizon\s+Plan\s+Unlimited\b(?!\s+(Pro|Plus|Start|Edge|Premium|Ultimate))/i,
     replacement_plan: 'Business Unlimited Plus 2.0',
     estimated_monthly_savings_cents: 800,
     source_note: 'verizon.com/support/verizon-plan-unlimited-faqs',
@@ -241,9 +233,7 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
 
 function patternsForCarrier(carrier: Carrier): LegacyPlanPattern[] {
   if (carrier === 'unknown') return LEGACY_PLAN_PATTERNS;
-  return LEGACY_PLAN_PATTERNS.filter(
-    (p) => p.carrier === carrier || p.carrier === 'all',
-  );
+  return LEGACY_PLAN_PATTERNS.filter((p) => p.carrier === carrier || p.carrier === 'all');
 }
 
 /**

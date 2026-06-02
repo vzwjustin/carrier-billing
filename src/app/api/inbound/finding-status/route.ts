@@ -36,10 +36,7 @@ import { z } from 'zod';
 import { FINDING_STATUS_VALUES } from '@/components/report/finding-status-meta';
 import { inngest } from '@/inngest/client';
 import { isInboundWebhookTokenShape } from '@/lib/inbound/webhook-token';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import type { FindingStatus } from '@/rules/types';
 
@@ -48,10 +45,7 @@ export const dynamic = 'force-dynamic';
 
 const MAX_REQUEST_BYTES = 16 * 1024;
 
-const STATUS_ENUM = FINDING_STATUS_VALUES as readonly [
-  FindingStatus,
-  ...FindingStatus[],
-];
+const STATUS_ENUM = FINDING_STATUS_VALUES as readonly [FindingStatus, ...FindingStatus[]];
 
 const BodySchema = z.object({
   audit_id: z.string().uuid(),
@@ -90,10 +84,7 @@ function getClientBucket(request: Request): string {
   return hashForRateLimit(source);
 }
 
-async function readRawBodyWithLimit(
-  request: Request,
-  limitBytes: number,
-): Promise<string | null> {
+async function readRawBodyWithLimit(request: Request, limitBytes: number): Promise<string | null> {
   const reader = request.body?.getReader();
   if (!reader) return '';
 
@@ -158,36 +149,24 @@ export async function POST(request: Request): Promise<Response> {
         contentLength < 0 ||
         contentLength > MAX_REQUEST_BYTES
       ) {
-        return NextResponse.json(
-          { error: 'Payload too large.' },
-          { status: 413 },
-        );
+        return NextResponse.json({ error: 'Payload too large.' }, { status: 413 });
       }
     }
 
     const rawBody = await readRawBodyWithLimit(request, MAX_REQUEST_BYTES);
     if (rawBody === null) {
-      return NextResponse.json(
-        { error: 'Payload too large.' },
-        { status: 413 },
-      );
+      return NextResponse.json({ error: 'Payload too large.' }, { status: 413 });
     }
 
     let bodyJson: unknown;
     try {
       bodyJson = JSON.parse(rawBody);
     } catch {
-      return NextResponse.json(
-        { error: 'Invalid JSON body.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
     }
     const parsed = BodySchema.safeParse(bodyJson);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'Invalid request body.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
     }
     const { status, note } = parsed.data;
     auditId = parsed.data.audit_id;
@@ -207,10 +186,7 @@ export async function POST(request: Request): Promise<Response> {
       Sentry.captureException(profileErr, {
         tags: { surface: 'inbound_finding_status.profile_lookup' },
       });
-      return NextResponse.json(
-        { error: 'Internal server error.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
     }
     const profile = (profileData ?? null) as ProfileTokenRow | null;
     if (!profile) {
@@ -243,26 +219,14 @@ export async function POST(request: Request): Promise<Response> {
         tags: { surface: 'inbound_finding_status.finding_lookup' },
         extra: { auditId, findingId },
       });
-      return NextResponse.json(
-        { error: 'Failed to look up finding.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up finding.' }, { status: 500 });
     }
     if (!findingData) {
-      return NextResponse.json(
-        { error: 'Finding not found.' },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'Finding not found.' }, { status: 404 });
     }
-    if (
-      !findingData.audits ||
-      findingData.audits.user_id !== profile.id
-    ) {
+    if (!findingData.audits || findingData.audits.user_id !== profile.id) {
       // Don't 403 — 404 keeps existence of other users' audits secret.
-      return NextResponse.json(
-        { error: 'Finding not found.' },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'Finding not found.' }, { status: 404 });
     }
 
     const previousStatus = findingData.status;
@@ -286,10 +250,7 @@ export async function POST(request: Request): Promise<Response> {
         tags: { surface: 'inbound_finding_status.update' },
         extra: { auditId, findingId, status },
       });
-      return NextResponse.json(
-        { error: 'Failed to update finding.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to update finding.' }, { status: 500 });
     }
 
     // 7. Fire the same event the authed route fires. Best-effort.
@@ -318,9 +279,6 @@ export async function POST(request: Request): Promise<Response> {
       tags: { surface: 'inbound_finding_status.unknown' },
       extra: { auditId, findingId },
     });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

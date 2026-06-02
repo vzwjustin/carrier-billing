@@ -78,7 +78,7 @@ export function FindingsOverTimeChart({
     >
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
             Findings over the last {rows.length} audits
           </p>
           <p className="mt-1 text-xs text-neutral-500">

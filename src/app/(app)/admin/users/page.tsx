@@ -28,7 +28,7 @@ export default async function AdminUsersPage(): Promise<React.JSX.Element> {
   return (
     <section className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
       <table className="w-full text-sm">
-        <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+        <thead className="bg-neutral-50 text-left text-xs tracking-wide text-neutral-500 uppercase dark:bg-neutral-900 dark:text-neutral-400">
           <tr>
             <th className="px-4 py-2 font-medium">Email</th>
             <th className="px-4 py-2 font-medium">Credits</th>
@@ -39,24 +39,13 @@ export default async function AdminUsersPage(): Promise<React.JSX.Element> {
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr
-              key={u.id}
-              className="border-t border-neutral-200 dark:border-neutral-800"
-            >
-              <td className="px-4 py-2 text-neutral-900 dark:text-neutral-100">
-                {u.email}
-              </td>
+            <tr key={u.id} className="border-t border-neutral-200 dark:border-neutral-800">
+              <td className="px-4 py-2 text-neutral-900 dark:text-neutral-100">{u.email}</td>
               <td className="px-4 py-2 tabular-nums">{u.audit_credits}</td>
               <td className="px-4 py-2">{u.subscription_status ?? '—'}</td>
+              <td className="px-4 py-2">{new Date(u.created_at).toLocaleDateString('en-US')}</td>
               <td className="px-4 py-2">
-                {new Date(u.created_at).toLocaleDateString('en-US')}
-              </td>
-              <td className="px-4 py-2">
-                <RoleToggle
-                  userId={u.id}
-                  role={u.role}
-                  self={u.id === ctx.userId}
-                />
+                <RoleToggle userId={u.id} role={u.role} self={u.id === ctx.userId} />
               </td>
             </tr>
           ))}

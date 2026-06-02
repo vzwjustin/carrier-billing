@@ -4,8 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type RpcResult = { data: unknown; error: null | { message: string } };
 
-const rpcMock =
-  vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
+const rpcMock = vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({ rpc: rpcMock }),
@@ -39,16 +38,12 @@ describe('decrementAuditCreditAtomically', () => {
 
   it("throws 'no_credits' when the new balance is negative", async () => {
     rpcMock.mockResolvedValueOnce({ data: -1, error: null });
-    await expect(decrementAuditCreditAtomically('user-1')).rejects.toThrow(
-      'no_credits',
-    );
+    await expect(decrementAuditCreditAtomically('user-1')).rejects.toThrow('no_credits');
   });
 
   it("throws 'no_credits' when RPC returns null", async () => {
     rpcMock.mockResolvedValueOnce({ data: null, error: null });
-    await expect(decrementAuditCreditAtomically('user-1')).rejects.toThrow(
-      'no_credits',
-    );
+    await expect(decrementAuditCreditAtomically('user-1')).rejects.toThrow('no_credits');
   });
 
   it('throws when the RPC errors out', async () => {

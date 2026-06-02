@@ -48,8 +48,7 @@ export function ResetPasswordForm() {
       <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
         <p className="font-medium text-neutral-900">Check your email</p>
         <p>
-          If an account exists for{' '}
-          <span className="font-medium">{submittedEmail}</span>, we sent a
+          If an account exists for <span className="font-medium">{submittedEmail}</span>, we sent a
           password reset link. Click the link to choose a new password.
         </p>
       </div>
@@ -67,9 +66,7 @@ export function ResetPasswordForm() {
           disabled={isPending}
           {...register('email')}
         />
-        {errors.email ? (
-          <p className="text-xs text-red-600">{errors.email.message}</p>
-        ) : null}
+        {errors.email ? <p className="text-xs text-red-600">{errors.email.message}</p> : null}
       </div>
       {serverError ? (
         <p

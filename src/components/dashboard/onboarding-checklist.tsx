@@ -109,11 +109,7 @@ export function computeChecklistState(state: ChecklistState): {
   // Detectable steps = 1+2 (audits), 3 (cost center), 4 (contract). Step 5 is
   // always actionable and never counts. We hide the checklist when each of
   // those is done.
-  const shouldRender = !(
-    state.hasAudits &&
-    state.hasCostCenter &&
-    state.hasContract
-  );
+  const shouldRender = !(state.hasAudits && state.hasCostCenter && state.hasContract);
 
   return { items, shouldRender, mostRecentAuditHref };
 }
@@ -186,11 +182,7 @@ export async function OnboardingChecklist({
   );
 }
 
-function ChecklistItem({
-  item,
-}: {
-  item: ChecklistItemState;
-}): React.JSX.Element {
+function ChecklistItem({ item }: { item: ChecklistItemState }): React.JSX.Element {
   const showCheck = item.done && !item.alwaysActionable;
   return (
     <li
@@ -216,12 +208,7 @@ function ChecklistItem({
           )}
         >
           {showCheck ? (
-            <svg
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-3.5 w-3.5"
-              aria-hidden
-            >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden>
               <path
                 fillRule="evenodd"
                 d="M16.704 5.29a1 1 0 0 1 .006 1.415l-7.5 7.59a1 1 0 0 1-1.42.005L3.29 9.79a1 1 0 1 1 1.42-1.41l3.79 3.81 6.79-6.87a1 1 0 0 1 1.414-.03Z"

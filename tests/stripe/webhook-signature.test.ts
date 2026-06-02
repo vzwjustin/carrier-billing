@@ -75,11 +75,7 @@ vi.mock('@/lib/supabase/admin', () => ({
           then: (
             onFulfilled: (value: { error: null }) => unknown,
             onRejected?: (reason: unknown) => unknown,
-          ) =>
-            updateMock(patch).then(
-              (value) => onFulfilled({ error: value.error }),
-              onRejected,
-            ),
+          ) => updateMock(patch).then((value) => onFulfilled({ error: value.error }), onRejected),
         };
         return builder;
       },

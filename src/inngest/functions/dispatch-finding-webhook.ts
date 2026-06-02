@@ -63,12 +63,11 @@ export const dispatchFindingWebhookFn = inngest.createFunction(
   },
   { event: 'finding.status_changed' },
   async ({ event, step, logger }) => {
-    const { auditId, findingId, status, previousStatus, userId } =
-      parseEventData(
-        'finding.status_changed',
-        event.data,
-        FindingStatusChangedDataSchema,
-      );
+    const { auditId, findingId, status, previousStatus, userId } = parseEventData(
+      'finding.status_changed',
+      event.data,
+      FindingStatusChangedDataSchema,
+    );
 
     const ctx = (await step.run('load-context', async () => {
       const admin = getAdminClient();
@@ -106,9 +105,7 @@ export const dispatchFindingWebhookFn = inngest.createFunction(
 
       const { data: finding, error: findingErr } = await admin
         .from('findings')
-        .select(
-          'id, audit_id, rule_id, severity, title, status, estimated_monthly_savings_cents',
-        )
+        .select('id, audit_id, rule_id, severity, title, status, estimated_monthly_savings_cents')
         .eq('id', findingId)
         .eq('audit_id', auditId)
         .maybeSingle();
@@ -183,18 +180,8 @@ interface PostFindingWebhookInput {
   finding: FindingRow;
 }
 
-async function postFindingWebhook(
-  input: PostFindingWebhookInput,
-): Promise<{ status: number }> {
-  const {
-    url,
-    secret,
-    auditId,
-    findingId,
-    status,
-    previousStatus,
-    finding,
-  } = input;
+async function postFindingWebhook(input: PostFindingWebhookInput): Promise<{ status: number }> {
+  const { url, secret, auditId, findingId, status, previousStatus, finding } = input;
 
   const payload = {
     event: 'finding.status_changed' as const,
@@ -207,8 +194,7 @@ async function postFindingWebhook(
       rule_id: finding.rule_id,
       severity: finding.severity,
       title: finding.title,
-      estimated_monthly_savings_cents:
-        finding.estimated_monthly_savings_cents ?? 0,
+      estimated_monthly_savings_cents: finding.estimated_monthly_savings_cents ?? 0,
       status: finding.status,
     },
   };
@@ -225,9 +211,7 @@ async function postFindingWebhook(
   const target = await assertPublicHttpsTarget(url);
   const original = new URL(url);
   const host =
-    original.port.length > 0
-      ? `${original.hostname}:${original.port}`
-      : original.hostname;
+    original.port.length > 0 ? `${original.hostname}:${original.port}` : original.hostname;
 
   const { status: responseStatus } = await postPinnedHttps({
     url: original,

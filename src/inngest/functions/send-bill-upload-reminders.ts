@@ -2,10 +2,7 @@ import * as React from 'react';
 
 import { inngest } from '../client';
 import { env } from '@/env';
-import {
-  BillReminderEmail,
-  type BillReminderEmailProps,
-} from '@/lib/email/bill-reminder';
+import { BillReminderEmail, type BillReminderEmailProps } from '@/lib/email/bill-reminder';
 import { renderBillReminderText } from '@/lib/email/bill-reminder-text';
 import { getResend } from '@/lib/resend/client';
 import { FROM_ADDRESS } from '@/lib/resend/from';
@@ -37,9 +34,7 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
   async ({ step, logger }) => {
     const due = (await step.run('select-due-users', async () => {
       const supabase = getAdminClient();
-      const cutoff = new Date(
-        Date.now() - INACTIVITY_DAYS * 24 * 60 * 60_000,
-      ).toISOString();
+      const cutoff = new Date(Date.now() - INACTIVITY_DAYS * 24 * 60 * 60_000).toISOString();
 
       const { data: recentData, error: recentErr } = await supabase
         .from('audits')
@@ -49,9 +44,7 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
       if (recentErr) {
         throw new Error(`audits select failed: ${recentErr.message}`);
       }
-      const active = new Set(
-        ((recentData ?? []) as AuditUserRow[]).map((r) => r.user_id),
-      );
+      const active = new Set(((recentData ?? []) as AuditUserRow[]).map((r) => r.user_id));
 
       const { data: profileData, error: profileErr } = await supabase
         .from('profiles')

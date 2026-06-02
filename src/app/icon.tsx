@@ -8,26 +8,24 @@ export const contentType = 'image/png';
 // needing static icon assets in the repo.
 export default function Icon() {
   return new ImageResponse(
-    (
-      <div
-        style={{
-          fontSize: 22,
-          background: '#10b981',
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'white',
-          fontWeight: 800,
-          letterSpacing: '-0.05em',
-          fontFamily: 'system-ui, sans-serif',
-          borderRadius: '8px',
-        }}
-      >
-        CA
-      </div>
-    ),
+    <div
+      style={{
+        fontSize: 22,
+        background: '#10b981',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontWeight: 800,
+        letterSpacing: '-0.05em',
+        fontFamily: 'system-ui, sans-serif',
+        borderRadius: '8px',
+      }}
+    >
+      CA
+    </div>,
     {
       ...size,
     },

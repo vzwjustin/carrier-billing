@@ -22,10 +22,7 @@ import {
   type DisputeLineInput,
   type DisputePacket,
 } from '@/disputes/builder';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { isShareTokenExpired } from '@/lib/share-token';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
 import { getAdminClient } from '@/lib/supabase/admin';
@@ -119,8 +116,7 @@ export async function loadDisputePacket(
 
   const url = new URL(request.url);
   const rawToken = url.searchParams.get('token');
-  const token =
-    rawToken && /^[A-Za-z0-9_-]{32}$/.test(rawToken) ? rawToken : null;
+  const token = rawToken && /^[A-Za-z0-9_-]{32}$/.test(rawToken) ? rawToken : null;
   if (rawToken && !token) {
     return { kind: 'response', response: notFound() };
   }

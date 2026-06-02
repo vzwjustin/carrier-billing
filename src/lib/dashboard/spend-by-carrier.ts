@@ -47,20 +47,16 @@ export function aggregateSpendByCarrier(
   for (const audit of audits) {
     if (audit.total_charges_cents === null) continue;
     const carrier =
-      audit.carrier === null || audit.carrier.trim() === ''
-        ? UNKNOWN_CARRIER
-        : audit.carrier;
+      audit.carrier === null || audit.carrier.trim() === '' ? UNKNOWN_CARRIER : audit.carrier;
     buckets.set(carrier, (buckets.get(carrier) ?? 0) + audit.total_charges_cents);
     total += audit.total_charges_cents;
   }
 
-  const rows: CarrierSpendRow[] = Array.from(buckets.entries()).map(
-    ([carrier, total_cents]) => ({
-      carrier,
-      total_cents,
-      share: total > 0 ? total_cents / total : 0,
-    }),
-  );
+  const rows: CarrierSpendRow[] = Array.from(buckets.entries()).map(([carrier, total_cents]) => ({
+    carrier,
+    total_cents,
+    share: total > 0 ? total_cents / total : 0,
+  }));
 
   rows.sort((a, b) => {
     if (b.total_cents !== a.total_cents) return b.total_cents - a.total_cents;

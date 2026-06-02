@@ -6,10 +6,7 @@ import { inngest } from '@/inngest/client';
 import { trackServer } from '@/lib/analytics/events';
 import { scrubString } from '@/lib/observability/redact';
 import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
-import {
-  isSubscriptionStatus,
-  type SubscriptionStatus,
-} from '@/types/db-enums';
+import { isSubscriptionStatus, type SubscriptionStatus } from '@/types/db-enums';
 
 /**
  * Stripe event handler. Branches on `event.type` and applies the corresponding
@@ -66,9 +63,7 @@ export async function handleStripeEvent(
       );
       return;
     case 'checkout.session.async_payment_failed':
-      await onCheckoutSessionAsyncPaymentFailed(
-        event.data.object as Stripe.Checkout.Session,
-      );
+      await onCheckoutSessionAsyncPaymentFailed(event.data.object as Stripe.Checkout.Session);
       return;
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
@@ -92,11 +87,7 @@ export async function handleStripeEvent(
       // H2: pass event.created so the past_due flip honors the same
       // ordering guard subscription events use (a delayed payment_failed
       // arriving after a recovery must NOT resurrect past_due).
-      await onInvoicePaymentFailed(
-        event.data.object as Stripe.Invoice,
-        supabase,
-        event.created,
-      );
+      await onInvoicePaymentFailed(event.data.object as Stripe.Invoice, supabase, event.created);
       return;
     default:
       // Not a handled event type — no-op. The webhook still persisted the
@@ -115,10 +106,10 @@ async function onCheckoutSessionCompleted(
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
-    Sentry.captureMessage(
-      'checkout.session.completed without resolvable userId',
-      { level: 'warning', extra: { session_id: session.id } },
-    );
+    Sentry.captureMessage('checkout.session.completed without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
     return;
   }
 
@@ -158,9 +149,7 @@ async function onCheckoutSessionCompleted(
       .from('profiles')
       .update({ subscription_id: subscriptionId, updated_at: new Date().toISOString() })
       .eq('id', userId)
-      .or(
-        `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
-      );
+      .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`);
     if (subIdErr) {
       throw new Error(
         `onCheckoutSessionCompleted: subscription_id write failed: ${subIdErr.message}`,
@@ -189,10 +178,10 @@ async function onCheckoutSessionAsyncPaymentFailed(
 
   const userId = readUserIdFromSession(session);
   if (!userId) {
-    Sentry.captureMessage(
-      'checkout.session.async_payment_failed without resolvable userId',
-      { level: 'warning', extra: { session_id: session.id } },
-    );
+    Sentry.captureMessage('checkout.session.async_payment_failed without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
   }
 }
 
@@ -203,10 +192,10 @@ async function settleOneTimeCheckoutCredit(
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
-    Sentry.captureMessage(
-      'one-time checkout session without resolvable userId',
-      { level: 'warning', extra: { session_id: session.id } },
-    );
+    Sentry.captureMessage('one-time checkout session without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
     return;
   }
 
@@ -235,14 +224,11 @@ async function settleOneTimeCheckoutCredit(
       'settleOneTimeCheckoutCredit: missing billingEventId in context (caller must pass it)',
     );
   }
-  const { data: granted, error: rpcError } = await supabase.rpc(
-    'grant_credit_once',
-    {
-      p_event_id: context.billingEventId,
-      p_profile_id: userId,
-      p_delta: 1,
-    },
-  );
+  const { data: granted, error: rpcError } = await supabase.rpc('grant_credit_once', {
+    p_event_id: context.billingEventId,
+    p_profile_id: userId,
+    p_delta: 1,
+  });
   if (rpcError) {
     throw new Error(`grant_credit_once failed: ${rpcError.message}`);
   }
@@ -264,18 +250,13 @@ async function settleOneTimeCheckoutCredit(
 }
 
 function isSettledPaymentSession(session: Stripe.Checkout.Session): boolean {
-  return (
-    session.payment_status === 'paid' ||
-    session.payment_status === 'no_payment_required'
-  );
+  return session.payment_status === 'paid' || session.payment_status === 'no_payment_required';
 }
 
 async function onSubscriptionUpserted(
   subscription: Stripe.Subscription,
   supabase: SupabaseClient,
-  eventType:
-    | 'customer.subscription.created'
-    | 'customer.subscription.updated',
+  eventType: 'customer.subscription.created' | 'customer.subscription.updated',
   eventCreated: number,
 ): Promise<void> {
   // C4 — observability breadcrumb so Sentry traces show which Stripe event
@@ -293,13 +274,10 @@ async function onSubscriptionUpserted(
 
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'subscription event without customer id',
-      {
-        level: 'warning',
-        extra: { subscription_id: subscription.id, event_type: eventType },
-      },
-    );
+    Sentry.captureMessage('subscription event without customer id', {
+      level: 'warning',
+      extra: { subscription_id: subscription.id, event_type: eventType },
+    });
     return;
   }
 
@@ -307,12 +285,10 @@ async function onSubscriptionUpserted(
   // can render "your access ends on <date>" instead of leaving the user
   // guessing whether their cancellation went through.
   const cancelAtPeriodEnd =
-    typeof (subscription as { cancel_at_period_end?: unknown })
-      .cancel_at_period_end === 'boolean'
+    typeof (subscription as { cancel_at_period_end?: unknown }).cancel_at_period_end === 'boolean'
       ? Boolean((subscription as { cancel_at_period_end: boolean }).cancel_at_period_end)
       : false;
-  const periodEndUnix = (subscription as { current_period_end?: unknown })
-    .current_period_end;
+  const periodEndUnix = (subscription as { current_period_end?: unknown }).current_period_end;
   const currentPeriodEnd =
     typeof periodEndUnix === 'number' && periodEndUnix > 0
       ? new Date(periodEndUnix * 1000).toISOString()
@@ -333,10 +309,10 @@ async function onSubscriptionDeleted(
 ): Promise<void> {
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'subscription.deleted without customer id',
-      { level: 'warning', extra: { subscription_id: subscription.id } },
-    );
+    Sentry.captureMessage('subscription.deleted without customer id', {
+      level: 'warning',
+      extra: { subscription_id: subscription.id },
+    });
     return;
   }
 
@@ -429,9 +405,7 @@ async function applySubscriptionPatchWithOrderGuard(
       updated_at: new Date().toISOString(),
     })
     .eq('id', matched.id)
-    .or(
-      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
-    )
+    .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`)
     .select('id');
 
   if (updateErr) {
@@ -461,10 +435,10 @@ async function onInvoicePaymentFailed(
 ): Promise<void> {
   const customerId = readCustomerId(invoice.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'invoice.payment_failed without customer id',
-      { level: 'warning', extra: { invoice_id: invoice.id } },
-    );
+    Sentry.captureMessage('invoice.payment_failed without customer id', {
+      level: 'warning',
+      extra: { invoice_id: invoice.id },
+    });
     return;
   }
 
@@ -522,8 +496,7 @@ async function onInvoicePaymentFailed(
   ) {
     Sentry.addBreadcrumb({
       category: 'stripe',
-      message:
-        'invoice.payment_failed: profile in terminal status, skipping past_due flip',
+      message: 'invoice.payment_failed: profile in terminal status, skipping past_due flip',
       level: 'info',
       data: { customerId, previousStatus, userId: matchedForGuard.id },
     });
@@ -553,9 +526,7 @@ async function onInvoicePaymentFailed(
       updated_at: new Date().toISOString(),
     })
     .eq('id', matchedForGuard.id)
-    .or(
-      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
-    )
+    .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`)
     .select('id, email');
 
   if (updateErr) {
@@ -617,8 +588,7 @@ async function onInvoicePaymentFailed(
         userId: profile.id,
         stripeCustomerId: customerId,
         invoiceId: invoice.id ?? null,
-        amountDueCents:
-          typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
+        amountDueCents: typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
       },
     });
   } catch (sendErr) {
@@ -647,10 +617,7 @@ async function trackCheckoutCompleted(
   userId: string,
 ): Promise<void> {
   try {
-    await trackServer(
-      { name: 'checkout_completed', properties: { mode } },
-      userId,
-    );
+    await trackServer({ name: 'checkout_completed', properties: { mode } }, userId);
   } catch {
     // Analytics must never break a webhook handler.
   }
@@ -666,10 +633,7 @@ async function trackCheckoutCompleted(
 const NO_MATCH = Symbol('no-match');
 type NoMatch = typeof NO_MATCH;
 
-const TERMINAL_EVENT_TYPES = new Set([
-  'customer.subscription.deleted',
-  'invoice.payment_failed',
-]);
+const TERMINAL_EVENT_TYPES = new Set(['customer.subscription.deleted', 'invoice.payment_failed']);
 
 /**
  * Verify that a profile-update affected exactly one row when matching by
@@ -700,8 +664,7 @@ function assertExactlyOneProfileMatched<T extends { id: string }>(
       Sentry.addBreadcrumb({
         category: 'stripe',
         level: 'info',
-        message:
-          'stripe webhook 0-row match on terminal event (profile likely deleted) — no-op',
+        message: 'stripe webhook 0-row match on terminal event (profile likely deleted) — no-op',
         data: { customerId, eventType },
       });
       return NO_MATCH;
@@ -710,18 +673,13 @@ function assertExactlyOneProfileMatched<T extends { id: string }>(
       level: 'warning',
       extra: { customerId, eventType },
     });
-    throw new Error(
-      `profile lookup by stripe_customer_id matched 0 rows (${eventType})`,
-    );
+    throw new Error(`profile lookup by stripe_customer_id matched 0 rows (${eventType})`);
   }
   if (matched.length > 1) {
-    Sentry.captureMessage(
-      'stripe webhook matched multiple profiles by customer id',
-      {
-        level: 'error',
-        extra: { customerId, eventType, matchCount: matched.length },
-      },
-    );
+    Sentry.captureMessage('stripe webhook matched multiple profiles by customer id', {
+      level: 'error',
+      extra: { customerId, eventType, matchCount: matched.length },
+    });
     throw new Error(
       `profile lookup by stripe_customer_id matched ${matched.length} rows (${eventType}) — data corruption`,
     );
@@ -755,13 +713,8 @@ async function updateProfile(
   }
 }
 
-function readUserIdFromSession(
-  session: Stripe.Checkout.Session,
-): string | null {
-  if (
-    typeof session.client_reference_id === 'string' &&
-    session.client_reference_id.length > 0
-  ) {
+function readUserIdFromSession(session: Stripe.Checkout.Session): string | null {
+  if (typeof session.client_reference_id === 'string' && session.client_reference_id.length > 0) {
     return session.client_reference_id;
   }
   const md = session.metadata;
@@ -785,9 +738,7 @@ function readCustomerId(
   return null;
 }
 
-function readSubscriptionId(
-  sub: string | Stripe.Subscription | null | undefined,
-): string | null {
+function readSubscriptionId(sub: string | Stripe.Subscription | null | undefined): string | null {
   if (typeof sub === 'string' && sub.length > 0) return sub;
   if (sub && typeof sub === 'object' && 'id' in sub) {
     const id = (sub as { id: unknown }).id;

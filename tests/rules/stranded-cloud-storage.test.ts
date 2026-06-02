@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { strandedCloudStorageRule } from '@/rules/definitions/stranded-cloud-storage';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeDpp,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeDpp, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
@@ -125,9 +118,7 @@ describe('stranded_cloud_storage rule', () => {
               features: [
                 makeFeature({ name: 'Verizon Cloud', category: 'cloud', monthly_cents: 500 }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 24, remaining_payments: 12 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 24, remaining_payments: 12 })],
             }),
           ],
         }),

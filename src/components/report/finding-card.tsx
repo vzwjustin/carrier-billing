@@ -2,16 +2,10 @@ import * as React from 'react';
 
 import type { Finding, FindingStatus, Severity } from '@/rules/types';
 import { formatCents } from '@/lib/utils';
-import {
-  buildFindingViewModel,
-  type FindingViewModel,
-} from '@/reports/finding-view-model';
+import { buildFindingViewModel, type FindingViewModel } from '@/reports/finding-view-model';
 
 import { FindingStatusControl } from './finding-status-control';
-import {
-  FINDING_STATUS_BADGE,
-  FINDING_STATUS_LABEL,
-} from './finding-status-meta';
+import { FINDING_STATUS_BADGE, FINDING_STATUS_LABEL } from './finding-status-meta';
 
 const SEVERITY_BADGE: Record<Severity, string> = {
   high: 'bg-red-50 text-red-700 border-red-200',
@@ -117,44 +111,32 @@ export function FindingCard({
             finding has a DB-assigned id. Public share = read-only badge above.
           */}
           {!isPublic && auditId && finding.id ? (
-            <FindingStatusControl
-              auditId={auditId}
-              findingId={finding.id}
-              initialStatus={status}
-            />
+            <FindingStatusControl auditId={auditId} findingId={finding.id} initialStatus={status} />
           ) : null}
         </div>
 
         {vm.hasSavings ? (
           <div className="text-right">
-            <p className="text-xs font-medium uppercase tracking-wider text-emerald-700">
+            <p className="text-xs font-medium tracking-wider text-emerald-700 uppercase">
               Estimated savings
             </p>
             <p className="text-base font-semibold text-emerald-900">
               {formatCents(vm.monthlySavingsCents)}
-              <span className="ml-1 text-xs font-normal text-emerald-800">
-                / month
-              </span>
+              <span className="ml-1 text-xs font-normal text-emerald-800">/ month</span>
             </p>
           </div>
         ) : null}
       </div>
 
-      <h3 className="mt-3 text-base font-semibold text-neutral-900">
-        {vm.title}
-      </h3>
+      <h3 className="mt-3 text-base font-semibold text-neutral-900">{vm.title}</h3>
 
-      <p className="mt-2 text-sm leading-relaxed text-neutral-700">
-        {vm.description}
-      </p>
+      <p className="mt-2 text-sm leading-relaxed text-neutral-700">{vm.description}</p>
 
       <div className="mt-4 rounded-md border border-neutral-200 bg-neutral-50 p-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-neutral-600">
+        <p className="text-xs font-medium tracking-wider text-neutral-600 uppercase">
           Recommended action
         </p>
-        <p className="mt-1 text-sm leading-relaxed text-neutral-800">
-          {vm.recommendedAction}
-        </p>
+        <p className="mt-1 text-sm leading-relaxed text-neutral-800">{vm.recommendedAction}</p>
       </div>
     </article>
   );

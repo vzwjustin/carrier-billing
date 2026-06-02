@@ -71,7 +71,7 @@ export function InventoryFilters({
           defaultValue={initial.q}
           placeholder="Search device, plan, or MDN…"
           maxLength={80}
-          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
         />
       </label>
 
@@ -80,7 +80,7 @@ export function InventoryFilters({
         <select
           name="carrier"
           defaultValue={initial.carrier}
-          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           {CARRIER_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -95,7 +95,7 @@ export function InventoryFilters({
         <select
           name="account"
           defaultValue={initial.account}
-          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <option value="">All accounts</option>
           {accountOptions.map((acct) => (
@@ -111,7 +111,7 @@ export function InventoryFilters({
         <select
           name="deviceType"
           defaultValue={initial.deviceType}
-          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           {DEVICE_TYPE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -126,7 +126,7 @@ export function InventoryFilters({
         <select
           name="status"
           defaultValue={initial.status}
-          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

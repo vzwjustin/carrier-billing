@@ -18,10 +18,7 @@ export const dynamic = 'force-dynamic';
 // here you MUST add it there too. The canonical list lives in
 // `@/components/report/finding-status-meta`; route files in Next.js only
 // allow documented Route exports, so we narrow to a tuple type locally here.
-const STATUS_ENUM = FINDING_STATUS_VALUES as readonly [
-  FindingStatus,
-  ...FindingStatus[],
-];
+const STATUS_ENUM = FINDING_STATUS_VALUES as readonly [FindingStatus, ...FindingStatus[]];
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -170,7 +167,14 @@ export async function POST(
       });
     }
 
-    await logTrailEvent({ userId: user.id, eventType: 'finding_status_changed', entityType: 'finding', entityId: findingId, metadata: { audit_id: auditId, status, previous_status: finding.status ?? null }, actorEmail: user.email ?? null });
+    await logTrailEvent({
+      userId: user.id,
+      eventType: 'finding_status_changed',
+      entityType: 'finding',
+      entityId: findingId,
+      metadata: { audit_id: auditId, status, previous_status: finding.status ?? null },
+      actorEmail: user.email ?? null,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

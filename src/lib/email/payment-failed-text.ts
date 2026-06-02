@@ -6,12 +6,9 @@ import type { PaymentFailedEmailProps } from './payment-failed';
  * Plain-text fallback for the payment-failed email. Sent alongside the
  * HTML/React body via Resend's `text:` field.
  */
-export function renderPaymentFailedText(
-  props: PaymentFailedEmailProps,
-): string {
+export function renderPaymentFailedText(props: PaymentFailedEmailProps): string {
   const { recoveryUrl, amountDueCents, invoiceId } = props;
-  const tail =
-    invoiceId && invoiceId.length >= 6 ? invoiceId.slice(-6) : invoiceId;
+  const tail = invoiceId && invoiceId.length >= 6 ? invoiceId.slice(-6) : invoiceId;
 
   const lines: string[] = [
     'Your CarrierAudit payment failed',

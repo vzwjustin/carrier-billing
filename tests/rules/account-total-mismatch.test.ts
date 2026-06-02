@@ -76,10 +76,7 @@ describe('account_total_mismatch rule', () => {
         makeAccount({
           total_charges_cents: 50000,
           taxes_fees_cents: 0,
-          lines: [
-            makeLine({ plan_base_cents: 4000 }),
-            makeLine({ plan_base_cents: 4000 }),
-          ],
+          lines: [makeLine({ plan_base_cents: 4000 }), makeLine({ plan_base_cents: 4000 })],
         }),
       ],
     });

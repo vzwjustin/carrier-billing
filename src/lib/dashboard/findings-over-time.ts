@@ -17,12 +17,7 @@
 export type Severity = 'high' | 'medium' | 'low' | 'info';
 
 /** Display order for stack segments — bottom → top. Mirrors UI semantics. */
-export const SEVERITY_ORDER: ReadonlyArray<Severity> = [
-  'high',
-  'medium',
-  'low',
-  'info',
-];
+export const SEVERITY_ORDER: ReadonlyArray<Severity> = ['high', 'medium', 'low', 'info'];
 
 export interface AuditMini {
   id: string;
@@ -52,12 +47,7 @@ export interface TimeSeriesRow {
 export const DEFAULT_WINDOW = 6;
 
 function isSeverity(value: string): value is Severity {
-  return (
-    value === 'high' ||
-    value === 'medium' ||
-    value === 'low' ||
-    value === 'info'
-  );
+  return value === 'high' || value === 'medium' || value === 'low' || value === 'info';
 }
 
 /**

@@ -16,10 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import type { Finding } from '@/rules/types';
-import {
-  buildFindingViewModel,
-  type FindingViewModel,
-} from '@/reports/finding-view-model';
+import { buildFindingViewModel, type FindingViewModel } from '@/reports/finding-view-model';
 import { FindingCard as WebFindingCard } from '@/components/report/finding-card';
 import { FindingCard as PdfFindingCard } from '@/reports/pdf/finding-card';
 
@@ -29,8 +26,7 @@ const FIXTURE: Finding = {
   title: 'Expired promotional credit still on bill',
   description:
     'A $25/month promotional credit appears to have expired but is still being applied — likely to fall off next cycle.',
-  recommended_action:
-    'Call carrier and request a one-time credit for the prior expired month.',
+  recommended_action: 'Call carrier and request a one-time credit for the prior expired month.',
   estimated_monthly_savings_cents: 2500,
   confidence: 0.9,
   affected_line_indexes: [0, 2, 4],
@@ -55,8 +51,7 @@ function isFunctionComponent(
 ): type is (props: Record<string, unknown>) => React.ReactNode {
   return (
     typeof type === 'function' &&
-    !(type as { prototype?: { isReactComponent?: unknown } }).prototype
-      ?.isReactComponent
+    !(type as { prototype?: { isReactComponent?: unknown } }).prototype?.isReactComponent
   );
 }
 
@@ -67,9 +62,7 @@ function collectText(node: AnyChild): string {
   if (typeof node === 'object' && 'type' in node && 'props' in node) {
     const el = node as React.ReactElement<{ children?: AnyChild }>;
     if (isFunctionComponent(el.type)) {
-      return collectText(
-        el.type(el.props as unknown as Record<string, unknown>),
-      );
+      return collectText(el.type(el.props as unknown as Record<string, unknown>));
     }
     return collectText(el.props.children);
   }
@@ -104,9 +97,13 @@ describe('FindingViewModel contract', () => {
   });
 
   it('classifies confidence labels by band', () => {
-    expect(buildFindingViewModel({ ...FIXTURE, confidence: 0.4 }).confidenceLabel).toBe('Speculative');
+    expect(buildFindingViewModel({ ...FIXTURE, confidence: 0.4 }).confidenceLabel).toBe(
+      'Speculative',
+    );
     expect(buildFindingViewModel({ ...FIXTURE, confidence: 0.7 }).confidenceLabel).toBe('Likely');
-    expect(buildFindingViewModel({ ...FIXTURE, confidence: 0.9 }).confidenceLabel).toBe('High confidence');
+    expect(buildFindingViewModel({ ...FIXTURE, confidence: 0.9 }).confidenceLabel).toBe(
+      'High confidence',
+    );
   });
 
   it('marks hasSavings false when monthly savings is zero', () => {
@@ -137,12 +134,8 @@ describe('Web FindingCard renders every shared view-model field', () => {
     expect(screen.getByText(vm.ruleId)).toBeInTheDocument();
 
     // Affected line + account chips
-    expect(
-      screen.getByText(`Affects ${vm.affectedLineCount} lines`),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(`${vm.affectedAccountCount} accounts affected`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`Affects ${vm.affectedLineCount} lines`)).toBeInTheDocument();
+    expect(screen.getByText(`${vm.affectedAccountCount} accounts affected`)).toBeInTheDocument();
 
     // Savings — formatted as US dollars from cents.
     expect(screen.getByText('$25.00')).toBeInTheDocument();

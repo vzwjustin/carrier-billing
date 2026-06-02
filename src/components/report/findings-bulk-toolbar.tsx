@@ -98,14 +98,11 @@ export function FindingsBulkToolbar({
       // noUncheckedIndexedAccess narrows; skip the (impossible) hole.
       if (!findingId) continue;
       try {
-        const res = await fetch(
-          `/api/audits/${auditId}/findings/${findingId}/status`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status }),
-          },
-        );
+        const res = await fetch(`/api/audits/${auditId}/findings/${findingId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
         if (res.ok) {
           succeeded += 1;
           onStatusApplied?.(findingId, status);
@@ -138,9 +135,7 @@ export function FindingsBulkToolbar({
       role="region"
       aria-label="Bulk actions"
     >
-      <p className="font-medium">
-        {count} selected
-      </p>
+      <p className="font-medium">{count} selected</p>
       <div className="flex flex-wrap items-center gap-2">
         {BULK_ACTIONS.map((action) => (
           <button

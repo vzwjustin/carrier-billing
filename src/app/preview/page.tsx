@@ -5,9 +5,7 @@ export const dynamic = 'force-static';
 export default function PreviewIndexPage(): React.JSX.Element {
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-neutral-900">
-        Component previews
-      </h1>
+      <h1 className="text-2xl font-semibold text-neutral-900">Component previews</h1>
       <ul className="list-inside list-disc space-y-1 text-sm">
         <li>
           <Link href="/preview/autopsy" className="text-blue-600 underline">

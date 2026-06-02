@@ -23,10 +23,7 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -71,21 +68,13 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = BodySchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: first?.message ?? 'Invalid request body.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: first?.message ?? 'Invalid request body.' }, { status: 400 });
   }
 
-  const trimmed =
-    parsed.data.webhook_url === null
-      ? null
-      : parsed.data.webhook_url.trim();
+  const trimmed = parsed.data.webhook_url === null ? null : parsed.data.webhook_url.trim();
 
   // Treat empty string the same as null — "clear it".
-  const nextUrl: string | null = trimmed === null || trimmed.length === 0
-    ? null
-    : trimmed;
+  const nextUrl: string | null = trimmed === null || trimmed.length === 0 ? null : trimmed;
 
   if (nextUrl !== null && !nextUrl.startsWith(SLACK_HOOKS_PREFIX)) {
     return NextResponse.json(
@@ -109,19 +98,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const admin = getAdminClient();
-  const { error } = await admin
-    .from('profiles')
-    .update(update)
-    .eq('id', user.id);
+  const { error } = await admin.from('profiles').update(update).eq('id', user.id);
   if (error) {
     Sentry.captureException(error, {
       tags: { surface: 'settings.slack.update' },
       extra: { userId: user.id },
     });
-    return NextResponse.json(
-      { error: 'Could not save Slack settings.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Could not save Slack settings.' }, { status: 500 });
   }
 
   return NextResponse.json({

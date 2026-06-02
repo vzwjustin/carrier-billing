@@ -43,8 +43,7 @@ async function postSettings(body: {
   if (!res.ok) {
     return {
       ok: false,
-      error:
-        (payload as { error?: string } | null)?.error ?? 'Could not save.',
+      error: (payload as { error?: string } | null)?.error ?? 'Could not save.',
     };
   }
   return payload as SaveResponse;
@@ -64,8 +63,7 @@ async function postTest(): Promise<TestResponse> {
   if (!res.ok) {
     return {
       ok: false,
-      error:
-        (payload as { error?: string } | null)?.error ?? 'Test failed.',
+      error: (payload as { error?: string } | null)?.error ?? 'Test failed.',
     };
   }
   return payload as TestResponse;
@@ -96,9 +94,7 @@ export function SlackCard({
 }: SlackCardProps): React.JSX.Element {
   const [webhookUrl, setWebhookUrl] = useState<string | null>(initialWebhookUrl);
   const [draftUrl, setDraftUrl] = useState<string>(initialWebhookUrl ?? '');
-  const [notifyHighFinding, setNotifyHighFinding] = useState(
-    initialNotifyOnHighFinding,
-  );
+  const [notifyHighFinding, setNotifyHighFinding] = useState(initialNotifyOnHighFinding);
   const [notifyAutopsy, setNotifyAutopsy] = useState(initialNotifyOnAutopsy);
   const [revealed, setRevealed] = useState(false);
   const [isSaving, startSaveTransition] = useTransition();
@@ -158,18 +154,12 @@ export function SlackCard({
   }
 
   const hasSavedUrl = webhookUrl !== null && webhookUrl.length > 0;
-  const displayedUrl = hasSavedUrl
-    ? revealed
-      ? webhookUrl
-      : maskSlackUrl(webhookUrl)
-    : null;
+  const displayedUrl = hasSavedUrl ? (revealed ? webhookUrl : maskSlackUrl(webhookUrl)) : null;
 
   return (
     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          Slack notifications
-        </h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Slack notifications</h2>
         <p className="text-sm text-neutral-600">
           Paste an{' '}
           <a
@@ -180,10 +170,9 @@ export function SlackCard({
           >
             Slack incoming-webhook URL
           </a>{' '}
-          to receive a message when a high-severity finding is created or a
-          bill-increase autopsy lands with disputable charges. The payload
-          contains counts and finding titles only — never line-item data,
-          account numbers, or phone numbers.
+          to receive a message when a high-severity finding is created or a bill-increase autopsy
+          lands with disputable charges. The payload contains counts and finding titles only — never
+          line-item data, account numbers, or phone numbers.
         </p>
       </header>
 
@@ -191,9 +180,7 @@ export function SlackCard({
         <div className="space-y-2">
           <p className="text-sm font-medium text-neutral-900">Saved webhook</p>
           <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <code className="break-all text-sm font-mono text-neutral-900">
-              {displayedUrl}
-            </code>
+            <code className="font-mono text-sm break-all text-neutral-900">{displayedUrl}</code>
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -226,15 +213,14 @@ export function SlackCard({
           disabled={isSaving}
         />
         <p id="slack-hint" className="text-xs text-neutral-500">
-          Must start with <code className="rounded bg-neutral-100 px-1 py-0.5">https://hooks.slack.com/</code>.
+          Must start with{' '}
+          <code className="rounded bg-neutral-100 px-1 py-0.5">https://hooks.slack.com/</code>.
           Leave blank and save to disable.
         </p>
       </div>
 
       <fieldset className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-        <legend className="px-1 text-sm font-medium text-neutral-900">
-          Notify me when…
-        </legend>
+        <legend className="px-1 text-sm font-medium text-neutral-900">Notify me when…</legend>
         <label className="flex items-start gap-2 text-sm text-neutral-800">
           <input
             type="checkbox"
@@ -244,8 +230,8 @@ export function SlackCard({
             disabled={isSaving}
           />
           <span>
-            A <span className="font-medium">high-severity finding</span> is
-            created (e.g. an escalated autopsy driver flagged as disputable).
+            A <span className="font-medium">high-severity finding</span> is created (e.g. an
+            escalated autopsy driver flagged as disputable).
           </span>
         </label>
         <label className="flex items-start gap-2 text-sm text-neutral-800">
@@ -257,8 +243,8 @@ export function SlackCard({
             disabled={isSaving}
           />
           <span>
-            A <span className="font-medium">bill-increase autopsy</span> lands
-            with at least $0.01 of disputable charges.
+            A <span className="font-medium">bill-increase autopsy</span> lands with at least $0.01
+            of disputable charges.
           </span>
         </label>
       </fieldset>
@@ -286,12 +272,7 @@ export function SlackCard({
             {isSaving ? 'Working…' : 'Clear'}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          size="sm"
-          onClick={onSave}
-          disabled={isSaving}
-        >
+        <Button type="button" size="sm" onClick={onSave} disabled={isSaving}>
           {isSaving ? 'Saving…' : 'Save'}
         </Button>
       </div>

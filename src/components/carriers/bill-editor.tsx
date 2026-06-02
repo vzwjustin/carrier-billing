@@ -11,10 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { billTotals, type CarrierBill, type LineItem } from '@/lib/carriers/bill-schema';
-import {
-  optimizeBill,
-  type OptimizationResult,
-} from '@/lib/carriers/optimize';
+import { optimizeBill, type OptimizationResult } from '@/lib/carriers/optimize';
 import { CARRIERS, CARRIER_LABELS, type Carrier } from '@/lib/carriers/types';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -57,9 +54,7 @@ export interface BillEditorProps {
 
 export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
   const [bills, setBills] = useState<CarrierBill[]>(initial);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initial[0]?.id ?? null,
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(initial[0]?.id ?? null);
   const [newCarrier, setNewCarrier] = useState<Carrier>('verizon');
   const [newLabel, setNewLabel] = useState('');
   const [pending, startTransition] = useTransition();
@@ -67,19 +62,12 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
   const [rev, setRev] = useState(0);
 
   const selected = bills.find((b) => b.id === selectedId) ?? null;
-  const totals = useMemo(
-    () => billTotals(selected?.lineItems ?? []),
-    [selected],
-  );
+  const totals = useMemo(() => billTotals(selected?.lineItems ?? []), [selected]);
   const savingsPct =
-    totals.currentCents > 0
-      ? Math.round((totals.savingsCents / totals.currentCents) * 100)
-      : 0;
+    totals.currentCents > 0 ? Math.round((totals.savingsCents / totals.currentCents) * 100) : 0;
 
   function patchSelected(mutate: (b: CarrierBill) => CarrierBill): void {
-    setBills((prev) =>
-      prev.map((b) => (b.id === selectedId ? mutate(b) : b)),
-    );
+    setBills((prev) => prev.map((b) => (b.id === selectedId ? mutate(b) : b)));
   }
 
   function onCreate(): void {
@@ -143,15 +131,11 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
 
   function applySuggestions(): void {
     if (!selected || !analysis) return;
-    const map = new Map(
-      analysis.suggestions.map((s) => [s.lineItemId, s.suggestedCents]),
-    );
+    const map = new Map(analysis.suggestions.map((s) => [s.lineItemId, s.suggestedCents]));
     patchSelected((b) => ({
       ...b,
       lineItems: b.lineItems.map((x) =>
-        map.has(x.id)
-          ? { ...x, optimizedCents: map.get(x.id) as number }
-          : x,
+        map.has(x.id) ? { ...x, optimizedCents: map.get(x.id) as number } : x,
       ),
     }));
     setAnalysis(null);
@@ -176,7 +160,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
     <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
       <aside className="space-y-4">
         <div className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
             New bill
           </p>
           <select
@@ -197,21 +181,13 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
           />
-          <Button
-            type="button"
-            size="sm"
-            className="w-full"
-            disabled={pending}
-            onClick={onCreate}
-          >
+          <Button type="button" size="sm" className="w-full" disabled={pending} onClick={onCreate}>
             Create
           </Button>
         </div>
         <nav className="space-y-1" aria-label="Bills">
           {bills.length === 0 ? (
-            <p className="px-2 text-sm text-neutral-500 dark:text-neutral-400">
-              No bills yet.
-            </p>
+            <p className="px-2 text-sm text-neutral-500 dark:text-neutral-400">No bills yet.</p>
           ) : (
             bills.map((b) => (
               <button
@@ -226,9 +202,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                 )}
               >
                 <span className="block truncate font-medium">{b.label}</span>
-                <span className="block text-xs opacity-70">
-                  {CARRIER_LABELS[b.carrier]}
-                </span>
+                <span className="block text-xs opacity-70">{CARRIER_LABELS[b.carrier]}</span>
               </button>
             ))
           )}
@@ -241,26 +215,14 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
             <Input
               aria-label="Bill label"
               value={selected.label}
-              onChange={(e) =>
-                patchSelected((b) => ({ ...b, label: e.target.value }))
-              }
+              onChange={(e) => patchSelected((b) => ({ ...b, label: e.target.value }))}
               className="max-w-xs font-medium"
             />
             <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onAnalyze}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={onAnalyze}>
                 Analyze &amp; optimize
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onExport}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={onExport}>
                 Export CSV
               </Button>
               <Button
@@ -272,12 +234,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
               >
                 Delete
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending}
-                onClick={onSave}
-              >
+              <Button type="button" size="sm" disabled={pending} onClick={onSave}>
                 Save
               </Button>
             </div>
@@ -285,10 +242,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
 
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat label="Current / mo" value={formatCents(totals.currentCents)} />
-            <Stat
-              label="Optimized / mo"
-              value={formatCents(totals.optimizedCents)}
-            />
+            <Stat label="Optimized / mo" value={formatCents(totals.optimizedCents)} />
             <Stat
               label={`Savings / mo (${savingsPct}%)`}
               value={formatCents(totals.savingsCents)}
@@ -312,7 +266,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
 
           <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
             <table className="w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+              <thead className="bg-neutral-50 text-left text-xs tracking-wide text-neutral-500 uppercase dark:bg-neutral-900 dark:text-neutral-400">
                 <tr>
                   <th className="px-3 py-2 font-medium">Description</th>
                   <th className="px-3 py-2 font-medium">Current $</th>
@@ -322,10 +276,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
               </thead>
               <tbody key={rev}>
                 {selected.lineItems.map((li) => (
-                  <tr
-                    key={li.id}
-                    className="border-t border-neutral-200 dark:border-neutral-800"
-                  >
+                  <tr key={li.id} className="border-t border-neutral-200 dark:border-neutral-800">
                     <td className="px-3 py-2">
                       <Input
                         aria-label="Description"
@@ -334,9 +285,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                           patchSelected((b) => ({
                             ...b,
                             lineItems: b.lineItems.map((x) =>
-                              x.id === li.id
-                                ? { ...x, description: e.target.value }
-                                : x,
+                              x.id === li.id ? { ...x, description: e.target.value } : x,
                             ),
                           }))
                         }
@@ -356,9 +305,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                               x.id === li.id
                                 ? {
                                     ...x,
-                                    monthlyCents: dollarsToCents(
-                                      e.target.value,
-                                    ),
+                                    monthlyCents: dollarsToCents(e.target.value),
                                   }
                                 : x,
                             ),
@@ -381,9 +328,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                               x.id === li.id
                                 ? {
                                     ...x,
-                                    optimizedCents: dollarsToCents(
-                                      e.target.value,
-                                    ),
+                                    optimizedCents: dollarsToCents(e.target.value),
                                   }
                                 : x,
                             ),
@@ -399,9 +344,7 @@ export function BillEditor({ initial }: BillEditorProps): React.JSX.Element {
                         onClick={() =>
                           patchSelected((b) => ({
                             ...b,
-                            lineItems: b.lineItems.filter(
-                              (x) => x.id !== li.id,
-                            ),
+                            lineItems: b.lineItems.filter((x) => x.id !== li.id),
                           }))
                         }
                         className="text-xs text-red-600 hover:underline dark:text-red-400"
@@ -501,10 +444,7 @@ function ComparisonBar({
           Optimized
         </span>
         <div className="h-3 flex-1 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-          <div
-            className="h-full rounded-full bg-emerald-500"
-            style={{ width: `${optPct}%` }}
-          />
+          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${optPct}%` }} />
         </div>
       </div>
     </div>
@@ -513,8 +453,7 @@ function ComparisonBar({
 
 const SEVERITY_BADGE: Record<string, string> = {
   high: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  medium:
-    'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  medium: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   low: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
 };
 
@@ -549,12 +488,7 @@ function AnalysisPanel({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onDismiss}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={onDismiss}>
             Dismiss
           </Button>
           <Button
@@ -609,10 +543,8 @@ function AnalysisPanel({
                   {s.severity}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
-                {s.rationale}
-              </p>
-              <p className="mt-1 text-xs tabular-nums text-neutral-700 dark:text-neutral-300">
+              <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{s.rationale}</p>
+              <p className="mt-1 text-xs text-neutral-700 tabular-nums dark:text-neutral-300">
                 {formatCents(s.currentCents)} →{' '}
                 <span className="font-semibold text-emerald-700 dark:text-emerald-400">
                   {formatCents(s.suggestedCents)}

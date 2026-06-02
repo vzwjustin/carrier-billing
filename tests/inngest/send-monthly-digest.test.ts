@@ -52,7 +52,10 @@ type QueryShape = {
   type: 'select' | 'update' | 'maybeSingle' | 'in';
 };
 
-type TableHandler = (calls: QueryShape) => { data: unknown; error: null | { message: string; code?: string } };
+type TableHandler = (calls: QueryShape) => {
+  data: unknown;
+  error: null | { message: string; code?: string };
+};
 
 interface StubConfig {
   // For each (op, table) the handler decides what to return. Some tests
@@ -104,7 +107,10 @@ function makeStub(config: StubConfig): SupabaseClient {
       },
       // Awaiting the builder returns a `{ data, error }` resolution.
       then(
-        resolve: (v: { data: unknown; error: null | { message: string; code?: string } }) => unknown,
+        resolve: (v: {
+          data: unknown;
+          error: null | { message: string; code?: string };
+        }) => unknown,
       ) {
         if (!handler) return resolve({ data: [], error: null });
         return resolve(handler(calls));
@@ -124,14 +130,18 @@ function makeStub(config: StubConfig): SupabaseClient {
 
 describe('selectDigestCohort', () => {
   const NOW = new Date('2026-06-01T14:00:00Z');
-  const CUTOFF_ISO = new Date(
-    NOW.getTime() - 25 * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const CUTOFF_ISO = new Date(NOW.getTime() - 25 * 24 * 60 * 60 * 1000).toISOString();
 
   it('skips opted-out users entirely (server-side filter)', async () => {
     const profilesHandler: TableHandler = vi.fn(() => ({
       data: [
-        { id: 'u1', email: 'a@x', digest_opt_out: false, digest_last_sent_at: null, digest_unsub_token: null },
+        {
+          id: 'u1',
+          email: 'a@x',
+          digest_opt_out: false,
+          digest_last_sent_at: null,
+          digest_unsub_token: null,
+        },
       ],
       error: null,
     }));
@@ -194,8 +204,20 @@ describe('selectDigestCohort', () => {
   it('drops users with no completed audit', async () => {
     const profilesHandler: TableHandler = vi.fn(() => ({
       data: [
-        { id: 'has', email: 'h@x', digest_opt_out: false, digest_last_sent_at: null, digest_unsub_token: null },
-        { id: 'never', email: 'n@x', digest_opt_out: false, digest_last_sent_at: null, digest_unsub_token: null },
+        {
+          id: 'has',
+          email: 'h@x',
+          digest_opt_out: false,
+          digest_last_sent_at: null,
+          digest_unsub_token: null,
+        },
+        {
+          id: 'never',
+          email: 'n@x',
+          digest_opt_out: false,
+          digest_last_sent_at: null,
+          digest_unsub_token: null,
+        },
       ],
       error: null,
     }));
@@ -212,7 +234,13 @@ describe('selectDigestCohort', () => {
   it('drops users without an email', async () => {
     const profilesHandler: TableHandler = vi.fn(() => ({
       data: [
-        { id: 'no-email', email: null, digest_opt_out: false, digest_last_sent_at: null, digest_unsub_token: null },
+        {
+          id: 'no-email',
+          email: null,
+          digest_opt_out: false,
+          digest_last_sent_at: null,
+          digest_unsub_token: null,
+        },
       ],
       error: null,
     }));

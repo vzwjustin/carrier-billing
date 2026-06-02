@@ -73,9 +73,7 @@ function carrierLabel(value: string | null): string {
  * on how the FK is resolved. Normalize to the first entry's
  * `contracted_monthly_rate_cents` value.
  */
-function rateFromTerms(
-  terms: RawContractRow['contract_terms'],
-): number | null {
+function rateFromTerms(terms: RawContractRow['contract_terms']): number | null {
   if (terms === null) return null;
   if (Array.isArray(terms)) {
     return terms[0]?.contracted_monthly_rate_cents ?? null;
@@ -105,24 +103,15 @@ export default async function RenewalAdvisorPage(): Promise<React.JSX.Element> {
   }));
 
   const today = new Date();
-  const expiring = findExpiringContracts(
-    contractRows,
-    today,
-    RENEWAL_WINDOW_DAYS,
-  );
+  const expiring = findExpiringContracts(contractRows, today, RENEWAL_WINDOW_DAYS);
 
   // Plan benchmark: join bill_lines through the user's audits so RLS scopes
   // correctly. We pull the audit list first (cheap, indexed on user_id) and
   // then fetch bill_lines via .in('audit_id', ids). Carrier comes off the
   // audit, not the line.
-  const auditsRes = await supabase
-    .from('audits')
-    .select('id,carrier')
-    .returns<AuditCarrierRow[]>();
+  const auditsRes = await supabase.from('audits').select('id,carrier').returns<AuditCarrierRow[]>();
   const audits = auditsRes.data ?? [];
-  const carrierByAuditId = new Map<string, string | null>(
-    audits.map((a) => [a.id, a.carrier]),
-  );
+  const carrierByAuditId = new Map<string, string | null>(audits.map((a) => [a.id, a.carrier]));
 
   let benchmark: BenchmarkRow[] = [];
   if (audits.length > 0) {
@@ -151,35 +140,22 @@ export default async function RenewalAdvisorPage(): Promise<React.JSX.Element> {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Renewal advisor
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Renewal advisor</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Contracts approaching expiration and current plans that have a
-          cheaper modern equivalent on the carrier&apos;s lineup.
+          Contracts approaching expiration and current plans that have a cheaper modern equivalent
+          on the carrier&apos;s lineup.
         </p>
       </div>
 
-      <section
-        aria-label="Renewal summary"
-        className="grid gap-4 sm:grid-cols-2"
-      >
+      <section aria-label="Renewal summary" className="grid gap-4 sm:grid-cols-2">
         <StatTile
           eyebrow={`Contracts expiring in ${RENEWAL_WINDOW_DAYS} days`}
           value={expiring.length.toLocaleString('en-US')}
-          helper={
-            expiring.length === 0
-              ? 'No imminent renewals.'
-              : 'Sorted soonest first below.'
-          }
+          helper={expiring.length === 0 ? 'No imminent renewals.' : 'Sorted soonest first below.'}
         />
         <StatTile
           eyebrow="Benchmarked monthly savings"
-          value={
-            totalBenchmarkSavingsCents > 0
-              ? formatCents(totalBenchmarkSavingsCents)
-              : '—'
-          }
+          value={totalBenchmarkSavingsCents > 0 ? formatCents(totalBenchmarkSavingsCents) : '—'}
           helper={
             totalBenchmarkSavingsCents > 0
               ? 'Estimated by moving legacy plans to modern equivalents.'
@@ -189,9 +165,7 @@ export default async function RenewalAdvisorPage(): Promise<React.JSX.Element> {
       </section>
 
       <section aria-label="Expiring contracts">
-        <h2 className="mb-3 text-lg font-medium text-neutral-900">
-          Expiring contracts
-        </h2>
+        <h2 className="mb-3 text-lg font-medium text-neutral-900">Expiring contracts</h2>
         {!hasContracts ? (
           <Banner
             variant="info"
@@ -211,9 +185,7 @@ export default async function RenewalAdvisorPage(): Promise<React.JSX.Element> {
       </section>
 
       <section aria-label="Plan benchmark">
-        <h2 className="mb-3 text-lg font-medium text-neutral-900">
-          Plan benchmark
-        </h2>
+        <h2 className="mb-3 text-lg font-medium text-neutral-900">Plan benchmark</h2>
         {benchmark.length === 0 ? (
           <Banner
             variant="success"
@@ -239,12 +211,8 @@ function StatTile({
 }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-        {eyebrow}
-      </p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">
-        {value}
-      </p>
+      <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">{eyebrow}</p>
+      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">{value}</p>
       <p className="mt-2 text-xs text-neutral-500">{helper}</p>
     </div>
   );
@@ -258,7 +226,7 @@ function ExpiringContractsTable({
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
       <table className="w-full text-sm">
-        <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+        <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
           <tr>
             <th className="px-4 py-3">File</th>
             <th className="px-4 py-3">Carrier</th>
@@ -272,22 +240,16 @@ function ExpiringContractsTable({
           {rows.map((row) => (
             <tr key={row.id} className="hover:bg-neutral-50">
               <td className="px-4 py-3 text-neutral-900">
-                <span className="block max-w-xs truncate">
-                  {row.original_filename}
-                </span>
+                <span className="block max-w-xs truncate">{row.original_filename}</span>
               </td>
-              <td className="px-4 py-3 text-neutral-700">
-                {carrierLabel(row.carrier)}
-              </td>
+              <td className="px-4 py-3 text-neutral-700">{carrierLabel(row.carrier)}</td>
               <td className="px-4 py-3 font-mono text-neutral-700">
                 {row.ban_last4 ? `…${row.ban_last4}` : '—'}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-neutral-900">
-                {row.days_until_expiration === 0
-                  ? 'Today'
-                  : `${row.days_until_expiration}d`}
+              <td className="px-4 py-3 text-right text-neutral-900 tabular-nums">
+                {row.days_until_expiration === 0 ? 'Today' : `${row.days_until_expiration}d`}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-neutral-900">
+              <td className="px-4 py-3 text-right text-neutral-900 tabular-nums">
                 {row.contracted_monthly_rate_cents !== null
                   ? formatCents(row.contracted_monthly_rate_cents)
                   : '—'}
@@ -308,15 +270,11 @@ function ExpiringContractsTable({
   );
 }
 
-function BenchmarkTable({
-  rows,
-}: {
-  rows: ReadonlyArray<BenchmarkRow>;
-}): React.JSX.Element {
+function BenchmarkTable({ rows }: { rows: ReadonlyArray<BenchmarkRow> }): React.JSX.Element {
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
       <table className="w-full text-sm">
-        <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+        <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
           <tr>
             <th className="px-4 py-3">Carrier</th>
             <th className="px-4 py-3">Legacy plan</th>
@@ -328,37 +286,24 @@ function BenchmarkTable({
         </thead>
         <tbody className="divide-y divide-neutral-200">
           {rows.map((row) => (
-            <tr
-              key={`${row.carrier}::${row.legacy_plan_name}`}
-              className="hover:bg-neutral-50"
-            >
-              <td className="px-4 py-3 text-neutral-700">
-                {carrierLabel(row.carrier)}
-              </td>
+            <tr key={`${row.carrier}::${row.legacy_plan_name}`} className="hover:bg-neutral-50">
+              <td className="px-4 py-3 text-neutral-700">{carrierLabel(row.carrier)}</td>
               <td className="px-4 py-3 text-neutral-900">
-                <span className="font-mono text-xs">
-                  {row.legacy_plan_name}
-                </span>
-                <span className="ml-2 block text-xs text-neutral-500">
-                  {row.source_note}
-                </span>
+                <span className="font-mono text-xs">{row.legacy_plan_name}</span>
+                <span className="ml-2 block text-xs text-neutral-500">{row.source_note}</span>
               </td>
-              <td className="px-4 py-3 text-neutral-900">
-                {row.replacement_plan}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums text-neutral-700">
+              <td className="px-4 py-3 text-neutral-900">{row.replacement_plan}</td>
+              <td className="px-4 py-3 text-right text-neutral-700 tabular-nums">
                 {row.line_count.toLocaleString('en-US')}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-neutral-700">
+              <td className="px-4 py-3 text-right text-neutral-700 tabular-nums">
                 {row.current_avg_monthly_cents > 0
                   ? formatCents(row.current_avg_monthly_cents)
                   : '—'}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums font-medium text-emerald-700">
+              <td className="px-4 py-3 text-right font-medium text-emerald-700 tabular-nums">
                 {formatCents(row.estimated_monthly_savings_cents)}
-                <span className="ml-1 text-xs font-normal text-neutral-500">
-                  /mo
-                </span>
+                <span className="ml-1 text-xs font-normal text-neutral-500">/mo</span>
               </td>
             </tr>
           ))}

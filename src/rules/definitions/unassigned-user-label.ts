@@ -41,8 +41,7 @@ export const unassignedUserLabelRule: Rule = {
 
     bill.accounts.forEach((account, accountIndex) => {
       const peerHasLabel = account.lines.map(
-        (line) =>
-          line.user_label !== null && line.user_label.trim().length > 0,
+        (line) => line.user_label !== null && line.user_label.trim().length > 0,
       );
       const labeledCount = peerHasLabel.filter(Boolean).length;
       if (labeledCount < MIN_LABELED_PEERS) return;

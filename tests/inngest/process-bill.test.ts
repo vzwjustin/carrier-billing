@@ -114,7 +114,10 @@ describe('processBillFn — H6 mark-analyzing status guard', () => {
     const src = getHandlerSource();
     const idx = src.indexOf('mark-completed');
     expect(idx).toBeGreaterThan(-1);
-    const block = src.slice(idx, idx + 2000);
+    // 6000-char window mirrors the mark-analyzing test above; Vite 8/Vitest 4
+    // SSR preserves more of the surrounding comments, so 2000 chars no longer
+    // reaches the bail-out literal. Behaviour assertion is unchanged.
+    const block = src.slice(idx, idx + 6000);
     expect(block).toMatch(/status-guard/);
     // The minified output uses the variable name from .select('id') ('rows' or
     // 'data'), so match the length===0 bail-out pattern generically.
@@ -137,7 +140,8 @@ describe('processBillFn — user-fault refund guard', () => {
 });
 
 describe('processBillFn — EDI811 routing sniff', () => {
-  const edi = 'ISA*00*          *00*          *ZZ*VZW            *ZZ*ACME           *260401*1200*U*00401*000000001*0*P*:~';
+  const edi =
+    'ISA*00*          *00*          *ZZ*VZW            *ZZ*ACME           *260401*1200*U*00401*000000001*0*P*:~';
 
   it('routes raw, BOM-prefixed, and whitespace-prefixed EDI buffers to EDI', () => {
     expect(__testables.isLikelyEdi811Buffer(Buffer.from(edi, 'utf8'))).toBe(true);
@@ -147,8 +151,12 @@ describe('processBillFn — EDI811 routing sniff', () => {
 
   it('does not route PDFs or non-EDI text to EDI', () => {
     expect(__testables.isLikelyEdi811Buffer(Buffer.from('%PDF-1.7\n', 'utf8'))).toBe(false);
-    expect(__testables.isLikelyEdi811Buffer(Buffer.from('ISAAC wrote a plain text upload', 'utf8'))).toBe(false);
-    expect(__testables.isLikelyEdi811Buffer(Buffer.from('not even close to EDI', 'utf8'))).toBe(false);
+    expect(
+      __testables.isLikelyEdi811Buffer(Buffer.from('ISAAC wrote a plain text upload', 'utf8')),
+    ).toBe(false);
+    expect(__testables.isLikelyEdi811Buffer(Buffer.from('not even close to EDI', 'utf8'))).toBe(
+      false,
+    );
   });
 });
 

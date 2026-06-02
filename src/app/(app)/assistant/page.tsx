@@ -19,9 +19,8 @@ export default function AssistantPage() {
           Assistant
         </h1>
         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          Ask questions about your audits, findings, and bill comparisons. The
-          assistant cites the underlying data and tells you when something
-          isn&apos;t there.
+          Ask questions about your audits, findings, and bill comparisons. The assistant cites the
+          underlying data and tells you when something isn&apos;t there.
         </p>
       </header>
       <AssistantChat />

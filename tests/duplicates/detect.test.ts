@@ -14,14 +14,10 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass', monthly_cents: 1000 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'Cloud Storage', monthly_cents: 500 }),
-              ],
+              features: [makeFeature({ name: 'Cloud Storage', monthly_cents: 500 })],
             }),
           ],
         }),
@@ -37,14 +33,10 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 })],
             }),
           ],
         }),
@@ -98,9 +90,7 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
           account_number_last4: '1111',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'International Plan', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'International Plan', monthly_cents: 2000 })],
             }),
           ],
         }),
@@ -108,9 +98,7 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
           account_number_last4: '2222',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'International Plan', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'International Plan', monthly_cents: 2000 })],
             }),
           ],
         }),
@@ -140,9 +128,7 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
           account_number_last4: '1111',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Solo Feature', monthly_cents: 700 }),
-              ],
+              features: [makeFeature({ name: 'Solo Feature', monthly_cents: 700 })],
             }),
           ],
         }),
@@ -150,14 +136,10 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
           account_number_last4: '2222',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 })],
             }),
           ],
         }),
@@ -186,9 +168,7 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
     };
     expect(() =>
       __testables.buildWithinAuditFinding(
-        group as unknown as Parameters<
-          typeof __testables.buildWithinAuditFinding
-        >[0],
+        group as unknown as Parameters<typeof __testables.buildWithinAuditFinding>[0],
         [],
       ),
     ).toThrow(/within-audit group has no account index/);
@@ -200,14 +180,10 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Cloud Storage', monthly_cents: 500 }),
-              ],
+              features: [makeFeature({ name: 'Cloud Storage', monthly_cents: 500 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'Cloud Storage', monthly_cents: 999 }),
-              ],
+              features: [makeFeature({ name: 'Cloud Storage', monthly_cents: 999 })],
             }),
           ],
         }),
@@ -223,9 +199,7 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Unique Feature', monthly_cents: 1234 }),
-              ],
+              features: [makeFeature({ name: 'Unique Feature', monthly_cents: 1234 })],
             }),
           ],
         }),
@@ -241,19 +215,13 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'AppleCare+', monthly_cents: 1099 }),
-              ],
+              features: [makeFeature({ name: 'AppleCare+', monthly_cents: 1099 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'AppleCare+', monthly_cents: 1099 }),
-              ],
+              features: [makeFeature({ name: 'AppleCare+', monthly_cents: 1099 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'AppleCare+', monthly_cents: 1099 }),
-              ],
+              features: [makeFeature({ name: 'AppleCare+', monthly_cents: 1099 })],
             }),
           ],
         }),
@@ -294,14 +262,10 @@ describe('detectCrossAuditDuplicates — pure detector', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: '  AppleCare+  ', monthly_cents: 1099 }),
-              ],
+              features: [makeFeature({ name: '  AppleCare+  ', monthly_cents: 1099 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'applecare+', monthly_cents: 1099 }),
-              ],
+              features: [makeFeature({ name: 'applecare+', monthly_cents: 1099 })],
             }),
           ],
         }),

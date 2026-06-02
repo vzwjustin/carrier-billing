@@ -116,10 +116,7 @@ export async function consumeRateLimit({
 }
 
 export function rateLimitedResponse(resetAt: string): Response {
-  const retryAfterSeconds = Math.max(
-    1,
-    Math.ceil((Date.parse(resetAt) - Date.now()) / 1000),
-  );
+  const retryAfterSeconds = Math.max(1, Math.ceil((Date.parse(resetAt) - Date.now()) / 1000));
   return Response.json(
     {
       error: 'rate_limited',

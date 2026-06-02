@@ -33,17 +33,14 @@ const AUDIT_ID = '11111111-1111-4111-8111-111111111111';
 const FINDING_ID = '22222222-2222-4222-8222-222222222222';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────
-const {
-  profileSelectMock,
-  findingSelectMock,
-  findingUpdateMock,
-  inngestSendMock,
-} = vi.hoisted(() => ({
-  profileSelectMock: vi.fn<() => Promise<DbResp<ProfileRow>>>(),
-  findingSelectMock: vi.fn<() => Promise<DbResp<FindingRow>>>(),
-  findingUpdateMock: vi.fn<() => Promise<{ error: null | { message: string } }>>(),
-  inngestSendMock: vi.fn(async (_event: unknown) => undefined),
-}));
+const { profileSelectMock, findingSelectMock, findingUpdateMock, inngestSendMock } = vi.hoisted(
+  () => ({
+    profileSelectMock: vi.fn<() => Promise<DbResp<ProfileRow>>>(),
+    findingSelectMock: vi.fn<() => Promise<DbResp<FindingRow>>>(),
+    findingUpdateMock: vi.fn<() => Promise<{ error: null | { message: string } }>>(),
+    inngestSendMock: vi.fn(async (_event: unknown) => undefined),
+  }),
+);
 
 // Per-call routing: the route hits `from('profiles').select(...)` first, then
 // `from('findings').select(...)`, then `from('findings').update(...)`. We
@@ -101,10 +98,7 @@ vi.mock('@/env', () => ({
 // Import AFTER mocks.
 import { POST } from '@/app/api/inbound/finding-status/route';
 
-function makeReq(opts: {
-  token?: string | null;
-  body?: unknown;
-}): Request {
+function makeReq(opts: { token?: string | null; body?: unknown }): Request {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -160,18 +154,14 @@ describe('POST /api/inbound/finding-status — token auth', () => {
   });
 
   it('returns 401 when the token is the wrong shape (no DB query)', async () => {
-    const res = await POST(
-      makeReq({ token: SHAPE_INVALID_TOKEN, body: validBody() }),
-    );
+    const res = await POST(makeReq({ token: SHAPE_INVALID_TOKEN, body: validBody() }));
     expect(res.status).toBe(401);
     expect(profileSelectMock).not.toHaveBeenCalled();
   });
 
   it('returns 401 when the token does not match a profile', async () => {
     profileSelectMock.mockResolvedValueOnce({ data: null, error: null });
-    const res = await POST(
-      makeReq({ token: UNKNOWN_TOKEN, body: validBody() }),
-    );
+    const res = await POST(makeReq({ token: UNKNOWN_TOKEN, body: validBody() }));
     expect(res.status).toBe(401);
     // We DID query the DB (shape was valid) but no profile matched.
     expect(profileSelectMock).toHaveBeenCalledTimes(1);

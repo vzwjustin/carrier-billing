@@ -13,9 +13,7 @@ export async function register() {
 
 // Re-export Sentry's request error capture so Next.js will forward
 // unhandled request errors to Sentry. Lazy import keeps this module light.
-type CaptureRequestErrorParams = Parameters<
-  typeof import('@sentry/nextjs').captureRequestError
->;
+type CaptureRequestErrorParams = Parameters<typeof import('@sentry/nextjs').captureRequestError>;
 
 export async function onRequestError(...args: CaptureRequestErrorParams): Promise<void> {
   const { captureRequestError } = await import('@sentry/nextjs');

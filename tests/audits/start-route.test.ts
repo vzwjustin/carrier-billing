@@ -40,15 +40,19 @@ const {
   auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
   inngestSendMock: vi.fn(async (_event: unknown) => undefined),
   sentryCaptureMock: vi.fn(),
-  consumeRateLimitMock: vi.fn<
-    (config: { key: string; limit: number; windowSeconds: number }) => Promise<
-      | { ok: true; remaining: number; resetAt: string }
-      | { ok: false; remaining: number; resetAt: string }
-    >
-  >(),
-  assertCanStartPendingAuditMock: vi.fn<
-    () => Promise<{ ok: true } | { ok: false; reason: 'past_due' }>
-  >(),
+  consumeRateLimitMock:
+    vi.fn<
+      (config: {
+        key: string;
+        limit: number;
+        windowSeconds: number;
+      }) => Promise<
+        | { ok: true; remaining: number; resetAt: string }
+        | { ok: false; remaining: number; resetAt: string }
+      >
+    >(),
+  assertCanStartPendingAuditMock:
+    vi.fn<() => Promise<{ ok: true } | { ok: false; reason: 'past_due' }>>(),
 }));
 
 vi.mock('@/lib/access/gate', () => ({
@@ -89,11 +93,8 @@ vi.mock('@/env', () => ({
 }));
 
 vi.mock('@/lib/security/rate-limit', () => ({
-  consumeRateLimit: (config: {
-    key: string;
-    limit: number;
-    windowSeconds: number;
-  }) => consumeRateLimitMock(config),
+  consumeRateLimit: (config: { key: string; limit: number; windowSeconds: number }) =>
+    consumeRateLimitMock(config),
   rateLimitedResponse: (resetAt: string) =>
     new Response(JSON.stringify({ error: 'rate_limited', resetAt }), {
       status: 429,
@@ -293,9 +294,7 @@ describe('POST /api/audits/[id]/start', () => {
   });
 
   it('scrubs enqueue errors before logging them', async () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     inngestSendMock.mockRejectedValueOnce(
       new Error('enqueue failed for user@example.com acct 1234567890123'),
     );
@@ -325,9 +324,7 @@ describe('POST /api/audits/[id]/start', () => {
   });
 
   it('reports unexpected route errors with a scrubbed message', async () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     getUserMock.mockRejectedValueOnce(
       new Error('auth failed for user@example.com acct 1234567890123'),
     );

@@ -94,9 +94,7 @@ export async function generateMetadata({
 
     if (error) return fallback;
     if (!data) return fallback;
-    if (
-      isShareTokenExpired(data.share_token_expires_at, expiryColumnAvailable)
-    ) {
+    if (isShareTokenExpired(data.share_token_expires_at, expiryColumnAvailable)) {
       return fallback;
     }
 
@@ -237,9 +235,7 @@ export default async function ShareReportPage({
     notFound();
   }
 
-  if (
-    isShareTokenExpired(audit.share_token_expires_at, expiryColumnAvailable)
-  ) {
+  if (isShareTokenExpired(audit.share_token_expires_at, expiryColumnAvailable)) {
     notFound();
   }
 
@@ -370,7 +366,7 @@ export default async function ShareReportPage({
         </div>
         <Link
           href="/?utm_source=share&utm_medium=link&utm_campaign=share_cta"
-          className="inline-flex items-center justify-center self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 sm:self-auto"
+          className="inline-flex items-center justify-center self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none sm:self-auto"
         >
           Audit your own bill
         </Link>

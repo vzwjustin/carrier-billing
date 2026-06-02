@@ -60,9 +60,7 @@ export function LoginForm() {
           disabled={isPending}
           {...register('email')}
         />
-        {errors.email ? (
-          <p className="text-xs text-red-600">{errors.email.message}</p>
-        ) : null}
+        {errors.email ? <p className="text-xs text-red-600">{errors.email.message}</p> : null}
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -81,9 +79,7 @@ export function LoginForm() {
           disabled={isPending}
           {...register('password')}
         />
-        {errors.password ? (
-          <p className="text-xs text-red-600">{errors.password.message}</p>
-        ) : null}
+        {errors.password ? <p className="text-xs text-red-600">{errors.password.message}</p> : null}
       </div>
       {serverError ? (
         <p

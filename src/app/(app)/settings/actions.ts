@@ -6,10 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { generateInboundToken } from '@/lib/inbound/token';
-import {
-  assertPublicHttpsTarget,
-  SsrfBlockedError,
-} from '@/lib/security/ssrf-guard';
+import { assertPublicHttpsTarget, SsrfBlockedError } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -18,40 +15,27 @@ const ProfileSchema = z.object({
   company_name: z.string().trim().max(120).optional().nullable(),
 });
 
-export type UpdateProfileResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type UpdateProfileResult = { ok: true } | { ok: false; error: string };
 
 const WebhookSchema = z.object({
   outbound_webhook_url: z
     .string()
     .trim()
     .max(2048)
-    .refine(
-      (v) => v === '' || /^https:\/\//i.test(v),
-      'URL must start with https://',
-    ),
+    .refine((v) => v === '' || /^https:\/\//i.test(v), 'URL must start with https://'),
 });
 
-export type UpdateWebhookResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type UpdateWebhookResult = { ok: true } | { ok: false; error: string };
 
-export type CopyWebhookSecretResult =
-  | { ok: true; secret: string }
-  | { ok: false; error: string };
+export type CopyWebhookSecretResult = { ok: true; secret: string } | { ok: false; error: string };
 
-export type RotateInboundTokenResult =
-  | { ok: true; token: string }
-  | { ok: false; error: string };
+export type RotateInboundTokenResult = { ok: true; token: string } | { ok: false; error: string };
 
 function matchedExactlyOneProfile(data: unknown): boolean {
   return Array.isArray(data) && data.length === 1;
 }
 
-export async function updateProfileAction(
-  input: unknown,
-): Promise<UpdateProfileResult> {
+export async function updateProfileAction(input: unknown): Promise<UpdateProfileResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -70,9 +54,7 @@ export async function updateProfileAction(
     .from('profiles')
     .update({
       full_name: parsed.data.full_name?.length ? parsed.data.full_name : null,
-      company_name: parsed.data.company_name?.length
-        ? parsed.data.company_name
-        : null,
+      company_name: parsed.data.company_name?.length ? parsed.data.company_name : null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', user.id)
@@ -86,9 +68,7 @@ export async function updateProfileAction(
   return { ok: true };
 }
 
-export async function updateOutboundWebhookAction(
-  input: unknown,
-): Promise<UpdateWebhookResult> {
+export async function updateOutboundWebhookAction(input: unknown): Promise<UpdateWebhookResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -150,9 +130,8 @@ export async function updateOutboundWebhookAction(
     .maybeSingle();
   if (existing.error) return { ok: false, error: 'Could not save webhook.' };
 
-  const currentSecret = (
-    existing.data as { outbound_webhook_secret?: string | null } | null
-  )?.outbound_webhook_secret;
+  const currentSecret = (existing.data as { outbound_webhook_secret?: string | null } | null)
+    ?.outbound_webhook_secret;
   const secret =
     typeof currentSecret === 'string' && currentSecret.length > 0
       ? currentSecret
@@ -229,17 +208,13 @@ export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecr
   return { ok: true, secret };
 }
 
-export type DeleteAccountResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type DeleteAccountResult = { ok: true } | { ok: false; error: string };
 
 const DeleteAccountSchema = z.object({
   confirm_email: z.string().trim().min(1).max(320),
 });
 
-export async function deleteAccountAction(
-  input: unknown,
-): Promise<DeleteAccountResult> {
+export async function deleteAccountAction(input: unknown): Promise<DeleteAccountResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -254,10 +229,7 @@ export async function deleteAccountAction(
   // Require the user to type their own email exactly. Scoped strictly to the
   // signed-in user's own account — never deletes anyone else.
   const expected = (user.email ?? '').trim().toLowerCase();
-  if (
-    expected.length === 0 ||
-    parsed.data.confirm_email.toLowerCase() !== expected
-  ) {
+  if (expected.length === 0 || parsed.data.confirm_email.toLowerCase() !== expected) {
     return {
       ok: false,
       error: 'The email you typed does not match your account email.',

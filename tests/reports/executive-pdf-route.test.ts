@@ -66,11 +66,9 @@ vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     from: (table: string) => {
       if (table === 'findings') return makeAdminInChain(findingsResolveMock);
-      if (table === 'bill_comparisons')
-        return makeAdminInChain(comparisonsResolveMock);
+      if (table === 'bill_comparisons') return makeAdminInChain(comparisonsResolveMock);
       if (table === 'bill_lines') return makeAdminInChain(linesResolveMock);
-      if (table === 'bill_change_drivers')
-        return makeAdminInChain(driversResolveMock);
+      if (table === 'bill_change_drivers') return makeAdminInChain(driversResolveMock);
       throw new Error(`unexpected admin.from(${table})`);
     },
   }),
@@ -147,30 +145,22 @@ beforeEach(() => {
 
 describe('GET /api/reports/executive.pdf — query validation', () => {
   it('returns 400 when n is non-numeric', async () => {
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf?n=banana'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf?n=banana'));
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when n is below the minimum (0)', async () => {
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf?n=0'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf?n=0'));
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when n exceeds the maximum (13)', async () => {
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf?n=13'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf?n=13'));
     expect(res.status).toBe(400);
   });
 
   it('defaults n to 3 when missing', async () => {
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(200);
   });
 });
@@ -178,9 +168,7 @@ describe('GET /api/reports/executive.pdf — query validation', () => {
 describe('GET /api/reports/executive.pdf — auth', () => {
   it('returns 401 when no session (no public share surface)', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(401);
     expect(renderPdfMock).not.toHaveBeenCalled();
   });
@@ -204,9 +192,7 @@ describe('GET /api/reports/executive.pdf — rate limit', () => {
       ok: false,
       resetAt: new Date().toISOString(),
     });
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(429);
     expect(renderPdfMock).not.toHaveBeenCalled();
   });
@@ -218,9 +204,7 @@ describe('GET /api/reports/executive.pdf — error paths', () => {
       data: null,
       error: { message: 'connection refused' },
     });
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('Failed to load audits.');
@@ -232,9 +216,7 @@ describe('GET /api/reports/executive.pdf — error paths', () => {
       data: null,
       error: { message: 'db down' },
     });
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('Failed to load report data.');
@@ -243,9 +225,7 @@ describe('GET /api/reports/executive.pdf — error paths', () => {
 
 describe('GET /api/reports/executive.pdf — happy path', () => {
   it('returns 200 with a PDF body, inline disposition, private no-cache headers', async () => {
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('application/pdf');
     const disposition = res.headers.get('Content-Disposition') ?? '';
@@ -260,9 +240,7 @@ describe('GET /api/reports/executive.pdf — happy path', () => {
   it('returns the bytes from renderExecutivePdf in the response', async () => {
     const bytes = Buffer.from('%PDF-1.7 hello');
     renderPdfMock.mockResolvedValueOnce(bytes);
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     const buf = Buffer.from(await res.arrayBuffer());
     expect(buf.toString('utf8')).toBe('%PDF-1.7 hello');
   });
@@ -281,17 +259,13 @@ describe('GET /api/reports/executive.pdf — happy path', () => {
 
   it('does NOT fail the response when analytics throws', async () => {
     trackServerMock.mockRejectedValueOnce(new Error('posthog down'));
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(200);
   });
 
   it('skips child fetches and renders an empty report when the user has no completed audits', async () => {
     auditsResolveMock.mockResolvedValueOnce({ data: [], error: null });
-    const res = await GET(
-      new Request('http://localhost/api/reports/executive.pdf'),
-    );
+    const res = await GET(new Request('http://localhost/api/reports/executive.pdf'));
     expect(res.status).toBe(200);
     expect(findingsResolveMock).not.toHaveBeenCalled();
     expect(comparisonsResolveMock).not.toHaveBeenCalled();

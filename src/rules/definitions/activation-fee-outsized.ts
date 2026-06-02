@@ -38,9 +38,7 @@ export const activationFeeOutsizedRule: Rule = {
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
         const outsized = line.features.filter(
-          (f) =>
-            ACTIVATION_NAME_RE.test(f.name) &&
-            f.monthly_cents > FEE_THRESHOLD_CENTS,
+          (f) => ACTIVATION_NAME_RE.test(f.name) && f.monthly_cents > FEE_THRESHOLD_CENTS,
         );
         if (outsized.length === 0) return;
 
@@ -53,7 +51,7 @@ export const activationFeeOutsizedRule: Rule = {
           title: `Activation/upgrade fee charged at ${formatCents(total)} (above $35 ceiling)`,
           description: `This line carries an activation/upgrade-style charge (${names}) of ${formatCents(total)} this cycle, above the published ${formatCents(FEE_THRESHOLD_CENTS)} ceiling that all three major US business carriers list for new activations and device upgrades. Reps will almost always waive or back-credit the excess on request — and on enterprise accounts will often waive the full fee.`,
           recommended_action:
-            'Ask your carrier rep to waive or credit back the activation/upgrade fee. Reference the carrier\'s published $35 cap for business activations when escalating; this is a routine first-contact credit.',
+            "Ask your carrier rep to waive or credit back the activation/upgrade fee. Reference the carrier's published $35 cap for business activations when escalating; this is a routine first-contact credit.",
           // One-time charge. Stays at 0 in the monthly rollup so the audit
           // summary doesn't annualize a one-time fee into a recurring saving.
           // Operator sees the dollar figure in evidence + copy.

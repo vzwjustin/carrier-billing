@@ -123,9 +123,7 @@ function coerceBalance(data: unknown): number | null {
       const first = data[0];
       if (typeof first === 'number' && Number.isFinite(first)) return first;
       if (first && typeof first === 'object') {
-        const inner = (first as Record<string, unknown>)[
-          'increment_audit_credits'
-        ];
+        const inner = (first as Record<string, unknown>)['increment_audit_credits'];
         if (typeof inner === 'number' && Number.isFinite(inner)) return inner;
       }
       return null;

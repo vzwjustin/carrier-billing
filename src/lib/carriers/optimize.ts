@@ -40,10 +40,7 @@ function matches(desc: string, re: RegExp): boolean {
 
 // --- Validation ------------------------------------------------------------
 
-export function validateBill(
-  carrier: Carrier,
-  lineItems: LineItem[],
-): ValidationIssue[] {
+export function validateBill(carrier: Carrier, lineItems: LineItem[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   for (const li of lineItems) {
@@ -92,9 +89,7 @@ export function validateBill(
 
 // --- Optimization rules ----------------------------------------------------
 
-function genericSuggestions(
-  lineItems: LineItem[],
-): OptimizationSuggestion[] {
+function genericSuggestions(lineItems: LineItem[]): OptimizationSuggestion[] {
   const out: OptimizationSuggestion[] = [];
 
   // Duplicate device protection: keep the first, suggest removing the rest.
@@ -106,8 +101,7 @@ function genericSuggestions(
       out.push({
         lineItemId: li.id,
         ruleId: 'duplicate_device_protection',
-        rationale:
-          'Multiple device-protection charges detected; typically only one is needed.',
+        rationale: 'Multiple device-protection charges detected; typically only one is needed.',
         severity: 'medium',
         currentCents: li.monthlyCents,
         suggestedCents: 0,
@@ -124,8 +118,7 @@ function genericSuggestions(
       out.push({
         lineItemId: li.id,
         ruleId: 'premium_unlimited_overprovisioned',
-        rationale:
-          'Premium unlimited tier — most users are well served by the standard tier.',
+        rationale: 'Premium unlimited tier — most users are well served by the standard tier.',
         severity: 'low',
         currentCents: li.monthlyCents,
         suggestedCents: 80_00,
@@ -136,10 +129,7 @@ function genericSuggestions(
   return out;
 }
 
-function carrierSuggestions(
-  carrier: Carrier,
-  lineItems: LineItem[],
-): OptimizationSuggestion[] {
+function carrierSuggestions(carrier: Carrier, lineItems: LineItem[]): OptimizationSuggestion[] {
   const out: OptimizationSuggestion[] = [];
   const rule = (
     li: LineItem,
@@ -179,10 +169,7 @@ function carrierSuggestions(
         0,
       );
     }
-    if (
-      carrier === 'tmobile' &&
-      matches(li.description, /netflix|apple tv\+?|paramount\+?/i)
-    ) {
+    if (carrier === 'tmobile' && matches(li.description, /netflix|apple tv\+?|paramount\+?/i)) {
       rule(
         li,
         'tmobile_bundled_streaming_duplicate',
@@ -196,14 +183,8 @@ function carrierSuggestions(
   return out;
 }
 
-export function optimizeBill(
-  carrier: Carrier,
-  lineItems: LineItem[],
-): OptimizationResult {
-  const suggestions = [
-    ...genericSuggestions(lineItems),
-    ...carrierSuggestions(carrier, lineItems),
-  ];
+export function optimizeBill(carrier: Carrier, lineItems: LineItem[]): OptimizationResult {
+  const suggestions = [...genericSuggestions(lineItems), ...carrierSuggestions(carrier, lineItems)];
   const projectedSavingsCents = suggestions.reduce(
     (sum, s) => sum + Math.max(0, s.currentCents - s.suggestedCents),
     0,

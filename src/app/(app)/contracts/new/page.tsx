@@ -21,13 +21,10 @@ export default async function NewContractPage(): Promise<React.JSX.Element> {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Upload contract
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Upload contract</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Drop a PDF of a carrier contract, quote, or promo sheet. We&apos;ll
-          extract plan, pricing, and waiver terms — these power the
-          contract-vs-bill audit rules.
+          Drop a PDF of a carrier contract, quote, or promo sheet. We&apos;ll extract plan, pricing,
+          and waiver terms — these power the contract-vs-bill audit rules.
         </p>
       </div>
 

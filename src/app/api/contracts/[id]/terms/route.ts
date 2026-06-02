@@ -80,10 +80,7 @@ export async function PATCH(
       .eq('id', contractId)
       .maybeSingle();
     if (lookupErr) {
-      return NextResponse.json(
-        { error: 'Failed to look up contract.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up contract.' }, { status: 500 });
     }
     if (!contractRow) {
       return NextResponse.json({ error: 'Contract not found.' }, { status: 404 });
@@ -113,10 +110,7 @@ export async function PATCH(
       Sentry.captureException(existsErr, {
         tags: { surface: 'contracts.terms.patch.lookup' },
       });
-      return NextResponse.json(
-        { error: 'Failed to look up contract terms.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up contract terms.' }, { status: 500 });
     }
 
     if (existing) {
@@ -125,31 +119,29 @@ export async function PATCH(
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('contract_id', contractId);
       if (updErr) {
-        return NextResponse.json(
-          { error: 'Failed to update terms.' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'Failed to update terms.' }, { status: 500 });
       }
     } else {
       const { error: insErr } = await admin
         .from('contract_terms')
         .insert({ contract_id: contractId, ...patch });
       if (insErr) {
-        return NextResponse.json(
-          { error: 'Failed to create terms.' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'Failed to create terms.' }, { status: 500 });
       }
     }
 
-    await logTrailEvent({ userId: user.id, eventType: 'contract_terms_edited', entityType: 'contract', entityId: contractId, metadata: { fields_updated: Object.keys(patch) }, actorEmail: user.email ?? null });
+    await logTrailEvent({
+      userId: user.id,
+      eventType: 'contract_terms_edited',
+      entityType: 'contract',
+      entityId: contractId,
+      metadata: { fields_updated: Object.keys(patch) },
+      actorEmail: user.email ?? null,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     Sentry.captureException(err, { tags: { surface: 'contracts.terms.patch' } });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

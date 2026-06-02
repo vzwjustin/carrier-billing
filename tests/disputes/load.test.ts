@@ -243,11 +243,7 @@ describe('loadDisputePacket — param validation', () => {
   });
 
   it('returns 400 when the finding id is not a uuid', async () => {
-    const outcome = await loadDisputePacket(
-      makeReq(),
-      { id: AUDIT_ID, findingId: 'nope' },
-      'pdf',
-    );
+    const outcome = await loadDisputePacket(makeReq(), { id: AUDIT_ID, findingId: 'nope' }, 'pdf');
     expect(outcome.kind).toBe('response');
     if (outcome.kind !== 'response') return;
     expect(outcome.response.status).toBe(400);
@@ -295,7 +291,7 @@ describe('loadDisputePacket — authenticated path', () => {
     expect(outcome.response.status).toBe(404);
   });
 
-  it("returns 404 when the audit belongs to a different user (defense in depth past RLS)", async () => {
+  it('returns 404 when the audit belongs to a different user (defense in depth past RLS)', async () => {
     serverAuditMaybeSingleMock.mockResolvedValueOnce({
       data: makeAudit({ user_id: 'someone-else' }),
       error: null,
@@ -343,11 +339,7 @@ describe('loadDisputePacket — authenticated path', () => {
   });
 
   it('uses a per-user rate-limit key with surface in the key', async () => {
-    await loadDisputePacket(
-      makeReq(),
-      { id: AUDIT_ID, findingId: FINDING_ID },
-      'eml',
-    );
+    await loadDisputePacket(makeReq(), { id: AUDIT_ID, findingId: FINDING_ID }, 'eml');
     const call = consumeRateLimitMock.mock.calls[0]?.[0] as { key: string };
     expect(call.key).toBe(`dispute-eml-auth:${USER_A_ID}`);
   });
@@ -513,11 +505,7 @@ describe('loadDisputePacket — happy path', () => {
   });
 
   it('skips lines/accounts lookups when finding has no affected ids', async () => {
-    await loadDisputePacket(
-      makeReq(),
-      { id: AUDIT_ID, findingId: FINDING_ID },
-      'pdf',
-    );
+    await loadDisputePacket(makeReq(), { id: AUDIT_ID, findingId: FINDING_ID }, 'pdf');
     expect(linesResolveMock).not.toHaveBeenCalled();
     expect(accountsResolveMock).not.toHaveBeenCalled();
   });

@@ -29,9 +29,7 @@ function fakeAccountLast4(): string {
   return randomBytes(2).toString('hex').slice(0, 4);
 }
 
-export async function authenticate(
-  carrier: Carrier,
-): Promise<ProviderAuthResult> {
+export async function authenticate(carrier: Carrier): Promise<ProviderAuthResult> {
   // Simulated handshake. Always succeeds with a synthetic account label.
   return {
     ok: true,

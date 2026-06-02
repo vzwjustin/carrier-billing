@@ -114,10 +114,7 @@ export async function POST(
   // We only claim "savings" when (a) the driver pushed the bill up and
   // (b) it's flagged as disputable. Anything else = $0 — escalating is
   // about visibility, not about inventing recoverable savings.
-  const savings =
-    driver.is_disputable && driver.difference_cents > 0
-      ? driver.difference_cents
-      : 0;
+  const savings = driver.is_disputable && driver.difference_cents > 0 ? driver.difference_cents : 0;
   const ruleId = `autopsy_escalated_${driver.category}`;
   const action =
     driver.recommended_action ??
@@ -153,10 +150,7 @@ export async function POST(
     Sentry.captureException(insertErr, {
       tags: { surface: 'autopsy.escalate.insert_finding' },
     });
-    return NextResponse.json(
-      { error: 'Failed to create finding.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to create finding.' }, { status: 500 });
   }
 
   const findingId: string = inserted.id;
@@ -181,10 +175,7 @@ export async function POST(
     Sentry.captureException(stampErr, {
       tags: { surface: 'autopsy.escalate.stamp_driver' },
     });
-    return NextResponse.json(
-      { error: 'Failed to link finding to driver.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to link finding to driver.' }, { status: 500 });
   }
   if (!stamped || stamped.length === 0) {
     // Lost the race (a concurrent request escalated this driver between our
@@ -217,7 +208,19 @@ export async function POST(
     });
   }
 
-  await logTrailEvent({ userId: user.id, eventType: 'finding_escalated', entityType: 'driver', entityId: driverId, metadata: { audit_id: auditId, finding_id: findingId, category: driver.category, comparison_id: driver.bill_comparison_id }, actorEmail: user.email ?? null });
+  await logTrailEvent({
+    userId: user.id,
+    eventType: 'finding_escalated',
+    entityType: 'driver',
+    entityId: driverId,
+    metadata: {
+      audit_id: auditId,
+      finding_id: findingId,
+      category: driver.category,
+      comparison_id: driver.bill_comparison_id,
+    },
+    actorEmail: user.email ?? null,
+  });
 
   // Fire `finding.created` so the Slack dispatcher (and any future
   // listeners) can react. This route is the SINGLE starter emit site for

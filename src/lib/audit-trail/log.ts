@@ -39,12 +39,7 @@ export const AUDIT_TRAIL_EVENT_TYPES = [
 
 export type AuditTrailEventType = (typeof AUDIT_TRAIL_EVENT_TYPES)[number];
 
-export type AuditTrailEntityType =
-  | 'audit'
-  | 'finding'
-  | 'driver'
-  | 'contract'
-  | 'comparison';
+export type AuditTrailEntityType = 'audit' | 'finding' | 'driver' | 'contract' | 'comparison';
 
 export interface LogTrailEventInput {
   userId: string;
@@ -103,10 +98,7 @@ export async function logTrailEvent(input: LogTrailEventInput): Promise<void> {
   // behavior under test for those routes. Tests in `tests/audit-trail/*`
   // that exercise this function directly set `RUN_AUDIT_TRAIL=1` in their
   // beforeEach to flip the gate back on.
-  if (
-    process.env.NODE_ENV === 'test' &&
-    process.env.RUN_AUDIT_TRAIL !== '1'
-  ) {
+  if (process.env.NODE_ENV === 'test' && process.env.RUN_AUDIT_TRAIL !== '1') {
     return;
   }
   try {
@@ -143,9 +135,7 @@ export async function logTrailEvent(input: LogTrailEventInput): Promise<void> {
   }
 }
 
-function clampMetadata(
-  metadata: Record<string, unknown> | undefined,
-): Record<string, unknown> {
+function clampMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!metadata) return {};
   try {
     const json = JSON.stringify(metadata);

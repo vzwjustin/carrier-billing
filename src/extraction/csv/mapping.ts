@@ -103,14 +103,8 @@ const HEURISTICS: Record<CanonicalField, RegExp[]> = {
     /\bemployee\b/i,
     /\bdescription\b/i,
   ],
-  device: [
-    /\b(?:device|equipment|handset|model)\b/i,
-  ],
-  plan_name: [
-    /\b(?:plan|rate\s*plan)\s*name\b/i,
-    /\brate\s*plan\b/i,
-    /\bplan\b/i,
-  ],
+  device: [/\b(?:device|equipment|handset|model)\b/i],
+  plan_name: [/\b(?:plan|rate\s*plan)\s*name\b/i, /\brate\s*plan\b/i, /\bplan\b/i],
   plan_base_cents: [
     /\b(?:monthly|recurring)\s*(?:plan\s*)?(?:charge|fee|rate)\b/i,
     /\bplan\s*(?:base|cost|charge|fee|rate|amount)\b/i,
@@ -123,26 +117,11 @@ const HEURISTICS: Record<CanonicalField, RegExp[]> = {
     /\busage\s*\(\s*gb\s*\)/i,
     /\bdata\b/i,
   ],
-  voice_used_min: [
-    /\b(?:voice|minutes|talk)\s*(?:used|usage)?\b/i,
-    /\bmin(?:ute)?s?\s*used\b/i,
-  ],
-  sms_used_count: [
-    /\b(?:sms|text|message)s?\s*(?:used|count|sent)?\b/i,
-  ],
-  is_suspended: [
-    /\bsuspend(?:ed)?\b/i,
-    /\bline\s*status\b/i,
-    /\bstatus\b/i,
-  ],
-  account_number_last4: [
-    /\b(?:account|ban|foundation)\s*(?:number|#)?\b/i,
-    /\baccount\b/i,
-  ],
-  account_label: [
-    /\baccount\s*(?:name|label|description)\b/i,
-    /\bfoundation\s*name\b/i,
-  ],
+  voice_used_min: [/\b(?:voice|minutes|talk)\s*(?:used|usage)?\b/i, /\bmin(?:ute)?s?\s*used\b/i],
+  sms_used_count: [/\b(?:sms|text|message)s?\s*(?:used|count|sent)?\b/i],
+  is_suspended: [/\bsuspend(?:ed)?\b/i, /\bline\s*status\b/i, /\bstatus\b/i],
+  account_number_last4: [/\b(?:account|ban|foundation)\s*(?:number|#)?\b/i, /\baccount\b/i],
+  account_label: [/\baccount\s*(?:name|label|description)\b/i, /\bfoundation\s*name\b/i],
 };
 
 /**
@@ -186,10 +165,7 @@ export function autoMap(headers: ReadonlyArray<string>): ColumnMapping {
   return mapping;
 }
 
-function findFirstMatch(
-  pool: ReadonlySet<string>,
-  pattern: RegExp,
-): string | null {
+function findFirstMatch(pool: ReadonlySet<string>, pattern: RegExp): string | null {
   for (const candidate of pool) {
     if (pattern.test(candidate.trim())) return candidate;
   }
@@ -231,9 +207,7 @@ export function extractLast4(raw: string | null | undefined): string | null {
  * Returns `null` on unparseable input. NEVER throws — the parser collects
  * many cells and a single bad value should drop the cell, not the row.
  */
-export function parseMoneyToCents(
-  raw: string | null | undefined,
-): number | null {
+export function parseMoneyToCents(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
@@ -312,15 +286,7 @@ const TRUE_VALUES = new Set([
   'inactive',
   'disabled',
 ]);
-const FALSE_VALUES = new Set([
-  'false',
-  'no',
-  'n',
-  '0',
-  'active',
-  'enabled',
-  '',
-]);
+const FALSE_VALUES = new Set(['false', 'no', 'n', '0', 'active', 'enabled', '']);
 
 /**
  * Parse a boolean-ish cell. Returns `false` for blank / unknown so the

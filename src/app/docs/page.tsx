@@ -45,22 +45,22 @@ export default function DocsIndexPage(): React.ReactElement {
   return (
     <div className="flex flex-col gap-10">
       <header className="flex flex-col gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        <span className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
           Documentation
         </span>
         <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl">
           CarrierAudit documentation
         </h1>
         <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
-          Everything you need to upload a wireless bill, read the audit
-          report, and turn findings into recovered spend. Start with{' '}
+          Everything you need to upload a wireless bill, read the audit report, and turn findings
+          into recovered spend. Start with{' '}
           <Link
             href="/docs/getting-started"
             className="text-neutral-900 underline underline-offset-2 hover:text-neutral-700"
           >
             Getting started
-          </Link>
-          {' '}if you&apos;re new.
+          </Link>{' '}
+          if you&apos;re new.
         </p>
       </header>
 

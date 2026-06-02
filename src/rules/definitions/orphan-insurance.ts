@@ -37,10 +37,7 @@ export const orphanInsuranceRule: Rule = {
         // rule doesn't flag a legitimate BYOD policy as waste. Suspended BYOD
         // lines still fire via `line_suspended` (the policy is dead weight on
         // a suspended line regardless of who owns the device).
-        const noDevice =
-          !isByod &&
-          line.device === null &&
-          line.dpp_installments.length === 0;
+        const noDevice = !isByod && line.device === null && line.dpp_installments.length === 0;
         // The early return at the top of the loop already guarantees
         // insuranceFeatures.length > 0 — drop the dead-code re-check.
         // M7: treat null plan_base_cents as 0 — a missing plan-base value
@@ -48,8 +45,7 @@ export const orphanInsuranceRule: Rule = {
         // zombie-line heuristic (a line with insurance billing but no plan).
         // Previously `=== 0` only matched explicit zeros, leaving null-base
         // zombie lines invisible to this branch.
-        const isFeatureOnlyZombie =
-          !isSuspended && !isByod && (line.plan_base_cents ?? 0) === 0;
+        const isFeatureOnlyZombie = !isSuspended && !isByod && (line.plan_base_cents ?? 0) === 0;
 
         if (isSuspended) triggerReasons.push('line_suspended');
         if (noDevice) triggerReasons.push('no_device_no_dpp');
@@ -57,10 +53,7 @@ export const orphanInsuranceRule: Rule = {
 
         if (triggerReasons.length === 0) return;
 
-        const totalCents = insuranceFeatures.reduce(
-          (sum, f) => sum + f.monthly_cents,
-          0,
-        );
+        const totalCents = insuranceFeatures.reduce((sum, f) => sum + f.monthly_cents, 0);
         // Suspended lines are highest confidence; the other heuristics are
         // medium severity since BYOD/feature-only states can be intentional.
         const severity: Severity = isSuspended ? 'high' : 'medium';

@@ -2,10 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import * as Sentry from '@sentry/nextjs';
 
 import { env } from '@/env';
-import {
-  ExtractedContractSchema,
-  type ExtractedContract,
-} from '@/contracts/schema';
+import { ExtractedContractSchema, type ExtractedContract } from '@/contracts/schema';
 import { scrubString } from '@/lib/observability/redact';
 
 /**
@@ -89,11 +86,9 @@ type DocumentBlock = {
   type: 'document';
   source: { type: 'base64'; media_type: 'application/pdf'; data: string };
 } & CacheControl;
-type TextBlock = ({ type: 'text'; text: string }) & CacheControl;
+type TextBlock = { type: 'text'; text: string } & CacheControl;
 type UserContent = Array<DocumentBlock | TextBlock>;
-type Message =
-  | { role: 'user'; content: UserContent }
-  | { role: 'assistant'; content: string };
+type Message = { role: 'user'; content: UserContent } | { role: 'assistant'; content: string };
 
 export type ContractExtractResult =
   | { ok: true; contract: ExtractedContract }
@@ -104,10 +99,7 @@ function isRetryableLlmError(err: unknown): boolean {
   const status = (err as { status?: unknown }).status;
   if (typeof status === 'number' && RETRYABLE_STATUSES.has(status)) return true;
   const name = (err as { name?: unknown }).name;
-  if (
-    typeof name === 'string' &&
-    /Connection|Timeout|FetchError|Network/.test(name)
-  ) {
+  if (typeof name === 'string' && /Connection|Timeout|FetchError|Network/.test(name)) {
     return true;
   }
   return false;
@@ -118,12 +110,7 @@ async function sleep(ms: number): Promise<void> {
 }
 
 type AnthropicResponse = {
-  stop_reason:
-    | 'end_turn'
-    | 'max_tokens'
-    | 'stop_sequence'
-    | 'tool_use'
-    | null;
+  stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | null;
   content: Array<{ type: string; text?: string }>;
 };
 
@@ -148,9 +135,7 @@ async function callModel(messages: Message[]): Promise<string> {
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
     try {
-      response = (await client.messages.create(
-        createParams,
-      )) as unknown as AnthropicResponse;
+      response = (await client.messages.create(createParams)) as unknown as AnthropicResponse;
       break;
     } catch (err) {
       lastErr = err;
@@ -173,9 +158,7 @@ async function callModel(messages: Message[]): Promise<string> {
     }
   }
   if (!response) {
-    throw lastErr instanceof Error
-      ? lastErr
-      : new Error('LLM call exhausted retries');
+    throw lastErr instanceof Error ? lastErr : new Error('LLM call exhausted retries');
   }
 
   if (response.stop_reason === 'max_tokens') {
@@ -238,9 +221,7 @@ function tryParseAndValidate(raw: string): ParseResult {
  * back (scrubbed first via scrubString — the model's response may contain
  * PII the first pass missed). Mirrors `extractBill` in `extraction/llm.ts`.
  */
-export async function extractContract(
-  pdfBuffer: Buffer,
-): Promise<ContractExtractResult> {
+export async function extractContract(pdfBuffer: Buffer): Promise<ContractExtractResult> {
   try {
     const base64 = pdfBuffer.toString('base64');
 

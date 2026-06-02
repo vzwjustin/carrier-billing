@@ -58,17 +58,15 @@ export default async function IntegrationsSettingsPage(): Promise<React.ReactEle
 
   return (
     <div className="space-y-6">
-      <InboundEmailCard
-        domain={inboundDomain}
-        initialToken={inboundToken}
-      />
+      <InboundEmailCard domain={inboundDomain} initialToken={inboundToken} />
       <OutboundWebhookCard
         initialUrl={profile?.outbound_webhook_url ?? null}
-        hasSecret={typeof profile?.outbound_webhook_secret === 'string' && profile.outbound_webhook_secret.length > 0}
+        hasSecret={
+          typeof profile?.outbound_webhook_secret === 'string' &&
+          profile.outbound_webhook_secret.length > 0
+        }
       />
-      <InboundWebhookCard
-        initialToken={profile?.inbound_webhook_token ?? null}
-      />
+      <InboundWebhookCard initialToken={profile?.inbound_webhook_token ?? null} />
       <SlackCard
         initialWebhookUrl={profile?.slack_webhook_url ?? null}
         initialNotifyOnHighFinding={profile?.slack_notify_on_high_finding ?? true}

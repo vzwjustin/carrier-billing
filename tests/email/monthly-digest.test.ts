@@ -47,7 +47,7 @@ describe('escapeHtml', () => {
     );
   });
 
-  it("escapes ampersand and single-quote", () => {
+  it('escapes ampersand and single-quote', () => {
     expect(escapeHtml(`A&B's`)).toBe('A&amp;B&#39;s');
   });
 });
@@ -83,9 +83,7 @@ describe('buildMonthlyDigest — plain text body', () => {
     expect(text).toContain('2 high · 4 medium · 1 low');
     expect(text).toContain('$97.50/mo');
     expect(text).toContain('https://app.example.com');
-    expect(text).toContain(
-      'https://app.example.com/api/email/unsubscribe?token=tok123',
-    );
+    expect(text).toContain('https://app.example.com/api/email/unsubscribe?token=tok123');
   });
 
   it('renders the autopsy block when present, suppresses it otherwise', () => {
@@ -162,9 +160,7 @@ describe('buildMonthlyDigest — HTML body', () => {
       ],
     });
     expect(html).not.toContain('<script>alert("xss")</script>');
-    expect(html).toContain(
-      '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;',
-    );
+    expect(html).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
   });
 
   it('escapes the periodLabel and includes dashboard / unsub anchors', () => {
@@ -174,9 +170,7 @@ describe('buildMonthlyDigest — HTML body', () => {
     });
     expect(html).toContain('May &amp; June 2026');
     expect(html).toContain('href="https://app.example.com"');
-    expect(html).toContain(
-      'href="https://app.example.com/api/email/unsubscribe?token=tok123"',
-    );
+    expect(html).toContain('href="https://app.example.com/api/email/unsubscribe?token=tok123"');
   });
 
   it('renders accent CSS for the recoverable savings amount', () => {

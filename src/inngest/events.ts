@@ -35,9 +35,7 @@ export const BillingPaymentFailedDataSchema = z.object({
   invoiceId: z.string().nullable(),
   amountDueCents: z.number().int().nullable(),
 });
-export type BillingPaymentFailedData = z.infer<
-  typeof BillingPaymentFailedDataSchema
->;
+export type BillingPaymentFailedData = z.infer<typeof BillingPaymentFailedDataSchema>;
 
 export const ContractUploadedDataSchema = z.object({
   contractId: z.string().uuid(),
@@ -68,21 +66,14 @@ export const FindingStatusChangedDataSchema = z.object({
   previousStatus: z.enum(FINDING_STATUS_ENUM).nullable(),
   userId: z.string().uuid(),
 });
-export type FindingStatusChangedData = z.infer<
-  typeof FindingStatusChangedDataSchema
->;
+export type FindingStatusChangedData = z.infer<typeof FindingStatusChangedDataSchema>;
 
 /**
  * Severity domain mirrors `findings.severity` CHECK in migration 0001.
  * Repeated as a tuple here so the schema can validate without importing
  * the type-only enum module (Zod needs runtime literals).
  */
-export const FINDING_SEVERITY_ENUM = [
-  'high',
-  'medium',
-  'low',
-  'info',
-] as const;
+export const FINDING_SEVERITY_ENUM = ['high', 'medium', 'low', 'info'] as const;
 
 export const FindingCreatedDataSchema = z.object({
   auditId: z.string().uuid(),
@@ -107,9 +98,7 @@ export const BillComparisonPersistedDataSchema = z.object({
   netChangeCents: z.number().int(),
   driversCount: z.number().int().min(0),
 });
-export type BillComparisonPersistedData = z.infer<
-  typeof BillComparisonPersistedDataSchema
->;
+export type BillComparisonPersistedData = z.infer<typeof BillComparisonPersistedDataSchema>;
 
 /**
  * Convenience: parse + throw with a stable error name so the Inngest
@@ -127,11 +116,7 @@ export class InngestEventValidationError extends Error {
   }
 }
 
-export function parseEventData<T>(
-  eventName: string,
-  data: unknown,
-  schema: z.ZodType<T>,
-): T {
+export function parseEventData<T>(eventName: string, data: unknown, schema: z.ZodType<T>): T {
   const result = schema.safeParse(data);
   if (!result.success) {
     throw new InngestEventValidationError(eventName, result.error.issues);

@@ -35,9 +35,7 @@ const fromMock = vi.fn((table: string) => ({
       maybeSingle: async () => {
         // Sanity-check: the existence read must hit billing_events.
         if (table !== 'billing_events') {
-          throw new Error(
-            `unexpected table for dedupe select: ${table} (expected billing_events)`,
-          );
+          throw new Error(`unexpected table for dedupe select: ${table} (expected billing_events)`);
         }
         const row = billingEvents.find((r) => r.stripe_event_id === val);
         return row
@@ -79,9 +77,7 @@ const fromMock = vi.fn((table: string) => ({
   update: (patch: Record<string, unknown>) => {
     const filters: Array<(r: BillingEventRow) => boolean> = [];
     const applyToMatched = (): BillingEventRow[] => {
-      const matched = billingEvents.filter((r) =>
-        filters.every((f) => f(r)),
-      );
+      const matched = billingEvents.filter((r) => filters.every((f) => f(r)));
       for (const row of matched) {
         if ('processed_status' in patch) {
           row.processed_status = patch['processed_status'] as
@@ -130,12 +126,10 @@ const fromMock = vi.fn((table: string) => ({
           if (!m) return () => false;
           const [, col, op, val] = m;
           if (op === 'is' && val === 'null') {
-            return (r: BillingEventRow) =>
-              (r as Record<string, unknown>)[col!] === null;
+            return (r: BillingEventRow) => (r as Record<string, unknown>)[col!] === null;
           }
           if (op === 'eq') {
-            return (r: BillingEventRow) =>
-              String((r as Record<string, unknown>)[col!]) === val;
+            return (r: BillingEventRow) => String((r as Record<string, unknown>)[col!]) === val;
           }
           return () => false;
         });
@@ -163,8 +157,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 
 // The handler chain we want to assert is gated by idempotency.
-const handleStripeEventMock =
-  vi.fn<(event: Stripe.Event) => Promise<void>>();
+const handleStripeEventMock = vi.fn<(event: Stripe.Event) => Promise<void>>();
 
 vi.mock('@/lib/stripe/handlers', () => ({
   handleStripeEvent: (event: Stripe.Event) => handleStripeEventMock(event),
@@ -254,9 +247,7 @@ describe('POST /api/stripe/webhook — idempotency', () => {
     expect(resB.status).toBe(200);
 
     expect(handleStripeEventMock).toHaveBeenCalledTimes(2);
-    const callIds = handleStripeEventMock.mock.calls.map(
-      (call) => (call[0] as Stripe.Event).id,
-    );
+    const callIds = handleStripeEventMock.mock.calls.map((call) => (call[0] as Stripe.Event).id);
     expect(callIds).toEqual(['evt_a', 'evt_b']);
   });
 });

@@ -32,19 +32,14 @@ interface ContractStatusRow {
   failure_reason: string | null;
 }
 
-const {
-  getUserMock,
-  maybeSingleMock,
-  updateMock,
-  inngestSendMock,
-  consumeRateLimitMock,
-} = vi.hoisted(() => ({
-  getUserMock: vi.fn(),
-  maybeSingleMock: vi.fn(),
-  updateMock: vi.fn(),
-  inngestSendMock: vi.fn(),
-  consumeRateLimitMock: vi.fn(),
-}));
+const { getUserMock, maybeSingleMock, updateMock, inngestSendMock, consumeRateLimitMock } =
+  vi.hoisted(() => ({
+    getUserMock: vi.fn(),
+    maybeSingleMock: vi.fn(),
+    updateMock: vi.fn(),
+    inngestSendMock: vi.fn(),
+    consumeRateLimitMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -98,9 +93,7 @@ function makeContract(over: Partial<ContractRow> = {}): ContractRow {
   };
 }
 
-function makeContractStatusRow(
-  over: Partial<ContractStatusRow> = {},
-): ContractStatusRow {
+function makeContractStatusRow(over: Partial<ContractStatusRow> = {}): ContractStatusRow {
   return {
     user_id: USER_ID,
     status: 'parsed',
@@ -289,10 +282,7 @@ describe('GET /api/contracts/[id]/status', () => {
 
   it('returns 401 when no session', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
-    const res = await GET(
-      new Request('http://localhost/api/contracts/x/status'),
-      makeContext(),
-    );
+    const res = await GET(new Request('http://localhost/api/contracts/x/status'), makeContext());
     expect(res.status).toBe(401);
   });
 
@@ -301,10 +291,7 @@ describe('GET /api/contracts/[id]/status', () => {
       data: makeContractStatusRow(),
       error: null,
     });
-    await GET(
-      new Request('http://localhost/api/contracts/x/status'),
-      makeContext(),
-    );
+    await GET(new Request('http://localhost/api/contracts/x/status'), makeContext());
     const call = consumeRateLimitMock.mock.calls[0]?.[0] as {
       key: string;
       limit: number;
@@ -318,19 +305,13 @@ describe('GET /api/contracts/[id]/status', () => {
       ok: false,
       resetAt: new Date().toISOString(),
     });
-    const res = await GET(
-      new Request('http://localhost/api/contracts/x/status'),
-      makeContext(),
-    );
+    const res = await GET(new Request('http://localhost/api/contracts/x/status'), makeContext());
     expect(res.status).toBe(429);
   });
 
   it('returns 404 when contract row is RLS-hidden', async () => {
     maybeSingleMock.mockResolvedValueOnce({ data: null, error: null });
-    const res = await GET(
-      new Request('http://localhost/api/contracts/x/status'),
-      makeContext(),
-    );
+    const res = await GET(new Request('http://localhost/api/contracts/x/status'), makeContext());
     expect(res.status).toBe(404);
   });
 
@@ -339,10 +320,7 @@ describe('GET /api/contracts/[id]/status', () => {
       data: makeContractStatusRow({ user_id: 'someone-else' }),
       error: null,
     });
-    const res = await GET(
-      new Request('http://localhost/api/contracts/x/status'),
-      makeContext(),
-    );
+    const res = await GET(new Request('http://localhost/api/contracts/x/status'), makeContext());
     expect(res.status).toBe(404);
   });
 
@@ -351,10 +329,7 @@ describe('GET /api/contracts/[id]/status', () => {
       data: makeContractStatusRow({ status: 'parsed' }),
       error: null,
     });
-    const res = await GET(
-      new Request('http://localhost/api/contracts/x/status'),
-      makeContext(),
-    );
+    const res = await GET(new Request('http://localhost/api/contracts/x/status'), makeContext());
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.status).toBe('parsed');

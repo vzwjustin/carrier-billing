@@ -92,11 +92,7 @@ export function translateLineIndexes(
     const offset = accountStartOffsets[accountIdx] ?? 0;
     const globalIndexes: number[] = [];
     for (const localIdx of f.affected_line_indexes) {
-      if (
-        typeof localIdx !== 'number' ||
-        localIdx < 0 ||
-        localIdx >= accountSize
-      ) {
+      if (typeof localIdx !== 'number' || localIdx < 0 || localIdx >= accountSize) {
         opts.warn(
           'translateLineIndexes: finding has out-of-range per-account line index — dropping that index only',
           {

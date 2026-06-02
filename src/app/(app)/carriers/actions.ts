@@ -6,9 +6,7 @@ import { authenticate, sync } from '@/lib/carriers/provider';
 import { CarrierSchema, type CarrierConnection } from '@/lib/carriers/types';
 import { createClient } from '@/lib/supabase/server';
 
-export type CarrierActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type CarrierActionResult = { ok: true } | { ok: false; error: string };
 
 interface ConnectionRow {
   carrier: string;
@@ -43,9 +41,7 @@ export async function listConnectionsAction(): Promise<CarrierConnection[]> {
   return Array.isArray(data) ? (data as ConnectionRow[]).map(toConnection) : [];
 }
 
-export async function connectCarrierAction(
-  input: unknown,
-): Promise<CarrierActionResult> {
+export async function connectCarrierAction(input: unknown): Promise<CarrierActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -77,9 +73,7 @@ export async function connectCarrierAction(
   return { ok: true };
 }
 
-export async function disconnectCarrierAction(
-  input: unknown,
-): Promise<CarrierActionResult> {
+export async function disconnectCarrierAction(input: unknown): Promise<CarrierActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -104,9 +98,7 @@ export async function disconnectCarrierAction(
   return { ok: true };
 }
 
-export async function syncCarrierAction(
-  input: unknown,
-): Promise<CarrierActionResult> {
+export async function syncCarrierAction(input: unknown): Promise<CarrierActionResult> {
   const supabase = await createClient();
   const {
     data: { user },

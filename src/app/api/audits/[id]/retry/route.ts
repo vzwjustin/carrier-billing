@@ -96,17 +96,12 @@ export async function POST(
 
     const { data, error } = await supabase
       .from('audits')
-      .select(
-        'id,user_id,status,storage_path,retry_count,failure_reason,credit_consumed',
-      )
+      .select('id,user_id,status,storage_path,retry_count,failure_reason,credit_consumed')
       .eq('id', auditId)
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!data || !isAuditRow(data)) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -142,8 +137,7 @@ export async function POST(
           return NextResponse.json(
             {
               error: 'subscription_past_due',
-              message:
-                'Your subscription is past due. Please update payment to continue.',
+              message: 'Your subscription is past due. Please update payment to continue.',
             },
             { status: 402 },
           );
@@ -199,10 +193,7 @@ export async function POST(
       .select('retry_count');
 
     if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to reset audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to reset audit.' }, { status: 500 });
     }
 
     if (!updated || updated.length === 0) {
@@ -216,9 +207,7 @@ export async function POST(
     }
 
     const winningRow = updated[0];
-    const retryCount = isRetryCountRow(winningRow)
-      ? winningRow.retry_count
-      : nextRetryCount;
+    const retryCount = isRetryCountRow(winningRow) ? winningRow.retry_count : nextRetryCount;
 
     let creditReconsumed = false;
     if (needsCreditReconsume) {
@@ -227,8 +216,7 @@ export async function POST(
         creditReconsumed = true;
       } catch (decrementErr) {
         const isDefinitiveRefusal =
-          decrementErr instanceof Error &&
-          decrementErr.message === 'no_credits';
+          decrementErr instanceof Error && decrementErr.message === 'no_credits';
         Sentry.captureException(decrementErr, {
           tags: {
             surface: 'audits.retry.decrement',
@@ -312,10 +300,7 @@ export async function POST(
           extra: { auditId },
         });
       }
-      return NextResponse.json(
-        { error: 'Internal server error.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
@@ -324,9 +309,6 @@ export async function POST(
       tags: { surface: 'audits.retry.unknown' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

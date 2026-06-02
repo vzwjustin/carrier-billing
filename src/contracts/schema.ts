@@ -22,12 +22,7 @@ export type ContractWaivedFee = z.infer<typeof ContractWaivedFeeSchema>;
  */
 export const ContractTermsSchema = z.object({
   plan_name: z.string().max(120).nullable(),
-  contracted_monthly_rate_cents: z
-    .number()
-    .int()
-    .nonnegative()
-    .max(10_000_000)
-    .nullable(),
+  contracted_monthly_rate_cents: z.number().int().nonnegative().max(10_000_000).nullable(),
   // Basis points: 12.5% = 1250. CHECK constraint at SQL layer enforces
   // 0..10000 — we mirror it in the schema for the same defense-in-depth
   // reason ExtractedCredit.monthly_cents has its <= 0 refinement.

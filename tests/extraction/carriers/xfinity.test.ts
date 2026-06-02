@@ -63,9 +63,7 @@ describe('xfinity normalize (inherits Verizon)', () => {
 
   it('applies inherited Verizon Cloud feature reclassification', () => {
     const bill = baseBill();
-    firstLine(bill).features = [
-      { name: 'Verizon Cloud', category: 'addon', monthly_cents: 599 },
-    ];
+    firstLine(bill).features = [{ name: 'Verizon Cloud', category: 'addon', monthly_cents: 599 }];
     const out = normalize(bill);
     expect(firstLine(out).features[0]?.category).toBe('cloud');
   });

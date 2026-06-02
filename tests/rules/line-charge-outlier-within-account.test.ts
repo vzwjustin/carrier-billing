@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { lineChargeOutlierWithinAccountRule } from '@/rules/definitions/line-charge-outlier-within-account';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);
@@ -54,9 +48,7 @@ describe('line_charge_outlier_within_account rule', () => {
             makeLine({ plan_base_cents: 3000, features: [] }),
             makeLine({
               plan_base_cents: 3000,
-              features: [
-                makeFeature({ name: 'Loaded SOC stack', monthly_cents: 5000 }),
-              ],
+              features: [makeFeature({ name: 'Loaded SOC stack', monthly_cents: 5000 })],
             }),
           ],
         }),
@@ -162,8 +154,6 @@ describe('line_charge_outlier_within_account rule', () => {
     });
     const findings = await lineChargeOutlierWithinAccountRule.evaluate(c);
     expect(findings).toHaveLength(2);
-    expect(
-      findings.map((f) => f.affected_account_indexes[0]).sort(),
-    ).toEqual([0, 1]);
+    expect(findings.map((f) => f.affected_account_indexes[0]).sort()).toEqual([0, 1]);
   });
 });

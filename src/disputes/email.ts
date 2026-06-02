@@ -22,9 +22,7 @@ function renderAffectedLines(packet: DisputePacket): string {
   if (packet.affectedLines.length === 0) {
     return '  (none specified)';
   }
-  return packet.affectedLines
-    .map((l) => `  - ${l.mdnDisplay}  ·  ${l.planDisplay}`)
-    .join('\n');
+  return packet.affectedLines.map((l) => `  - ${l.mdnDisplay}  ·  ${l.planDisplay}`).join('\n');
 }
 
 function renderAccounts(packet: DisputePacket): string {

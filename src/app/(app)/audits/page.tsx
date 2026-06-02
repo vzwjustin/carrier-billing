@@ -12,13 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 25;
 
-const VALID_STATUSES = [
-  'pending',
-  'extracting',
-  'analyzing',
-  'completed',
-  'failed',
-] as const;
+const VALID_STATUSES = ['pending', 'extracting', 'analyzing', 'completed', 'failed'] as const;
 type AuditStatus = (typeof VALID_STATUSES)[number];
 
 interface AuditListRow {
@@ -66,10 +60,7 @@ function StatusBadge({ status }: { status: string }): React.JSX.Element {
   const label = STATUS_LABELS[status] ?? status;
   return (
     <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        cls,
-      )}
+      className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', cls)}
     >
       {label}
     </span>
@@ -99,14 +90,10 @@ function parseAfter(raw: string | string[] | undefined): string | null {
   return value;
 }
 
-function parseStatus(
-  raw: string | string[] | undefined,
-): AuditStatus | null {
+function parseStatus(raw: string | string[] | undefined): AuditStatus | null {
   const value = pickString(raw);
   if (!value) return null;
-  return (VALID_STATUSES as ReadonlyArray<string>).includes(value)
-    ? (value as AuditStatus)
-    : null;
+  return (VALID_STATUSES as ReadonlyArray<string>).includes(value) ? (value as AuditStatus) : null;
 }
 
 function parseQ(raw: string | string[] | undefined): string | null {
@@ -129,9 +116,7 @@ function buildHref(params: {
   return query ? `/audits?${query}` : '/audits';
 }
 
-export default async function AuditsPage(
-  props: AuditsPageProps,
-): Promise<React.JSX.Element> {
+export default async function AuditsPage(props: AuditsPageProps): Promise<React.JSX.Element> {
   const search = props.searchParams ? await props.searchParams : undefined;
   const after = parseAfter(search?.after);
   const status = parseStatus(search?.status);
@@ -140,9 +125,7 @@ export default async function AuditsPage(
   const supabase = await createClient();
   let query = supabase
     .from('audits')
-    .select(
-      'id,created_at,original_filename,carrier,status,estimated_annual_savings_cents',
-    )
+    .select('id,created_at,original_filename,carrier,status,estimated_annual_savings_cents')
     .order('created_at', { ascending: false })
     .limit(PAGE_SIZE + 1);
 
@@ -172,9 +155,7 @@ export default async function AuditsPage(
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Your audits
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Your audits</h1>
         <Link href="/audits/new">
           <Button>New audit</Button>
         </Link>
@@ -193,7 +174,7 @@ export default async function AuditsPage(
             defaultValue={q ?? ''}
             placeholder="Search by filename…"
             maxLength={80}
-            className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+            className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
           />
         </label>
         <label className="sm:w-44">
@@ -201,7 +182,7 @@ export default async function AuditsPage(
           <select
             name="status"
             defaultValue={status ?? ''}
-            className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+            className="block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             <option value="">All statuses</option>
             {VALID_STATUSES.map((s) => (
@@ -242,8 +223,8 @@ export default async function AuditsPage(
           </p>
           {!filtersActive && !after ? (
             <p className="mx-auto mt-2 max-w-md text-sm text-neutral-600">
-              Upload a PDF wireless bill to start. You&apos;ll get a savings
-              report in under five minutes — or browse a real sample first.
+              Upload a PDF wireless bill to start. You&apos;ll get a savings report in under five
+              minutes — or browse a real sample first.
             </p>
           ) : null}
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -268,7 +249,7 @@ export default async function AuditsPage(
       ) : (
         <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-3">Created</th>
                 <th className="px-4 py-3">File</th>
@@ -281,16 +262,12 @@ export default async function AuditsPage(
             <tbody className="divide-y divide-neutral-200">
               {rows.map((row) => (
                 <tr key={row.id} className="hover:bg-neutral-50">
-                  <td className="px-4 py-3 text-neutral-700">
-                    {formatDate(row.created_at)}
-                  </td>
+                  <td className="px-4 py-3 text-neutral-700">{formatDate(row.created_at)}</td>
                   <td className="px-4 py-3 text-neutral-900">
-                    <span className="block max-w-xs truncate">
-                      {row.original_filename}
-                    </span>
+                    <span className="block max-w-xs truncate">{row.original_filename}</span>
                   </td>
                   <td className="px-4 py-3 text-neutral-700">
-                    {row.carrier ? CARRIER_LABELS[row.carrier] ?? row.carrier : '—'}
+                    {row.carrier ? (CARRIER_LABELS[row.carrier] ?? row.carrier) : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />

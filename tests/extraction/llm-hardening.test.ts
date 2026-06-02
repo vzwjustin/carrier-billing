@@ -152,9 +152,7 @@ describe('extractBill — H4 prompt caching', () => {
   it('sends cache_control on the system block and on the PDF document block', async () => {
     messagesCreateMock.mockResolvedValueOnce({
       stop_reason: 'end_turn',
-      content: [
-        { type: 'text', text: JSON.stringify(makeBalancedBill()) },
-      ],
+      content: [{ type: 'text', text: JSON.stringify(makeBalancedBill()) }],
     });
 
     await extractBill(FAKE_PDF);
@@ -226,9 +224,7 @@ describe('extractBill — schema-validation failure does not leak bill PII', () 
     const issues = details.issues as Array<{ path: unknown[]; message: string }>;
     expect(Array.isArray(issues)).toBe(true);
     expect(issues.length).toBeGreaterThan(0);
-    expect(
-      issues.some((i) => i.path.includes('total_charges_cents')),
-    ).toBe(true);
+    expect(issues.some((i) => i.path.includes('total_charges_cents'))).toBe(true);
   });
 });
 

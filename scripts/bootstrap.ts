@@ -59,17 +59,12 @@ const useColor = process.stdout.isTTY === true && process.env.NO_COLOR == null;
 const paint = (code: string, text: string): string =>
   useColor ? `${code}${text}${ANSI.reset}` : text;
 
-const ok = (msg: string): void =>
-  console.log(`${paint(ANSI.green, '[OK]')} ${msg}`);
-const fail = (msg: string): void =>
-  console.log(`${paint(ANSI.red, '[FAIL]')} ${msg}`);
-const warn = (msg: string): void =>
-  console.log(`${paint(ANSI.yellow, '[WARN]')} ${msg}`);
-const info = (msg: string): void =>
-  console.log(`${paint(ANSI.cyan, '[INFO]')} ${msg}`);
+const ok = (msg: string): void => console.log(`${paint(ANSI.green, '[OK]')} ${msg}`);
+const fail = (msg: string): void => console.log(`${paint(ANSI.red, '[FAIL]')} ${msg}`);
+const warn = (msg: string): void => console.log(`${paint(ANSI.yellow, '[WARN]')} ${msg}`);
+const info = (msg: string): void => console.log(`${paint(ANSI.cyan, '[INFO]')} ${msg}`);
 const dim = (msg: string): void => console.log(paint(ANSI.gray, msg));
-const heading = (msg: string): void =>
-  console.log(`\n${paint(ANSI.bold, msg)}`);
+const heading = (msg: string): void => console.log(`\n${paint(ANSI.bold, msg)}`);
 
 // ---------------------------------------------------------------------------
 // CLI parsing
@@ -184,10 +179,7 @@ const WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   'invoice.payment_failed',
 ];
 
-async function setupStripe(
-  env: EnvMap,
-  opts: CliOptions,
-): Promise<SubtaskReport> {
+async function setupStripe(env: EnvMap, opts: CliOptions): Promise<SubtaskReport> {
   const report = makeReport('Stripe products & prices');
 
   if (opts.skipStripe) {
@@ -206,7 +198,9 @@ async function setupStripe(
   if (opts.dryRun) {
     info('Stripe: dry-run — would search/create products and prices.');
     info(`  - product "CarrierAudit – One-time audit"  price ${ONE_TIME_PRICE_CENTS}c one_time`);
-    info(`  - product "CarrierAudit – Unlimited subscription"  price ${SUBSCRIPTION_PRICE_CENTS}c monthly`);
+    info(
+      `  - product "CarrierAudit – Unlimited subscription"  price ${SUBSCRIPTION_PRICE_CENTS}c monthly`,
+    );
     if (opts.stripeWebhook != null) {
       info(`  - webhook endpoint ${opts.stripeWebhook} for ${WEBHOOK_EVENTS.length} events`);
     }
@@ -224,14 +218,8 @@ async function setupStripe(
   // (a) Products + prices
   heading('Stripe — products & prices');
 
-  const oneTime = await findOrCreateProduct(
-    stripe,
-    'CarrierAudit – One-time audit',
-    'one_time',
-  );
-  ok(
-    `Product (one_time): ${oneTime.product.id} ${oneTime.created ? '(created)' : '(existing)'}`,
-  );
+  const oneTime = await findOrCreateProduct(stripe, 'CarrierAudit – One-time audit', 'one_time');
+  ok(`Product (one_time): ${oneTime.product.id} ${oneTime.created ? '(created)' : '(existing)'}`);
 
   const oneTimePrice = await findOrCreatePrice(
     stripe,
@@ -248,16 +236,11 @@ async function setupStripe(
     'CarrierAudit – Unlimited subscription',
     'subscription',
   );
-  ok(
-    `Product (subscription): ${sub.product.id} ${sub.created ? '(created)' : '(existing)'}`,
-  );
+  ok(`Product (subscription): ${sub.product.id} ${sub.created ? '(created)' : '(existing)'}`);
 
-  const subPrice = await findOrCreatePrice(
-    stripe,
-    sub.product.id,
-    SUBSCRIPTION_PRICE_CENTS,
-    { interval: 'month' },
-  );
+  const subPrice = await findOrCreatePrice(stripe, sub.product.id, SUBSCRIPTION_PRICE_CENTS, {
+    interval: 'month',
+  });
   ok(
     `Price   (subscription): ${subPrice.price.id} $${(SUBSCRIPTION_PRICE_CENTS / 100).toFixed(2)}/mo ${subPrice.created ? '(created)' : '(existing)'}`,
   );
@@ -289,9 +272,7 @@ async function setupStripe(
 
     if (existing) {
       ok(`Webhook endpoint exists: ${existing.id}`);
-      const haveAll = WEBHOOK_EVENTS.every((ev) =>
-        existing.enabled_events.includes(ev),
-      );
+      const haveAll = WEBHOOK_EVENTS.every((ev) => existing.enabled_events.includes(ev));
       if (!haveAll) {
         await stripe.webhookEndpoints.update(existing.id, {
           enabled_events: WEBHOOK_EVENTS,
@@ -372,10 +353,7 @@ async function setupSupabaseMigrationsInfo(): Promise<SubtaskReport> {
 // (d) Supabase storage buckets
 // ---------------------------------------------------------------------------
 
-async function setupSupabaseStorage(
-  env: EnvMap,
-  opts: CliOptions,
-): Promise<SubtaskReport> {
+async function setupSupabaseStorage(env: EnvMap, opts: CliOptions): Promise<SubtaskReport> {
   const report = makeReport('Supabase storage buckets');
 
   if (opts.skipSupabase) {
@@ -383,10 +361,7 @@ async function setupSupabaseStorage(
     return report;
   }
 
-  const missing = requireEnv(env, [
-    'NEXT_PUBLIC_SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-  ]);
+  const missing = requireEnv(env, ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
   if (missing.length > 0) {
     report.status = 'failed';
     report.notes.push(`Missing env: ${missing.join(', ')}`);
@@ -421,10 +396,7 @@ async function setupSupabaseStorage(
 // (e) Resend domain (opt-in)
 // ---------------------------------------------------------------------------
 
-async function setupResend(
-  env: EnvMap,
-  opts: CliOptions,
-): Promise<SubtaskReport> {
+async function setupResend(env: EnvMap, opts: CliOptions): Promise<SubtaskReport> {
   const report = makeReport('Resend sender domain');
 
   if (opts.skipResend) {
@@ -493,7 +465,9 @@ async function setupResend(
       const name = r.name ?? '?';
       const value = r.value ?? r.data ?? '?';
       const ttl = r.ttl ?? 'auto';
-      console.log(`    ${String(type).padEnd(6)} ${String(name).padEnd(40)} ${String(value)}  TTL=${String(ttl)}`);
+      console.log(
+        `    ${String(type).padEnd(6)} ${String(name).padEnd(40)} ${String(value)}  TTL=${String(ttl)}`,
+      );
     }
   } else {
     info('No DNS records returned — check the Resend dashboard for the records to add.');

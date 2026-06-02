@@ -47,17 +47,16 @@ const adminUpdateRows: Record<string, unknown>[] = [];
 const adminUpdateFilters: Array<Array<[string, unknown]>> = [];
 
 // admin: storage.from('reports').remove([...])
-const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<StorageRemoveResp>>(
-  async () => ({ data: null, error: null }),
-);
+const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<StorageRemoveResp>>(async () => ({
+  data: null,
+  error: null,
+}));
 
 const sentryCaptureMock = vi.fn();
-const refundFailedAuditMock = vi.fn(
-  async (_name: string, _args: Record<string, unknown>) => ({
-    data: true,
-    error: null,
-  }),
-);
+const refundFailedAuditMock = vi.fn(async (_name: string, _args: Record<string, unknown>) => ({
+  data: true,
+  error: null,
+}));
 
 // server-client chain: from('audits').select(...).eq(...).maybeSingle()
 function makeServerFromChain() {
@@ -110,8 +109,7 @@ vi.mock('@/lib/supabase/admin', () => ({
         remove: (paths: string[]) => storageRemoveMock(paths),
       }),
     },
-    rpc: (name: string, args: Record<string, unknown>) =>
-      refundFailedAuditMock(name, args),
+    rpc: (name: string, args: Record<string, unknown>) => refundFailedAuditMock(name, args),
   }),
 }));
 
@@ -122,12 +120,8 @@ vi.mock('@/inngest/client', () => ({
 import type { AccessGateResult } from '@/lib/access/gate';
 
 const assertCanRunAuditMock = vi.fn<() => Promise<AccessGateResult>>();
-const consumeAuditCreditMock = vi.fn<
-  (
-    userId: string,
-    auditId: string,
-  ) => Promise<{ remaining: number; idempotent: boolean }>
->();
+const consumeAuditCreditMock =
+  vi.fn<(userId: string, auditId: string) => Promise<{ remaining: number; idempotent: boolean }>>();
 
 vi.mock('@/lib/access/gate', () => ({
   assertCanRunAudit: () => assertCanRunAuditMock(),
@@ -273,9 +267,7 @@ describe('POST /api/audits/[id]/retry', () => {
         'audits.retry.storage_invalidate',
     );
     expect(storageCall).toBeTruthy();
-    expect((storageCall?.[0] as { message?: string }).message).toBe(
-      'storage remove failed',
-    );
+    expect((storageCall?.[0] as { message?: string }).message).toBe('storage remove failed');
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
   });
 
@@ -388,10 +380,7 @@ describe('POST /api/audits/[id]/retry', () => {
 
     expect(res.status).toBe(200);
     expect(adminUpdateRows[0]?.['status']).toBe('pending');
-    expect(consumeAuditCreditMock).toHaveBeenCalledWith(
-      TEST_USER_ID,
-      TEST_AUDIT_ID,
-    );
+    expect(consumeAuditCreditMock).toHaveBeenCalledWith(TEST_USER_ID, TEST_AUDIT_ID);
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
   });
 

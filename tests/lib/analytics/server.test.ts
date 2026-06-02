@@ -88,10 +88,7 @@ describe('trackServer', () => {
     const { trackServer } = await import('@/lib/analytics/server');
 
     await expect(
-      trackServer(
-        { name: 'report_shared', properties: { auditId: 'aud_x' } },
-        'user_42',
-      ),
+      trackServer({ name: 'report_shared', properties: { auditId: 'aud_x' } }, 'user_42'),
     ).resolves.toBeUndefined();
   });
 });

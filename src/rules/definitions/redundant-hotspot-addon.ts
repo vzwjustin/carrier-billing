@@ -10,16 +10,14 @@ const RULE_ID = 'redundant_hotspot_addon';
 //   - T-Mobile Business Unlimited Advanced / Ultimate+ → 50–100 GB MHS
 // "Starter"/"Start"/"Starter" tiers usually do NOT include hotspot and are
 // excluded. A line on a starter plan paying for a hotspot add-on is legit.
-const PREMIUM_TIER_RE =
-  /\b(pro|premium|plus|advanced|ultimate|elite|performance)\b/i;
+const PREMIUM_TIER_RE = /\b(pro|premium|plus|advanced|ultimate|elite|performance)\b/i;
 
 // Feature-name markers that look like a redundant hotspot add-on rather than
 // a true MiFi/Jetpack device line (which is its own line and is excluded via
 // isHotspotDevice). Phrases vary across carrier billing engines, hence the
 // permissive alternation. Excludes "international hotspot" since that's a
 // roaming-only feature distinct from domestic MHS.
-const HOTSPOT_FEATURE_RE =
-  /\b(mobile\s*hotspot|hotspot\s*data|mhs|tether|tethering)\b/i;
+const HOTSPOT_FEATURE_RE = /\b(mobile\s*hotspot|hotspot\s*data|mhs|tether|tethering)\b/i;
 const INTL_FEATURE_RE = /\binternational\b/i;
 
 export const redundantHotspotAddonRule: Rule = {
@@ -57,7 +55,7 @@ export const redundantHotspotAddonRule: Rule = {
           title: `Paid hotspot add-on on a plan that already includes hotspot`,
           description: `This line is on "${line.plan_name}", which already includes a mobile-hotspot data allotment, but is also being charged ${formatCents(total)}/mo for ${billed.length === 1 ? 'the add-on' : 'add-ons'} (${names}). Carriers commonly attach a hotspot SOC at activation that should be removed once the plan is upgraded to a tier that bundles hotspot data.`,
           recommended_action:
-            'Confirm the line\'s monthly hotspot usage against the plan\'s included allotment. If usage fits, ask your carrier rep to remove the redundant add-on SOC (Service Order Code) and back-credit any cycles billed after the plan upgrade.',
+            "Confirm the line's monthly hotspot usage against the plan's included allotment. If usage fits, ask your carrier rep to remove the redundant add-on SOC (Service Order Code) and back-credit any cycles billed after the plan upgrade.",
           estimated_monthly_savings_cents: total,
           // Strong signal (plan tier name + named add-on) but we cannot
           // verify actual hotspot consumption from the bill, so this stays

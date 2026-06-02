@@ -70,10 +70,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
           continue;
         }
 
-        const total = occurrences.reduce(
-          (sum, o) => sum + o.monthly_cents,
-          0,
-        );
+        const total = occurrences.reduce((sum, o) => sum + o.monthly_cents, 0);
         // Per-line >0 cents: a fleet-wide $0 row IS informational but the
         // operator action ("ask the rep to remove it") only matters when
         // something is actually being charged. Skip the all-zero case.
@@ -91,7 +88,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
           title: `"${displayName}" charged on ${occurrences.length} of ${lineCount} lines at under $1 each`,
           description: `Feature "${displayName}" appears on ${occurrences.length} of ${lineCount} lines on this account (${(fraction * 100).toFixed(0)}%), each charged at under $1/mo for a total of ${formatCents(total)}/mo. Fleet-wide pennies-each SOCs are typically either a $0.01 documentation row or a recovery-fee bucket that some accounts have negotiated away; at enough scale it's worth a question to the rep.`,
           recommended_action:
-            'Ask your carrier rep to identify the SOC behind this feature row. If it\'s purely a documentation/entitlement-display row, request that it be removed for tidiness; if it\'s a recovery surcharge, ask whether the account is eligible for a waiver.',
+            "Ask your carrier rep to identify the SOC behind this feature row. If it's purely a documentation/entitlement-display row, request that it be removed for tidiness; if it's a recovery surcharge, ask whether the account is eligible for a waiver.",
           estimated_monthly_savings_cents: total,
           // Speculative bucket (0.5) per types.ts. The signal is structural
           // but the underlying cause varies — sometimes the SOC is required
@@ -105,9 +102,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(
-              ...occurrences.map((o) => o.monthly_cents),
-            ),
+            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
           },
         });
       }

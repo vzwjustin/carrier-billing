@@ -167,8 +167,16 @@ describe('expired_promo_credit + account_promo_expiring_soon — no double-fire'
     { label: 'already-expired', expires_on: '2026-04-01', expectRules: ['expired_promo_credit'] },
     { label: 'expires-today', expires_on: '2026-05-08', expectRules: ['expired_promo_credit'] },
     { label: 'expires-day-30', expires_on: '2026-06-07', expectRules: ['expired_promo_credit'] },
-    { label: 'expires-day-31', expires_on: '2026-06-08', expectRules: ['account_level_promo_about_to_expire'] },
-    { label: 'expires-day-60', expires_on: '2026-07-07', expectRules: ['account_level_promo_about_to_expire'] },
+    {
+      label: 'expires-day-31',
+      expires_on: '2026-06-08',
+      expectRules: ['account_level_promo_about_to_expire'],
+    },
+    {
+      label: 'expires-day-60',
+      expires_on: '2026-07-07',
+      expectRules: ['account_level_promo_about_to_expire'],
+    },
     { label: 'expires-day-61', expires_on: '2026-07-08', expectRules: [] },
   ];
 
@@ -200,8 +208,8 @@ describe('expired_promo_credit + account_promo_expiring_soon — no double-fire'
       expect(firedRuleIds).toEqual([...expectRules].sort());
       // Belt-and-suspenders: the two credit rules must never both fire on
       // the same credit, regardless of window position.
-      const credit = firedRuleIds.filter((id) =>
-        id === 'expired_promo_credit' || id === 'account_level_promo_about_to_expire',
+      const credit = firedRuleIds.filter(
+        (id) => id === 'expired_promo_credit' || id === 'account_level_promo_about_to_expire',
       );
       expect(credit.length).toBeLessThanOrEqual(1);
     },

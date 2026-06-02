@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseEdi811,
-  Edi811ParseError,
-  el,
-  elOrNull,
-} from '@/extraction/edi811/parser';
+import { parseEdi811, Edi811ParseError, el, elOrNull } from '@/extraction/edi811/parser';
 import { buildIsa, buildGs, buildInterchange } from './fixtures/build';
 
 const SIMPLE_BODY = [
@@ -71,8 +66,7 @@ describe('parseEdi811', () => {
       segmentTerminator: "'",
       componentSep: '^',
     });
-    const body =
-      "ST|811|0001'BIG|20260401|INV-9'N1|RE|T-Mobile US'CTT|0'SE|4|0001'";
+    const body = "ST|811|0001'BIG|20260401|INV-9'N1|RE|T-Mobile US'CTT|0'SE|4|0001'";
     const ge = "GE|1|1'";
     const iea = "IEA|1|000000001'";
     const interchange = `${isa}GS|IN|TMUS|ACME|20260401|1200|1|X|004010'${body}${ge}${iea}`;

@@ -10,9 +10,7 @@ function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
 
 describe('duplicate_charge_across_accounts rule wrapper', () => {
   it('exposes the expected rule id + applies to all carriers', () => {
-    expect(duplicateChargeAcrossAccountsRule.id).toBe(
-      'duplicate_charge_across_accounts',
-    );
+    expect(duplicateChargeAcrossAccountsRule.id).toBe('duplicate_charge_across_accounts');
     expect(duplicateChargeAcrossAccountsRule.appliesTo).toBe('all');
   });
 
@@ -23,9 +21,7 @@ describe('duplicate_charge_across_accounts rule wrapper', () => {
           account_number_last4: '1111',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 })],
             }),
           ],
         }),
@@ -33,9 +29,7 @@ describe('duplicate_charge_across_accounts rule wrapper', () => {
           account_number_last4: '2222',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 }),
-              ],
+              features: [makeFeature({ name: 'TravelPass Daily', monthly_cents: 1000 })],
             }),
           ],
         }),
@@ -59,14 +53,10 @@ describe('duplicate_charge_across_accounts rule wrapper', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 })],
             }),
           ],
         }),

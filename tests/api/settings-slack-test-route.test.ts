@@ -17,12 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const SLACK_WEBHOOK = 'https://hooks.slack.com/services/T1/B1/secretpath';
 
-const {
-  getUserMock,
-  consumeRateLimitMock,
-  maybeSingleMock,
-  postToSlackMock,
-} = vi.hoisted(() => ({
+const { getUserMock, consumeRateLimitMock, maybeSingleMock, postToSlackMock } = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   consumeRateLimitMock: vi.fn(),
   maybeSingleMock: vi.fn(),

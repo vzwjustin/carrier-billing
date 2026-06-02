@@ -88,8 +88,7 @@ export default function PreviewRenewalAdvisorPage(): React.JSX.Element {
       <header>
         <h1 className="text-2xl font-semibold text-neutral-900">Renewal Advisor</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Contracts approaching expiration plus benchmarks against carrier
-          modern equivalents.
+          Contracts approaching expiration plus benchmarks against carrier modern equivalents.
         </p>
       </header>
       <section className="grid gap-4 sm:grid-cols-2">
@@ -109,7 +108,7 @@ export default function PreviewRenewalAdvisorPage(): React.JSX.Element {
         </h2>
         <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-2.5">File</th>
                 <th className="px-4 py-2.5">Carrier</th>
@@ -140,7 +139,7 @@ export default function PreviewRenewalAdvisorPage(): React.JSX.Element {
                       {row.days_until} days
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums text-neutral-900">
+                  <td className="px-4 py-2.5 text-neutral-900 tabular-nums">
                     {row.rate_cents !== null ? formatCents(row.rate_cents) : '—'}
                   </td>
                   <td className="px-4 py-2.5">
@@ -163,12 +162,12 @@ export default function PreviewRenewalAdvisorPage(): React.JSX.Element {
           Plan benchmark vs carrier modern equivalent
         </h2>
         <p className="text-sm text-neutral-600">
-          Estimated total: <strong>{formatCents(totalBenchmarkedSavings)}/mo</strong>{' '}
-          across {BENCHMARKS.reduce((s, r) => s + r.line_count, 0)} lines.
+          Estimated total: <strong>{formatCents(totalBenchmarkedSavings)}/mo</strong> across{' '}
+          {BENCHMARKS.reduce((s, r) => s + r.line_count, 0)} lines.
         </p>
         <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-2.5">Carrier</th>
                 <th className="px-4 py-2.5">Legacy plan</th>
@@ -185,10 +184,10 @@ export default function PreviewRenewalAdvisorPage(): React.JSX.Element {
                   <td className="px-4 py-2.5 text-neutral-900">{r.legacy_plan}</td>
                   <td className="px-4 py-2.5 text-neutral-900">{r.replacement_plan}</td>
                   <td className="px-4 py-2.5 text-neutral-700">{r.line_count}</td>
-                  <td className="px-4 py-2.5 tabular-nums text-neutral-700">
+                  <td className="px-4 py-2.5 text-neutral-700 tabular-nums">
                     {formatCents(r.avg_current_cents)}
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums font-semibold text-green-700">
+                  <td className="px-4 py-2.5 font-semibold text-green-700 tabular-nums">
                     {formatCents(r.estimated_monthly_savings_cents)}
                   </td>
                 </tr>
@@ -201,21 +200,11 @@ export default function PreviewRenewalAdvisorPage(): React.JSX.Element {
   );
 }
 
-function StatTile({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
+function StatTile({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
-        {value}
-      </p>
+      <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-neutral-900 tabular-nums">{value}</p>
     </div>
   );
 }

@@ -31,7 +31,10 @@ export const dynamic = 'force-dynamic';
 
 // `randomBytes(24).toString('base64url')` is exactly 32 characters.
 const TOKEN_LENGTH = 32;
-const TokenSchema = z.string().length(TOKEN_LENGTH).regex(/^[A-Za-z0-9_-]+$/);
+const TokenSchema = z
+  .string()
+  .length(TOKEN_LENGTH)
+  .regex(/^[A-Za-z0-9_-]+$/);
 
 const SUCCESS_HTML = `<!doctype html>
 <html lang="en">

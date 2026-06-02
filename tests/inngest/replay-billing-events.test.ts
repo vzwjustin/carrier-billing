@@ -88,12 +88,7 @@ function makeFilterableSelect(
     limit() {
       return chain;
     },
-    then(
-      resolve: (v: {
-        data: Array<Record<string, unknown>>;
-        error: null;
-      }) => void,
-    ) {
+    then(resolve: (v: { data: Array<Record<string, unknown>>; error: null }) => void) {
       // Apply filters in-memory so each test can stage one source dataset and
       // get correct partitions across the three queries the function fires.
       let filtered = [...rows];
@@ -394,10 +389,7 @@ describe('findReplayCandidates', () => {
     // Only one row; both `failed-no-attempt` and `failed-cooled` queries
     // could conceivably match if cooled timestamp predicates also hit. The
     // merge pass should still yield exactly one entry.
-    const candidates = await findReplayCandidates(
-      makeSupabaseStub([row], []),
-      NOW,
-    );
+    const candidates = await findReplayCandidates(makeSupabaseStub([row], []), NOW);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.id).toBe('be_dup_predicate');
   });
@@ -475,11 +467,7 @@ describe('replayBillingEvent', () => {
 
   it('invalid payload (non-object or type mismatch) ⇒ row marked failed, handler not called', async () => {
     const updates: Array<{ patch: Record<string, unknown>; eq: [string, unknown] }> = [];
-    const outcome = await replayBillingEvent(
-      makeSupabaseStub([], updates),
-      makeRow(null),
-      NOW,
-    );
+    const outcome = await replayBillingEvent(makeSupabaseStub([], updates), makeRow(null), NOW);
     expect(outcome).toBe('invalid_payload');
     expect(handleStripeEventMock).not.toHaveBeenCalled();
     expect(updates[1]?.patch.processed_status).toBe('failed');
@@ -490,9 +478,30 @@ describe('replayBillingEvent', () => {
 
   it('M-S3: a thrown row does NOT cancel sibling rows in the batch', async () => {
     const rows: ReplayCandidate[] = [
-      { id: 'row_a', stripe_event_id: 'evt_a', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
-      { id: 'row_bad', stripe_event_id: 'evt_bad', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
-      { id: 'row_c', stripe_event_id: 'evt_c', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      {
+        id: 'row_a',
+        stripe_event_id: 'evt_a',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
+      {
+        id: 'row_bad',
+        stripe_event_id: 'evt_bad',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
+      {
+        id: 'row_c',
+        stripe_event_id: 'evt_c',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
     ];
 
     const seen: string[] = [];
@@ -513,10 +522,38 @@ describe('replayBillingEvent', () => {
 
   it('M-S3: outcome counters tally all four ReplayOutcome values', async () => {
     const rows: ReplayCandidate[] = [
-      { id: 'r_ok', stripe_event_id: 'e1', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
-      { id: 'r_fail', stripe_event_id: 'e2', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
-      { id: 'r_inv', stripe_event_id: 'e3', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
-      { id: 'r_skip', stripe_event_id: 'e4', type: 't', payload: {}, processed_status: null, last_attempted_at: null },
+      {
+        id: 'r_ok',
+        stripe_event_id: 'e1',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
+      {
+        id: 'r_fail',
+        stripe_event_id: 'e2',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
+      {
+        id: 'r_inv',
+        stripe_event_id: 'e3',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
+      {
+        id: 'r_skip',
+        stripe_event_id: 'e4',
+        type: 't',
+        payload: {},
+        processed_status: null,
+        last_attempted_at: null,
+      },
     ];
     const outcomes: Record<string, 'success' | 'failed' | 'invalid_payload' | 'skipped'> = {
       r_ok: 'success',
@@ -524,9 +561,7 @@ describe('replayBillingEvent', () => {
       r_inv: 'invalid_payload',
       r_skip: 'skipped',
     };
-    const tally = await processReplayBatch(rows, async (row) =>
-      outcomes[row.id] ?? 'failed',
-    );
+    const tally = await processReplayBatch(rows, async (row) => outcomes[row.id] ?? 'failed');
 
     expect(tally).toEqual({
       processed: 4,
@@ -548,11 +583,7 @@ describe('replayBillingEvent', () => {
       stolen: new Set(['be_target']),
     });
 
-    const outcome = await replayBillingEvent(
-      supabase,
-      makeRow(VALID_PAYLOAD),
-      NOW,
-    );
+    const outcome = await replayBillingEvent(supabase, makeRow(VALID_PAYLOAD), NOW);
 
     expect(outcome).toBe('skipped');
     // Handler was NOT invoked — that's the whole point of the claim.

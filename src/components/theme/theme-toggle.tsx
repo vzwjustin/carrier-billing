@@ -3,11 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import {
-  THEME_STORAGE_KEY,
-  resolvePreference,
-  type ThemePreference,
-} from '@/lib/theme';
+import { THEME_STORAGE_KEY, resolvePreference, type ThemePreference } from '@/lib/theme';
 
 const OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'light', label: 'Light' },

@@ -78,8 +78,7 @@ export async function getOrCreateInboundToken(
     throw new Error(`profile read failed: ${error.message}`);
   }
 
-  const existing = (data as { inbound_email_token?: string | null } | null)
-    ?.inbound_email_token;
+  const existing = (data as { inbound_email_token?: string | null } | null)?.inbound_email_token;
   if (typeof existing === 'string' && existing.length > 0) {
     return existing;
   }
@@ -126,9 +125,8 @@ export async function getOrCreateInboundToken(
     if (reread.error) {
       throw new Error(`inbound token reread failed: ${reread.error.message}`);
     }
-    const persisted = (
-      reread.data as { inbound_email_token?: string | null } | null
-    )?.inbound_email_token;
+    const persisted = (reread.data as { inbound_email_token?: string | null } | null)
+      ?.inbound_email_token;
     if (typeof persisted === 'string' && persisted.length > 0) {
       return persisted;
     }
@@ -145,11 +143,7 @@ const HEX64_RE = /^(sha256=)?[0-9a-fA-F]{64}$/;
  * mismatches via timing. Accepts either bare hex or `sha256=<hex>` (the
  * GitHub/Postmark convention) and is case-insensitive.
  */
-export function verifyHmac(
-  body: string,
-  signatureHex: string,
-  secret: string,
-): boolean {
+export function verifyHmac(body: string, signatureHex: string, secret: string): boolean {
   if (typeof signatureHex !== 'string') return false;
   if (!HEX64_RE.test(signatureHex)) return false;
   const stripped = signatureHex.replace(/^sha256=/, '').toLowerCase();
@@ -176,9 +170,7 @@ const RECIPIENT_RE = new RegExp(
   'i',
 );
 
-export function parseInboundRecipient(
-  to: string,
-): { token: string; domain: string } | null {
+export function parseInboundRecipient(to: string): { token: string; domain: string } | null {
   const match = to.match(RECIPIENT_RE);
   if (!match) return null;
   const [, token, domain] = match;

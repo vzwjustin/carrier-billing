@@ -63,9 +63,7 @@ describe('rules/registry self-check', () => {
     // Cast to Partial<Rule> makes `evaluate` optional so `delete` is legal —
     // simulating a malformed rule that slipped past the compile-time type.
     delete (bad as Partial<Rule>).evaluate;
-    expect(() => validateRegistry([bad])).toThrow(
-      /rule "no_evaluate" has no evaluate function/,
-    );
+    expect(() => validateRegistry([bad])).toThrow(/rule "no_evaluate" has no evaluate function/);
   });
 
   it('accepts a valid carrier-scoped rule', () => {

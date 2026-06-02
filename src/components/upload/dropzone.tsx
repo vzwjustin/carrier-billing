@@ -122,7 +122,7 @@ export function Dropzone({ onFile, disabled = false }: DropzoneProps): React.JSX
         onDragLeave={handleDragLeave}
         className={cn(
           'flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2',
+          'focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none',
           isDragging
             ? 'border-neutral-900 bg-neutral-100'
             : 'border-neutral-300 bg-white hover:bg-neutral-50',
@@ -135,10 +135,7 @@ export function Dropzone({ onFile, disabled = false }: DropzoneProps): React.JSX
           fill="none"
           stroke="currentColor"
           strokeWidth="1.5"
-          className={cn(
-            'mb-3 h-10 w-10',
-            isDragging ? 'text-neutral-900' : 'text-neutral-400',
-          )}
+          className={cn('mb-3 h-10 w-10', isDragging ? 'text-neutral-900' : 'text-neutral-400')}
         >
           <path
             strokeLinecap="round"
@@ -146,9 +143,7 @@ export function Dropzone({ onFile, disabled = false }: DropzoneProps): React.JSX
             d="M9 8.25H7.5a2.25 2.25 0 0 0-2.25 2.25v9a2.25 2.25 0 0 0 2.25 2.25h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25H15M9 12l3-3m0 0 3 3m-3-3v12"
           />
         </svg>
-        <p className="text-sm font-medium text-neutral-900">
-          Drag and drop your bill here
-        </p>
+        <p className="text-sm font-medium text-neutral-900">Drag and drop your bill here</p>
         <p className="mt-1 text-xs text-neutral-500">
           or click to choose a file. PDF or EDI 811 (.edi, .x12, .811, .txt), up to 25 MB.
         </p>
@@ -165,9 +160,7 @@ export function Dropzone({ onFile, disabled = false }: DropzoneProps): React.JSX
       {staged ? (
         <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-neutral-900">
-              {staged.name}
-            </p>
+            <p className="truncate text-sm font-medium text-neutral-900">{staged.name}</p>
             <p className="text-xs text-neutral-500">{formatBytes(staged.size)}</p>
           </div>
           <Button

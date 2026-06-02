@@ -40,9 +40,7 @@ type GetUserResult = {
   error: null;
 };
 
-type DownloadResult =
-  | { data: Blob; error: null }
-  | { data: null; error: { message: string } };
+type DownloadResult = { data: Blob; error: null } | { data: null; error: { message: string } };
 
 type UploadResult =
   | { data: { path: string }; error: null }
@@ -185,9 +183,7 @@ function makeContext(id: string): { params: Promise<{ id: string }> } {
 }
 
 function makeRequest(opts: { token?: string } = {}): Request {
-  const url = new URL(
-    `http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`,
-  );
+  const url = new URL(`http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`);
   if (opts.token) url.searchParams.set('token', opts.token);
   return new Request(url);
 }
@@ -300,9 +296,7 @@ describe('GET /api/audits/[id]/report.pdf', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
-    expect(res.headers.get('content-disposition')).toContain(
-      'inline; filename="carrieraudit-',
-    );
+    expect(res.headers.get('content-disposition')).toContain('inline; filename="carrieraudit-');
     // Render must NOT be called when we have a cache hit.
     expect(renderReportPdfMock).not.toHaveBeenCalled();
     expect(uploadMock).not.toHaveBeenCalled();
@@ -385,8 +379,7 @@ describe('GET /api/audits/[id]/report.pdf', () => {
     expect(removeMock).toHaveBeenCalledTimes(1);
     const scrubCall = sentryCaptureMock.mock.calls.find(
       ([, ctx]) =>
-        (ctx as { tags?: { surface?: string } } | undefined)?.tags?.surface ===
-        'pdf.cache_scrub',
+        (ctx as { tags?: { surface?: string } } | undefined)?.tags?.surface === 'pdf.cache_scrub',
     );
     expect(scrubCall).toBeTruthy();
     expect((scrubCall?.[0] as { message?: string }).message).toBe('remove failed');
@@ -407,10 +400,7 @@ describe('GET /api/audits/[id]/report.pdf', () => {
     };
     downloadMock.mockResolvedValueOnce({ data: fakeBlob as unknown as Blob, error: null });
 
-    const res = await GET(
-      makeRequest({ token: SHARE_TOKEN }),
-      makeContext(VALID_AUDIT_ID),
-    );
+    const res = await GET(makeRequest({ token: SHARE_TOKEN }), makeContext(VALID_AUDIT_ID));
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
@@ -443,10 +433,7 @@ describe('GET /api/audits/[id]/report.pdf', () => {
       error: null,
     });
 
-    const res = await GET(
-      makeRequest({ token: SHARE_TOKEN }),
-      makeContext(VALID_AUDIT_ID),
-    );
+    const res = await GET(makeRequest({ token: SHARE_TOKEN }), makeContext(VALID_AUDIT_ID));
 
     expect(res.status).toBe(200);
     expect(adminSelectColumns[0]).toContain('share_token_expires_at');

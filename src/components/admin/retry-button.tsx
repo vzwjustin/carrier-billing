@@ -49,13 +49,7 @@ export function RetryButton({ auditId }: RetryButtonProps): React.JSX.Element {
   }
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={pending || done}
-      onClick={onClick}
-    >
+    <Button type="button" variant="outline" size="sm" disabled={pending || done} onClick={onClick}>
       {done ? 'Queued' : pending ? 'Retrying…' : 'Retry'}
     </Button>
   );

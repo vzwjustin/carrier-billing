@@ -18,11 +18,8 @@ export function DocsNav(): React.ReactElement {
   const pathname = usePathname();
 
   return (
-    <nav
-      aria-label="Documentation"
-      className="flex flex-col gap-1 text-sm"
-    >
-      <span className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <nav aria-label="Documentation" className="flex flex-col gap-1 text-sm">
+      <span className="px-2 pb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
         Documentation
       </span>
       {DOCS_PAGES.map((page) => {

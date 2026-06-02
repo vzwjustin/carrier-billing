@@ -32,10 +32,7 @@ export function formatIsoDateDisplay(value: string | null | undefined): string {
   });
 }
 
-export function formatIsoDatePeriod(
-  start: string | null,
-  end: string | null,
-): string {
+export function formatIsoDatePeriod(start: string | null, end: string | null): string {
   if (!start && !end) return '—';
   return `${formatIsoDateDisplay(start)} – ${formatIsoDateDisplay(end)}`;
 }

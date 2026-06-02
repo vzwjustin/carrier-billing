@@ -14,8 +14,7 @@ export default function ResetPasswordPage() {
           Reset your password
         </h1>
         <p className="text-sm text-neutral-500">
-          Enter the email on your account and we&apos;ll send you a link to
-          set a new password.
+          Enter the email on your account and we&apos;ll send you a link to set a new password.
         </p>
       </div>
       <ResetPasswordForm />

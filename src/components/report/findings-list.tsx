@@ -47,9 +47,7 @@ export interface FindingsListProps {
  * inside each bucket already follows the builder's sort, so the flat shape
  * is fine as a starting point for the client-side filter pipeline.
  */
-function flatten(
-  bySeverity: Record<Severity, Finding[]>,
-): Finding[] {
+function flatten(bySeverity: Record<Severity, Finding[]>): Finding[] {
   const out: Finding[] = [];
   for (const sev of SEVERITY_ORDER) {
     const bucket = bySeverity[sev] ?? [];
@@ -66,15 +64,9 @@ export function FindingsList({
   meta,
 }: FindingsListProps): React.JSX.Element {
   const searchParams = useSearchParams();
-  const filterState = React.useMemo(
-    () => parseFilterState(searchParams),
-    [searchParams],
-  );
+  const filterState = React.useMemo(() => parseFilterState(searchParams), [searchParams]);
 
-  const allFindings = React.useMemo(
-    () => flatten(findingsBySeverity),
-    [findingsBySeverity],
-  );
+  const allFindings = React.useMemo(() => flatten(findingsBySeverity), [findingsBySeverity]);
 
   const filtered = React.useMemo(
     () => applyFindingsFilter(allFindings, filterState, meta ?? {}),
@@ -91,36 +83,28 @@ export function FindingsList({
 
   // Selection state for the bulk toolbar. We only allow selecting findings
   // that have a DB id; pre-persisted rows have no id and aren't actionable.
-  const [selectedIds, setSelectedIds] = React.useState<readonly string[]>(
-    [],
-  );
+  const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([]);
 
   const showSelection = !isPublic && Boolean(auditId);
 
-  const handleToggleSelected = React.useCallback(
-    (findingId: string, next: boolean) => {
-      setSelectedIds((prev) => {
-        const has = prev.includes(findingId);
-        if (next === has) return prev;
-        if (next) return [...prev, findingId];
-        return prev.filter((id) => id !== findingId);
-      });
-    },
-    [],
-  );
+  const handleToggleSelected = React.useCallback((findingId: string, next: boolean) => {
+    setSelectedIds((prev) => {
+      const has = prev.includes(findingId);
+      if (next === has) return prev;
+      if (next) return [...prev, findingId];
+      return prev.filter((id) => id !== findingId);
+    });
+  }, []);
 
   const handleClearSelection = React.useCallback(() => {
     setSelectedIds([]);
   }, []);
 
-  const handleStatusApplied = React.useCallback(
-    (findingId: string, status: FindingStatus) => {
-      setStatusOverrides((prev) =>
-        prev[findingId] === status ? prev : { ...prev, [findingId]: status },
-      );
-    },
-    [],
-  );
+  const handleStatusApplied = React.useCallback((findingId: string, status: FindingStatus) => {
+    setStatusOverrides((prev) =>
+      prev[findingId] === status ? prev : { ...prev, [findingId]: status },
+    );
+  }, []);
 
   // Apply overrides on the visible set so the badge + status dropdown
   // reflect the latest write without a router.refresh().
@@ -162,10 +146,7 @@ export function FindingsList({
 
   return (
     <div className="space-y-4">
-      <FindingsFilterBar
-        totalFindingCount={totalFindingCount}
-        visibleFindingCount={visibleCount}
-      />
+      <FindingsFilterBar totalFindingCount={totalFindingCount} visibleFindingCount={visibleCount} />
 
       {showSelection && auditId ? (
         <FindingsBulkToolbar
@@ -212,9 +193,7 @@ export function FindingsList({
                 </div>
                 <div className="space-y-3">
                   {items.map((f, i) => {
-                    const selected = Boolean(
-                      f.id && selectedIds.includes(f.id),
-                    );
+                    const selected = Boolean(f.id && selectedIds.includes(f.id));
                     return (
                       <FindingCard
                         key={`${sev}-${f.rule_id}-${f.id ?? i}`}
@@ -222,9 +201,7 @@ export function FindingsList({
                         auditId={auditId}
                         isPublic={isPublic}
                         selected={selected}
-                        onToggleSelected={
-                          showSelection ? handleToggleSelected : undefined
-                        }
+                        onToggleSelected={showSelection ? handleToggleSelected : undefined}
                       />
                     );
                   })}

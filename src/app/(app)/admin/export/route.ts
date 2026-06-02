@@ -26,34 +26,21 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (type === 'users') {
     const { data } = await admin
       .from('profiles')
-      .select(
-        'id, email, role, audit_credits, subscription_status, created_at',
-      )
+      .select('id, email, role, audit_credits, subscription_status, created_at')
       .order('created_at', { ascending: false })
       .limit(10000);
     {
-      const cols = [
-        'id',
-        'email',
-        'role',
-        'audit_credits',
-        'subscription_status',
-        'created_at',
-      ];
+      const cols = ['id', 'email', 'role', 'audit_credits', 'subscription_status', 'created_at'];
       csv = toCsv(
         cols,
-        ((data ?? []) as Record<string, unknown>[]).map((r) =>
-          cols.map((c) => r[c]),
-        ),
+        ((data ?? []) as Record<string, unknown>[]).map((r) => cols.map((c) => r[c])),
       );
     }
     filename = 'users.csv';
   } else if (type === 'audits') {
     const { data } = await admin
       .from('audits')
-      .select(
-        'id, user_id, status, carrier, estimated_annual_savings_cents, created_at',
-      )
+      .select('id, user_id, status, carrier, estimated_annual_savings_cents, created_at')
       .order('created_at', { ascending: false })
       .limit(10000);
     {
@@ -67,17 +54,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       ];
       csv = toCsv(
         cols,
-        ((data ?? []) as Record<string, unknown>[]).map((r) =>
-          cols.map((c) => r[c]),
-        ),
+        ((data ?? []) as Record<string, unknown>[]).map((r) => cols.map((c) => r[c])),
       );
     }
     filename = 'audits.csv';
   } else {
-    return NextResponse.json(
-      { error: 'Unknown export type' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Unknown export type' }, { status: 400 });
   }
 
   return new Response(csv, {

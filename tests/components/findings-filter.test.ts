@@ -76,11 +76,7 @@ describe('parseFilterState', () => {
 
   it('parses statuses from a comma-separated string', () => {
     const params = new URLSearchParams('status=new,in_review,approved');
-    expect(parseFilterState(params).statuses).toEqual([
-      'new',
-      'in_review',
-      'approved',
-    ]);
+    expect(parseFilterState(params).statuses).toEqual(['new', 'in_review', 'approved']);
   });
 
   it('drops unknown enum values silently', () => {
@@ -131,9 +127,7 @@ describe('serializeFilterState', () => {
 
   it('omits the default sort but keeps a non-default sort', () => {
     expect(serializeFilterState(withState({ sort: DEFAULT_SORT }))).toBe('');
-    expect(serializeFilterState(withState({ sort: 'updated' }))).toContain(
-      'sort=updated',
-    );
+    expect(serializeFilterState(withState({ sort: 'updated' }))).toContain('sort=updated');
   });
 });
 
@@ -201,51 +195,34 @@ describe('applyFindingsFilter', () => {
 
   it('returns all findings under the empty state', () => {
     const corpus = makeCorpus();
-    expect(applyFindingsFilter(corpus, EMPTY_FILTER_STATE)).toHaveLength(
-      corpus.length,
-    );
+    expect(applyFindingsFilter(corpus, EMPTY_FILTER_STATE)).toHaveLength(corpus.length);
   });
 
   it('filters by severity (OR within the chip group)', () => {
     const corpus = makeCorpus();
-    const out = applyFindingsFilter(
-      corpus,
-      withState({ severities: ['high', 'medium'] }),
-    );
+    const out = applyFindingsFilter(corpus, withState({ severities: ['high', 'medium'] }));
     expect(out.map((f) => f.severity)).toEqual(['high', 'high', 'medium']);
   });
 
   it('filters by status (OR within the chip group)', () => {
     const corpus = makeCorpus();
-    const out = applyFindingsFilter(
-      corpus,
-      withState({ statuses: ['new', 'in_review'] }),
-    );
+    const out = applyFindingsFilter(corpus, withState({ statuses: ['new', 'in_review'] }));
     expect(out.map((f) => f.status)).toEqual(['new', 'in_review']);
   });
 
   it('combines severity AND status as an intersection', () => {
     const corpus = makeCorpus();
-    const out = applyFindingsFilter(
-      corpus,
-      withState({ severities: ['high'], statuses: ['new'] }),
-    );
+    const out = applyFindingsFilter(corpus, withState({ severities: ['high'], statuses: ['new'] }));
     expect(out).toHaveLength(1);
     expect(out[0]?.rule_id).toBe('r_high_b');
   });
 
   it('treats missing status as "new" when filtering', () => {
-    const corpus: Finding[] = [
-      makeFinding({ rule_id: 'r_no_status', severity: 'low' }),
-    ];
+    const corpus: Finding[] = [makeFinding({ rule_id: 'r_no_status', severity: 'low' })];
     // Strip the status to mimic a pre-persisted Finding.
     delete (corpus[0] as { status?: FindingStatus }).status;
-    expect(
-      applyFindingsFilter(corpus, withState({ statuses: ['new'] })),
-    ).toHaveLength(1);
-    expect(
-      applyFindingsFilter(corpus, withState({ statuses: ['approved'] })),
-    ).toHaveLength(0);
+    expect(applyFindingsFilter(corpus, withState({ statuses: ['new'] }))).toHaveLength(1);
+    expect(applyFindingsFilter(corpus, withState({ statuses: ['approved'] }))).toHaveLength(0);
   });
 
   it('matches the query against title (case-insensitive)', () => {
@@ -301,9 +278,7 @@ describe('sortFindings', () => {
     const b = makeFinding({ savings: 500, title: 'a' });
     const c = makeFinding({ savings: 300, title: 'c' });
     const out = sortFindings([a, b, c], 'savings');
-    expect(out.map((f) => f.estimated_monthly_savings_cents)).toEqual([
-      500, 300, 100,
-    ]);
+    expect(out.map((f) => f.estimated_monthly_savings_cents)).toEqual([500, 300, 100]);
   });
 
   it('sorts by severity rank then by savings', () => {
@@ -314,12 +289,7 @@ describe('sortFindings', () => {
       makeFinding({ severity: 'high', savings: 200, title: 'd' }),
     ];
     const out = sortFindings(items, 'severity');
-    expect(out.map((f) => f.severity)).toEqual([
-      'high',
-      'high',
-      'medium',
-      'info',
-    ]);
+    expect(out.map((f) => f.severity)).toEqual(['high', 'high', 'medium', 'info']);
     // Same severity falls back to savings desc:
     expect(out[0]?.estimated_monthly_savings_cents).toBe(200);
     expect(out[1]?.estimated_monthly_savings_cents).toBe(100);
@@ -338,10 +308,7 @@ describe('sortFindings', () => {
   });
 
   it('does not mutate its inputs', () => {
-    const items = [
-      makeFinding({ savings: 100 }),
-      makeFinding({ savings: 500 }),
-    ];
+    const items = [makeFinding({ savings: 100 }), makeFinding({ savings: 500 })];
     const before = [...items];
     sortFindings(items, 'savings');
     expect(items).toEqual(before);

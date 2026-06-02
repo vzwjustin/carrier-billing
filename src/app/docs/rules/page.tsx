@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import {
-  formatRulesForDocs,
-  type DocsRuleEntry,
-} from '@/lib/docs/rules-list';
+import { formatRulesForDocs, type DocsRuleEntry } from '@/lib/docs/rules-list';
 import type { Carrier } from '@/extraction/schema';
 import { ALL_RULES } from '@/rules/registry';
 
@@ -122,52 +119,41 @@ export default function DocsRulesPage(): React.ReactElement {
     band,
     heading: BAND_HEADING[band],
     blurb: BAND_BLURB[band],
-    ruleIds: new Set(
-      rules.filter((r) => bandForRule(r.id) === band).map((r) => r.id),
-    ),
+    ruleIds: new Set(rules.filter((r) => bandForRule(r.id) === band).map((r) => r.id)),
   }));
 
   return (
     <div className="flex flex-col gap-10 text-neutral-700">
       <header className="flex flex-col gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        <span className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
           Rules engine
         </span>
         <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl">
           What the audit looks for
         </h1>
         <p className="max-w-2xl text-sm sm:text-base">
-          Every audit runs the same registered rule set against your
-          extracted bill. Each rule emits findings with a confidence score;
-          the rendered severity badge on a finding card is a function of
-          that confidence and the affected dollar amount.
+          Every audit runs the same registered rule set against your extracted bill. Each rule emits
+          findings with a confidence score; the rendered severity badge on a finding card is a
+          function of that confidence and the affected dollar amount.
         </p>
         <p className="max-w-2xl text-sm sm:text-base">
-          {rules.length} rules are currently registered, sorted by stable id
-          below.
+          {rules.length} rules are currently registered, sorted by stable id below.
         </p>
       </header>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-xl font-semibold text-neutral-900">
-          How confidence drives the badge
-        </h2>
+        <h2 className="text-xl font-semibold text-neutral-900">How confidence drives the badge</h2>
         <p>
-          Confidence is a normalized 0&ndash;1 score the rule emits. The
-          report UI bins it into three labels &mdash;{' '}
-          <strong>Speculative</strong> below 0.5,{' '}
-          <strong>Likely</strong> through 0.8, and{' '}
-          <strong>High confidence</strong> above. We combine that with
-          dollar impact to render the colored severity badge you see on
-          each finding card. The same scale is used across every rule, so
-          comparing badges across findings is meaningful.
+          Confidence is a normalized 0&ndash;1 score the rule emits. The report UI bins it into
+          three labels &mdash; <strong>Speculative</strong> below 0.5, <strong>Likely</strong>{' '}
+          through 0.8, and <strong>High confidence</strong> above. We combine that with dollar
+          impact to render the colored severity badge you see on each finding card. The same scale
+          is used across every rule, so comparing badges across findings is meaningful.
         </p>
       </section>
 
       {sections.map((section) => {
-        const sectionRules = rules.filter((r) =>
-          section.ruleIds.has(r.id),
-        );
+        const sectionRules = rules.filter((r) => section.ruleIds.has(r.id));
         if (sectionRules.length === 0) return null;
         return (
           <section
@@ -176,19 +162,14 @@ export default function DocsRulesPage(): React.ReactElement {
             aria-labelledby={`band-${section.band}`}
           >
             <div className="flex flex-col gap-2">
-              <h2
-                id={`band-${section.band}`}
-                className="text-xl font-semibold text-neutral-900"
-              >
+              <h2 id={`band-${section.band}`} className="text-xl font-semibold text-neutral-900">
                 {section.heading}{' '}
                 <span className="text-sm font-normal text-neutral-500">
                   &middot; {sectionRules.length} rule
                   {sectionRules.length === 1 ? '' : 's'}
                 </span>
               </h2>
-              <p className="max-w-3xl text-sm text-neutral-600">
-                {section.blurb}
-              </p>
+              <p className="max-w-3xl text-sm text-neutral-600">{section.blurb}</p>
             </div>
             <ul className="flex flex-col divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
               {sectionRules.map((rule) => (
@@ -197,12 +178,8 @@ export default function DocsRulesPage(): React.ReactElement {
                   className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
                 >
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="text-sm font-medium text-neutral-900">
-                      {rule.title}
-                    </span>
-                    <code className="truncate text-xs text-neutral-500">
-                      {rule.id}
-                    </code>
+                    <span className="text-sm font-medium text-neutral-900">{rule.title}</span>
+                    <code className="truncate text-xs text-neutral-500">{rule.id}</code>
                   </div>
                   <span className="shrink-0 text-xs text-neutral-500 sm:text-right">
                     {renderAppliesTo(rule.appliesTo)}
@@ -215,9 +192,7 @@ export default function DocsRulesPage(): React.ReactElement {
       })}
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-xl font-semibold text-neutral-900">
-          What to do with a finding
-        </h2>
+        <h2 className="text-xl font-semibold text-neutral-900">What to do with a finding</h2>
         <p>
           High-severity findings usually warrant a{' '}
           <Link
@@ -226,9 +201,8 @@ export default function DocsRulesPage(): React.ReactElement {
           >
             dispute packet
           </Link>{' '}
-          straight to your carrier rep. Medium-severity findings tend to
-          drive plan-level optimization conversations. Low and info bands
-          stay in the report as a paper trail.
+          straight to your carrier rep. Medium-severity findings tend to drive plan-level
+          optimization conversations. Low and info bands stay in the report as a paper trail.
         </p>
       </section>
     </div>

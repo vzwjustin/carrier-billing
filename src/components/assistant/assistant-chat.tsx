@@ -49,11 +49,7 @@ function nextId(): string {
 
 function emptyCitations(c?: Citations): boolean {
   if (!c) return true;
-  return (
-    c.audit_ids.length === 0 &&
-    c.finding_ids.length === 0 &&
-    c.comparison_ids.length === 0
-  );
+  return c.audit_ids.length === 0 && c.finding_ids.length === 0 && c.comparison_ids.length === 0;
 }
 
 export function AssistantChat() {
@@ -106,28 +102,18 @@ export function AssistantChat() {
 
         if (!res.ok || !res.body) {
           const errorBody = await res.text().catch(() => '');
-          throw new Error(
-            errorBody || `Assistant request failed (${res.status}).`,
-          );
+          throw new Error(errorBody || `Assistant request failed (${res.status}).`);
         }
 
         await consumeStream(res.body, {
           onDelta: (text) => {
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: m.content + text }
-                  : m,
-              ),
+              prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + text } : m)),
             );
           },
           onDone: (citations) => {
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, citations, isStreaming: false }
-                  : m,
-              ),
+              prev.map((m) => (m.id === assistantId ? { ...m, citations, isStreaming: false } : m)),
             );
           },
           onError: (message) => {
@@ -135,8 +121,7 @@ export function AssistantChat() {
           },
         });
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : 'Something went wrong.';
+        const message = err instanceof Error ? err.message : 'Something went wrong.';
         toast.error(message);
         setMessages((prev) =>
           prev.map((m) =>
@@ -144,9 +129,7 @@ export function AssistantChat() {
               ? {
                   ...m,
                   isStreaming: false,
-                  content:
-                    m.content ||
-                    'Sorry — something went wrong. Try again in a moment.',
+                  content: m.content || 'Sorry — something went wrong. Try again in a moment.',
                 }
               : m,
           ),
@@ -176,11 +159,7 @@ export function AssistantChat() {
 
   return (
     <div className="flex h-[calc(100vh-14rem)] min-h-[480px] flex-col rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-      <div
-        ref={transcriptRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
-        aria-live="polite"
-      >
+      <div ref={transcriptRef} className="flex-1 overflow-y-auto px-4 py-4" aria-live="polite">
         {showEmptyState ? (
           <EmptyState onPick={(q) => void send(q)} disabled={busy} />
         ) : (
@@ -220,13 +199,7 @@ export function AssistantChat() {
   );
 }
 
-function EmptyState({
-  onPick,
-  disabled,
-}: {
-  onPick: (q: string) => void;
-  disabled: boolean;
-}) {
+function EmptyState({ onPick, disabled }: { onPick: (q: string) => void; disabled: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
       <div>
@@ -234,8 +207,7 @@ function EmptyState({
           What would you like to know?
         </p>
         <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-          The assistant answers from your audits, findings, and bill
-          comparisons — nothing else.
+          The assistant answers from your audits, findings, and bill comparisons — nothing else.
         </p>
       </div>
       <ul className="flex w-full max-w-md flex-col gap-2">
@@ -268,12 +240,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
         )}
       >
-        <div className="whitespace-pre-wrap break-words">
+        <div className="break-words whitespace-pre-wrap">
           {message.content}
           {message.isStreaming && message.content.length === 0 ? (
-            <span className="inline-block animate-pulse text-neutral-400">
-              …
-            </span>
+            <span className="inline-block animate-pulse text-neutral-400">…</span>
           ) : null}
         </div>
         {!isUser && !message.isStreaming && !emptyCitations(message.citations) ? (
@@ -320,7 +290,7 @@ function CitationChips({ citations }: { citations: Citations }) {
   if (chips.length === 0) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5 border-t border-neutral-200 pt-2 dark:border-neutral-700">
-      <span className="text-[11px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+      <span className="text-[11px] tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
         Sources
       </span>
       {chips}
@@ -356,9 +326,7 @@ async function consumeStream(
     while (boundary !== -1) {
       const rawEvent = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
-      const line = rawEvent.startsWith('data: ')
-        ? rawEvent.slice(6)
-        : rawEvent;
+      const line = rawEvent.startsWith('data: ') ? rawEvent.slice(6) : rawEvent;
       if (line.length > 0) {
         try {
           const payload = JSON.parse(line) as

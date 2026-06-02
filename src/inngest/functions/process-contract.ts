@@ -68,9 +68,7 @@ export const processContractFn = inngest.createFunction(
             .eq('id', contractId)
             .maybeSingle();
           if (fetchErr) {
-            throw new Error(
-              `contracts select (mark-extracting) failed: ${fetchErr.message}`,
-            );
+            throw new Error(`contracts select (mark-extracting) failed: ${fetchErr.message}`);
           }
           if (!rowData) return { proceed: false, reason: 'not-found' };
           const row = rowData as {
@@ -93,9 +91,7 @@ export const processContractFn = inngest.createFunction(
               .eq('status', 'pending')
               .select('id');
             if (ownErr) {
-              throw new Error(
-                `contracts update (ownership-mismatch) failed: ${ownErr.message}`,
-              );
+              throw new Error(`contracts update (ownership-mismatch) failed: ${ownErr.message}`);
             }
             if ((ownRows ?? []).length === 0) {
               return { proceed: false, reason: 'ownership-mismatch-race' };
@@ -113,9 +109,7 @@ export const processContractFn = inngest.createFunction(
             .eq('status', 'pending')
             .select('id');
           if (updErr) {
-            throw new Error(
-              `contracts update (mark-extracting) failed: ${updErr.message}`,
-            );
+            throw new Error(`contracts update (mark-extracting) failed: ${updErr.message}`);
           }
           const affected = (updatedRows ?? []).length;
           if (affected === 0) {
@@ -151,13 +145,9 @@ export const processContractFn = inngest.createFunction(
       // step.run so Inngest retries up to the function's `retries: 2`.
       const extractResult = await step.run('extract', async () => {
         const supabase = getAdminClient();
-        const download = await supabase.storage
-          .from('contracts')
-          .download(storagePath);
+        const download = await supabase.storage.from('contracts').download(storagePath);
         if (download.error || !download.data) {
-          throw new Error(
-            `storage download failed: ${download.error?.message ?? 'no data'}`,
-          );
+          throw new Error(`storage download failed: ${download.error?.message ?? 'no data'}`);
         }
         const arrayBuffer = await download.data.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -196,16 +186,13 @@ export const processContractFn = inngest.createFunction(
           .delete()
           .eq('contract_id', contractId);
         if (delErr) {
-          throw new Error(
-            `contract_terms delete (persist) failed: ${delErr.message}`,
-          );
+          throw new Error(`contract_terms delete (persist) failed: ${delErr.message}`);
         }
 
         const { error: insErr } = await supabase.from('contract_terms').insert({
           contract_id: contractId,
           plan_name: contract.terms.plan_name,
-          contracted_monthly_rate_cents:
-            contract.terms.contracted_monthly_rate_cents,
+          contracted_monthly_rate_cents: contract.terms.contracted_monthly_rate_cents,
           discount_percentage_bps: contract.terms.discount_percentage_bps,
           waived_fees: contract.terms.waived_fees,
           promo_credit_cents: contract.terms.promo_credit_cents,
@@ -214,15 +201,12 @@ export const processContractFn = inngest.createFunction(
           line_minimums: contract.terms.line_minimums,
           upgrade_fee_rules: contract.terms.upgrade_fee_rules,
           activation_fee_rules: contract.terms.activation_fee_rules,
-          international_package_terms:
-            contract.terms.international_package_terms,
+          international_package_terms: contract.terms.international_package_terms,
           early_termination_terms: contract.terms.early_termination_terms,
           notes: contract.terms.notes,
         });
         if (insErr) {
-          throw new Error(
-            `contract_terms insert (persist) failed: ${insErr.message}`,
-          );
+          throw new Error(`contract_terms insert (persist) failed: ${insErr.message}`);
         }
 
         // (b) commit: write header fields AND flip status, gated on
@@ -258,7 +242,13 @@ export const processContractFn = inngest.createFunction(
       // winning run already recorded the upload and emitting here would
       // double-log.
       if (persistResult.ok) {
-        await logTrailEvent({ userId, eventType: 'contract_uploaded', entityType: 'contract', entityId: contractId, metadata: { carrier: contract.header.carrier ?? null } });
+        await logTrailEvent({
+          userId,
+          eventType: 'contract_uploaded',
+          entityType: 'contract',
+          entityId: contractId,
+          metadata: { carrier: contract.header.carrier ?? null },
+        });
       }
 
       logger.info('processContract: parsed', { contractId });

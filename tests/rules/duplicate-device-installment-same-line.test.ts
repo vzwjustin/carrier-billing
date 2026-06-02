@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { duplicateDeviceInstallmentSameLineRule } from '@/rules/definitions/duplicate-device-installment-same-line';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeDpp,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeDpp, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);

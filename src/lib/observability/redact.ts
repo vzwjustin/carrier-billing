@@ -97,9 +97,7 @@ function redactValue(value: unknown, depth: number): unknown {
 export function scrubString(value: string): string {
   // Cap length so a leaked verbatim model dump can never blow up logs.
   const truncated =
-    value.length > MAX_STRING_LENGTH
-      ? value.slice(0, MAX_STRING_LENGTH) + '…'
-      : value;
+    value.length > MAX_STRING_LENGTH ? value.slice(0, MAX_STRING_LENGTH) + '…' : value;
   return truncated
     .replace(SHARE_PATH_TOKEN, '/share/[REDACTED]')
     .replace(TOKEN_QUERY_PARAM, '$1[REDACTED]')

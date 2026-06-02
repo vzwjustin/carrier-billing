@@ -82,10 +82,7 @@ describe('trackServer', () => {
     } as unknown as ReturnType<typeof getPostHogServer>);
 
     await expect(
-      trackServer(
-        { name: 'report_shared', properties: { auditId: 'a1' } },
-        'user-1',
-      ),
+      trackServer({ name: 'report_shared', properties: { auditId: 'a1' } }, 'user-1'),
     ).resolves.toBeUndefined();
   });
 

@@ -15,15 +15,8 @@ import { el } from '@/extraction/edi811/parser';
  * `ExtractedBill` for unknown carriers — the rules engine just won't apply
  * carrier-specific normalizations.
  */
-export function detectCarrierFromEdi(
-  envelope: Edi811Envelope,
-  segments: Edi811Segment[],
-): Carrier {
-  const ids = [
-    envelope.senderId,
-    envelope.receiverId,
-    envelope.applicationSenderCode ?? '',
-  ]
+export function detectCarrierFromEdi(envelope: Edi811Envelope, segments: Edi811Segment[]): Carrier {
+  const ids = [envelope.senderId, envelope.receiverId, envelope.applicationSenderCode ?? '']
     .map((s) => s.toUpperCase())
     .filter((s) => s.length > 0);
 

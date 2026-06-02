@@ -43,9 +43,7 @@ describe('auth/callback next param redirect guard', () => {
   });
 
   it('rejects protocol-relative //evil.com and falls back to /dashboard', async () => {
-    const req = makeRequest(
-      'http://localhost:3000/auth/callback?code=abc&next=//evil.com/steal',
-    );
+    const req = makeRequest('http://localhost:3000/auth/callback?code=abc&next=//evil.com/steal');
     const res = await GET(req as Parameters<typeof GET>[0]);
     const location = res.headers.get('location') ?? '';
     expect(location).not.toContain('evil.com');
@@ -83,9 +81,7 @@ describe('auth/callback next param redirect guard', () => {
   });
 
   it('allows next path with query string', async () => {
-    const req = makeRequest(
-      'http://localhost:3000/auth/callback?code=abc&next=/path%3Fx%3Dy',
-    );
+    const req = makeRequest('http://localhost:3000/auth/callback?code=abc&next=/path%3Fx%3Dy');
     const res = await GET(req as Parameters<typeof GET>[0]);
     expect(res.headers.get('location')).toBe('http://localhost:3000/path?x=y');
   });

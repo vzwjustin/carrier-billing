@@ -31,9 +31,7 @@ export interface PinnedHttpsRequest {
  * an error. `node:https` does not follow redirects, so a 3xx surfaces as its
  * status code rather than silently bouncing the request to another host.
  */
-export function postPinnedHttps(
-  req: PinnedHttpsRequest,
-): Promise<{ status: number }> {
+export function postPinnedHttps(req: PinnedHttpsRequest): Promise<{ status: number }> {
   const { url, resolvedIp, family, headers, body, timeoutMs } = req;
   return new Promise((resolve, reject) => {
     const r = httpsRequest(

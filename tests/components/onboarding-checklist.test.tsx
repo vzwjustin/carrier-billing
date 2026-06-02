@@ -28,13 +28,7 @@ describe('computeChecklistState', () => {
 
     expect(result.shouldRender).toBe(true);
     expect(result.items).toHaveLength(5);
-    expect(result.items.map((i) => i.done)).toEqual([
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]);
+    expect(result.items.map((i) => i.done)).toEqual([false, false, false, false, false]);
     // Cost-center step is disabled until the user has at least one audit.
     expect(result.items[2]?.disabled).toBe(true);
     // PDF, CSV, contract, assistant should be actionable.

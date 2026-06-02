@@ -17,18 +17,14 @@ import '@/app/globals.css';
 
 export const metadata = { title: 'Preview — CarrierAudit' };
 
-export default function PreviewLayout({
-  children,
-}: {
-  children: ReactNode;
-}): React.JSX.Element {
+export default function PreviewLayout({ children }: { children: ReactNode }): React.JSX.Element {
   return (
     <div className="min-h-screen bg-neutral-50">
       <div className="border-b border-neutral-200 bg-amber-50">
         <div className="mx-auto max-w-7xl px-6 py-2 text-xs text-amber-900">
-          <strong>Preview mode</strong> — these pages render production components
-          with fixture data so the UI can be screenshotted without a logged-in
-          session or real audit data. Not linked from the app.
+          <strong>Preview mode</strong> — these pages render production components with fixture data
+          so the UI can be screenshotted without a logged-in session or real audit data. Not linked
+          from the app.
         </div>
       </div>
       <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>

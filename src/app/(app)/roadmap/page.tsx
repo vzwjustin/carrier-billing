@@ -1,10 +1,5 @@
 import { cn } from '@/lib/utils';
-import {
-  ROADMAP,
-  overallStats,
-  sectionStats,
-  type RoadmapStats,
-} from '@/lib/roadmap/data';
+import { ROADMAP, overallStats, sectionStats, type RoadmapStats } from '@/lib/roadmap/data';
 
 export const metadata = {
   title: 'Roadmap — CarrierAudit',
@@ -53,12 +48,12 @@ export default function RoadmapPage(): React.JSX.Element {
               Project Roadmap
             </h1>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              Ingested from the CarrierAudit project TODO — {ROADMAP.length}{' '}
-              sections, {overall.total} items.
+              Ingested from the CarrierAudit project TODO — {ROADMAP.length} sections,{' '}
+              {overall.total} items.
             </p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">
+            <div className="text-3xl font-semibold text-neutral-900 tabular-nums dark:text-neutral-100">
               {overall.pct}%
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-500">
@@ -95,10 +90,7 @@ export default function RoadmapPage(): React.JSX.Element {
               <ProgressBar stats={stats} className="mt-3" />
               <ul className="mt-4 space-y-2">
                 {section.items.map((item) => (
-                  <li
-                    key={item.label}
-                    className="flex items-start gap-2.5 text-sm"
-                  >
+                  <li key={item.label} className="flex items-start gap-2.5 text-sm">
                     <span
                       aria-hidden
                       className={cn(

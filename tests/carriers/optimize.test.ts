@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  optimizeBill,
-  validateBill,
-} from '@/lib/carriers/optimize';
+import { optimizeBill, validateBill } from '@/lib/carriers/optimize';
 import type { LineItem } from '@/lib/carriers/bill-schema';
 
 function li(over: Partial<LineItem> = {}): LineItem {
@@ -22,9 +19,7 @@ describe('optimizeBill — generic rules', () => {
       li({ id: 'b', description: 'Device protection plan', monthlyCents: 1700 }),
     ];
     const { suggestions } = optimizeBill('verizon', items);
-    const dup = suggestions.filter(
-      (s) => s.ruleId === 'duplicate_device_protection',
-    );
+    const dup = suggestions.filter((s) => s.ruleId === 'duplicate_device_protection');
     expect(dup).toHaveLength(1);
     expect(dup[0]?.lineItemId).toBe('b');
     expect(dup[0]?.suggestedCents).toBe(0);
@@ -34,18 +29,14 @@ describe('optimizeBill — generic rules', () => {
     const { suggestions } = optimizeBill('verizon', [
       li({ description: 'Device Protection', monthlyCents: 1700 }),
     ]);
-    expect(
-      suggestions.some((s) => s.ruleId === 'duplicate_device_protection'),
-    ).toBe(false);
+    expect(suggestions.some((s) => s.ruleId === 'duplicate_device_protection')).toBe(false);
   });
 
   it('suggests stepping down an over-provisioned premium unlimited tier', () => {
     const { suggestions, projectedSavingsCents } = optimizeBill('att', [
       li({ id: 'p', description: 'Unlimited Premium', monthlyCents: 9500 }),
     ]);
-    const s = suggestions.find(
-      (x) => x.ruleId === 'premium_unlimited_overprovisioned',
-    );
+    const s = suggestions.find((x) => x.ruleId === 'premium_unlimited_overprovisioned');
     expect(s?.suggestedCents).toBe(8000);
     expect(projectedSavingsCents).toBe(1500);
   });
@@ -62,14 +53,10 @@ describe('optimizeBill — carrier-specific rules', () => {
   it('flags Verizon Cloud only for verizon', () => {
     const items = [li({ description: 'Verizon Cloud 600GB', monthlyCents: 1000 })];
     expect(
-      optimizeBill('verizon', items).suggestions.some(
-        (s) => s.ruleId === 'verizon_cloud_unused',
-      ),
+      optimizeBill('verizon', items).suggestions.some((s) => s.ruleId === 'verizon_cloud_unused'),
     ).toBe(true);
     expect(
-      optimizeBill('tmobile', items).suggestions.some(
-        (s) => s.ruleId === 'verizon_cloud_unused',
-      ),
+      optimizeBill('tmobile', items).suggestions.some((s) => s.ruleId === 'verizon_cloud_unused'),
     ).toBe(false);
   });
 
@@ -82,9 +69,7 @@ describe('optimizeBill — carrier-specific rules', () => {
     expect(
       optimizeBill('tmobile', [
         li({ description: 'Netflix on Us', monthlyCents: 1549 }),
-      ]).suggestions.some(
-        (s) => s.ruleId === 'tmobile_bundled_streaming_duplicate',
-      ),
+      ]).suggestions.some((s) => s.ruleId === 'tmobile_bundled_streaming_duplicate'),
     ).toBe(true);
   });
 });
@@ -100,25 +85,17 @@ describe('validateBill', () => {
   });
 
   it('warns when optimized exceeds current', () => {
-    const issues = validateBill('att', [
-      li({ monthlyCents: 1000, optimizedCents: 2000 }),
-    ]);
-    expect(
-      issues.some((i) => i.ruleId === 'optimized_exceeds_current'),
-    ).toBe(true);
+    const issues = validateBill('att', [li({ monthlyCents: 1000, optimizedCents: 2000 })]);
+    expect(issues.some((i) => i.ruleId === 'optimized_exceeds_current')).toBe(true);
   });
 
   it('applies a lower carrier ceiling for T-Mobile', () => {
     const big = [li({ monthlyCents: 45000 })];
     expect(
-      validateBill('tmobile', big).some(
-        (i) => i.ruleId === 'amount_exceeds_carrier_ceiling',
-      ),
+      validateBill('tmobile', big).some((i) => i.ruleId === 'amount_exceeds_carrier_ceiling'),
     ).toBe(true);
     expect(
-      validateBill('verizon', big).some(
-        (i) => i.ruleId === 'amount_exceeds_carrier_ceiling',
-      ),
+      validateBill('verizon', big).some((i) => i.ruleId === 'amount_exceeds_carrier_ceiling'),
     ).toBe(false);
   });
 

@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -54,17 +51,12 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('contracts')
-      .select(
-        'user_id,status,carrier,ban_last4,effective_date,expiration_date,failure_reason',
-      )
+      .select('user_id,status,carrier,ban_last4,effective_date,expiration_date,failure_reason')
       .eq('id', parsed.data.id)
       .maybeSingle<ContractStatusRow>();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up contract.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up contract.' }, { status: 500 });
     }
     if (!data) {
       return NextResponse.json({ error: 'Contract not found.' }, { status: 404 });
@@ -82,9 +74,6 @@ export async function GET(
       failure_reason: data.failure_reason,
     });
   } catch {
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

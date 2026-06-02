@@ -33,15 +33,8 @@ export const dynamic = 'force-dynamic';
 const MAX_BYTES = 5 * 1024 * 1024;
 
 const CreateCsvAuditSchema = z.object({
-  filename: z
-    .string()
-    .min(1, 'filename is required')
-    .max(255, 'filename is too long'),
-  size_bytes: z
-    .number()
-    .int()
-    .positive()
-    .max(MAX_BYTES, 'file is larger than 5 MB'),
+  filename: z.string().min(1, 'filename is required').max(255, 'filename is too long'),
+  size_bytes: z.number().int().positive().max(MAX_BYTES, 'file is larger than 5 MB'),
 });
 
 const SAFE_FILENAME_RE = /[^A-Za-z0-9._-]+/g;
@@ -67,10 +60,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = CreateCsvAuditSchema.safeParse(bodyJson);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: first?.message ?? 'Invalid request.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: first?.message ?? 'Invalid request.' }, { status: 400 });
   }
   const { filename, size_bytes } = parsed.data;
 
@@ -106,8 +96,7 @@ export async function POST(request: Request): Promise<Response> {
         return NextResponse.json(
           {
             error: 'subscription_past_due',
-            message:
-              'Your subscription is past due. Please update payment to continue.',
+            message: 'Your subscription is past due. Please update payment to continue.',
           },
           { status: 402 },
         );
@@ -142,10 +131,7 @@ export async function POST(request: Request): Promise<Response> {
         tags: { surface: 'audits.csv.create.insert' },
         extra: { userId: user.id, auditId },
       });
-      return NextResponse.json(
-        { error: 'Failed to create audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
     }
 
     const SIGNED_UPLOAD_TTL_SECONDS = 60 * 15;
@@ -165,10 +151,7 @@ export async function POST(request: Request): Promise<Response> {
           extra: { auditId, userId: user.id },
         });
       }
-      return NextResponse.json(
-        { error: 'Failed to create upload URL.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create upload URL.' }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -179,9 +162,6 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (err) {
     Sentry.captureException(err, { tags: { surface: 'audits.csv.create' } });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

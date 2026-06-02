@@ -37,11 +37,7 @@ describe('formatRulesForDocs', () => {
 
     const formatted = formatRulesForDocs(rules);
 
-    expect(formatted.map((r) => r.id)).toEqual([
-      'alpha_rule',
-      'beta_rule',
-      'zeta_rule',
-    ]);
+    expect(formatted.map((r) => r.id)).toEqual(['alpha_rule', 'beta_rule', 'zeta_rule']);
     expect(formatted[0]).toEqual({
       id: 'alpha_rule',
       title: 'Alpha',

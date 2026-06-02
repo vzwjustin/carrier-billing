@@ -19,9 +19,7 @@ function fixtureFiles(): string[] {
   } catch {
     return [];
   }
-  return entries
-    .filter((f) => f.endsWith('.expected.json'))
-    .sort((a, b) => a.localeCompare(b));
+  return entries.filter((f) => f.endsWith('.expected.json')).sort((a, b) => a.localeCompare(b));
 }
 
 describe('committed bill fixtures', () => {
@@ -46,7 +44,10 @@ describe('committed bill fixtures', () => {
 
     it(`${file} has structurally consistent totals (account sum equals top-level)`, () => {
       const raw = readFileSync(path.join(FIXTURES_DIR, file), 'utf8');
-      const json = JSON.parse(raw) as { total_charges_cents: number; accounts: Array<{ total_charges_cents: number }> };
+      const json = JSON.parse(raw) as {
+        total_charges_cents: number;
+        accounts: Array<{ total_charges_cents: number }>;
+      };
       const sum = json.accounts.reduce((acc, a) => acc + a.total_charges_cents, 0);
       expect(sum).toBe(json.total_charges_cents);
     });

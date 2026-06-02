@@ -68,10 +68,7 @@ export async function POST(
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up contract.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up contract.' }, { status: 500 });
     }
     if (!data || !isContractRow(data)) {
       return NextResponse.json({ error: 'Contract not found.' }, { status: 404 });
@@ -80,10 +77,7 @@ export async function POST(
       return NextResponse.json({ error: 'Contract not found.' }, { status: 404 });
     }
     if (data.status === 'extracting') {
-      return NextResponse.json(
-        { error: 'Contract is already being processed.' },
-        { status: 409 },
-      );
+      return NextResponse.json({ error: 'Contract is already being processed.' }, { status: 409 });
     }
     if (!RESTARTABLE_STATUSES.has(data.status)) {
       return NextResponse.json(
@@ -112,10 +106,7 @@ export async function POST(
         .eq('id', contractId)
         .eq('user_id', user.id);
       if (resetErr) {
-        return NextResponse.json(
-          { error: 'Failed to reset contract status.' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'Failed to reset contract status.' }, { status: 500 });
       }
     }
 
@@ -131,9 +122,6 @@ export async function POST(
 
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

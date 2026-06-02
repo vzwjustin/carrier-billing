@@ -17,12 +17,8 @@ export default function SettingsLayout({
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Settings
-        </h1>
-        <p className="text-sm text-neutral-600">
-          Manage your account profile and billing.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Settings</h1>
+        <p className="text-sm text-neutral-600">Manage your account profile and billing.</p>
       </header>
 
       <div className="grid gap-8 sm:grid-cols-[12rem_1fr]">

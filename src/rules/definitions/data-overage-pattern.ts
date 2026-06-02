@@ -112,7 +112,7 @@ export const dataOveragePatternRule: Rule = {
             title: `Very heavy data user — ${used.toFixed(0)} GB this period`,
             description: `This line used ${used.toFixed(2)} GB this period. At >${VERY_HIGH_DATA_GB} GB, the line is worth a right-size review regardless of current plan: confirm the plan's premium-data allotment isn't being exhausted and the line isn't being deprioritized.`,
             recommended_action:
-              'Confirm this line is on the carrier\'s top-tier plan. If usage is stable at this volume, also evaluate whether a dedicated hotspot/router would be cheaper than tethering through a phone.',
+              "Confirm this line is on the carrier's top-tier plan. If usage is stable at this volume, also evaluate whether a dedicated hotspot/router would be cheaper than tethering through a phone.",
             estimated_monthly_savings_cents: 0,
             confidence: 0.4,
             affected_line_indexes: [lineIndex],
@@ -130,8 +130,7 @@ export const dataOveragePatternRule: Rule = {
         // Branches B & C cover the 50..100 GB band when no soft cap matched.
         if (used <= HIGH_DATA_GB) return;
 
-        const isTopTier =
-          line.plan_name !== null && HIGH_TIER_RE.test(line.plan_name);
+        const isTopTier = line.plan_name !== null && HIGH_TIER_RE.test(line.plan_name);
 
         if (isTopTier) {
           // Branch B: heavy use (>50 GB) on a top-tier plan — informational
@@ -170,7 +169,7 @@ export const dataOveragePatternRule: Rule = {
             : `Heavy data use — ${used.toFixed(0)} GB this period`,
           description: `This line used ${used.toFixed(2)} GB this period on ${line.plan_name ? `"${line.plan_name}"` : 'an unrecognized plan'}. Lines pushing past ${HIGH_DATA_GB} GB on a non-top-tier plan often hit the carrier's deprioritization threshold during congestion. Worth a tier-fit review.`,
           recommended_action:
-            'Confirm the line\'s plan is the right tier for sustained heavy use. If usage stays at this volume, evaluate moving up a tier (or moving heavy traffic to a dedicated hotspot/router).',
+            "Confirm the line's plan is the right tier for sustained heavy use. If usage stays at this volume, evaluate moving up a tier (or moving heavy traffic to a dedicated hotspot/router).",
           estimated_monthly_savings_cents: 0,
           confidence: 0.35,
           affected_line_indexes: [lineIndex],

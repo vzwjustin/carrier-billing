@@ -24,10 +24,7 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { trackServer } from '@/lib/analytics/events';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { buildExecutiveReport } from '@/reports/executive/builder';
@@ -120,10 +117,7 @@ export async function GET(request: Request): Promise<Response> {
     Sentry.captureException(auditsErr, {
       tags: { surface: 'executive_pdf.audits' },
     });
-    return NextResponse.json(
-      { error: 'Failed to load audits.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load audits.' }, { status: 500 });
   }
   const audits = auditsData ?? [];
   const auditIds = audits.map((a) => a.id);
@@ -161,16 +155,12 @@ export async function GET(request: Request): Promise<Response> {
         .returns<ExecutiveLineRow[]>(),
     ]);
 
-    const queryError =
-      findingsRes.error ?? comparisonsRes.error ?? linesRes.error;
+    const queryError = findingsRes.error ?? comparisonsRes.error ?? linesRes.error;
     if (queryError) {
       Sentry.captureException(queryError, {
         tags: { surface: 'executive_pdf.children' },
       });
-      return NextResponse.json(
-        { error: 'Failed to load report data.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to load report data.' }, { status: 500 });
     }
     findings = findingsRes.data ?? [];
     comparisons = comparisonsRes.data ?? [];
@@ -181,19 +171,14 @@ export async function GET(request: Request): Promise<Response> {
       const comparisonIds = comparisons.map((c) => c.id);
       const driversRes = await admin
         .from('bill_change_drivers')
-        .select(
-          'id,bill_comparison_id,category,title,difference_cents,affected_lines_count',
-        )
+        .select('id,bill_comparison_id,category,title,difference_cents,affected_lines_count')
         .in('bill_comparison_id', comparisonIds)
         .returns<ExecutiveDriverRow[]>();
       if (driversRes.error) {
         Sentry.captureException(driversRes.error, {
           tags: { surface: 'executive_pdf.drivers' },
         });
-        return NextResponse.json(
-          { error: 'Failed to load report data.' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'Failed to load report data.' }, { status: 500 });
       }
       drivers = driversRes.data ?? [];
     }

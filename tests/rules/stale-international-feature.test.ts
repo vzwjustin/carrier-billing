@@ -95,10 +95,7 @@ describe('stale_international_feature rule', () => {
     };
     expect(evidence.line_count).toBe(1);
     expect(evidence.total_monthly_cents).toBe(5000);
-    expect(evidence.per_line[0]?.feature_names).toEqual([
-      'TravelPass',
-      'International Plan',
-    ]);
+    expect(evidence.per_line[0]?.feature_names).toEqual(['TravelPass', 'International Plan']);
   });
 
   it('rolls all lines into a single per-bill finding (L7)', async () => {

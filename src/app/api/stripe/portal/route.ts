@@ -35,9 +35,7 @@ export async function POST(): Promise<Response> {
       .maybeSingle();
 
     if (profileResult.error) {
-      throw new Error(
-        `profile lookup failed: ${profileResult.error.message}`,
-      );
+      throw new Error(`profile lookup failed: ${profileResult.error.message}`);
     }
 
     const profile = profileResult.data as {
@@ -71,10 +69,7 @@ export async function POST(): Promise<Response> {
           level: 'warning',
           extra: { userId: user.id, stripeCustomerId },
         });
-        return Response.json(
-          { error: 'customer_not_found' },
-          { status: 409 },
-        );
+        return Response.json({ error: 'customer_not_found' }, { status: 409 });
       }
       throw stripeErr;
     }

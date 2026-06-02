@@ -45,8 +45,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'CarrierAudit — Wireless Bill Audits in Minutes',
-    description:
-      "Find the 18-32% you're overpaying on business wireless bills.",
+    description: "Find the 18-32% you're overpaying on business wireless bills.",
   },
   alternates: {
     canonical: '/',
@@ -63,11 +62,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

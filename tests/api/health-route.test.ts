@@ -106,9 +106,7 @@ describe('GET /api/health — deep mode gating', () => {
 
   it('returns 404 when a token is provided but does not match HEALTH_SECRET', async () => {
     healthSecret = 'correct-secret-value';
-    const res = await GET(
-      new Request('http://localhost/api/health?token=wrong-secret-value'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=wrong-secret-value'));
     expect(res.status).toBe(404);
   });
 
@@ -121,9 +119,7 @@ describe('GET /api/health — deep mode gating', () => {
 
   it('proceeds when the token matches HEALTH_SECRET exactly', async () => {
     healthSecret = 'correct-secret-value';
-    const res = await GET(
-      new Request('http://localhost/api/health?token=correct-secret-value'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=correct-secret-value'));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       mode: string;
@@ -137,9 +133,7 @@ describe('GET /api/health — deep mode gating', () => {
 
   it('rejects a token of the wrong length even if it is a prefix of the real secret (constant-time compare)', async () => {
     healthSecret = 'correct-secret-value';
-    const res = await GET(
-      new Request('http://localhost/api/health?token=correct-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=correct-secret'));
     expect(res.status).toBe(404);
   });
 });
@@ -153,9 +147,7 @@ describe('GET /api/health — deep checks', () => {
     supabaseSelectMock.mockReturnValue({
       limit: async () => ({ error: null, count: 1 }),
     });
-    const res = await GET(
-      new Request('http://localhost/api/health?token=test-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=test-secret'));
     const body = (await res.json()) as { checks: Record<string, { status: string }> };
     expect(body.checks.db?.status).toBe('ok');
   });
@@ -164,9 +156,7 @@ describe('GET /api/health — deep checks', () => {
     supabaseSelectMock.mockReturnValue({
       limit: async () => ({ error: { message: 'X'.repeat(500) }, count: null }),
     });
-    const res = await GET(
-      new Request('http://localhost/api/health?token=test-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=test-secret'));
     const body = (await res.json()) as {
       status: string;
       checks: Record<string, { status: string; detail?: string }>;
@@ -178,9 +168,7 @@ describe('GET /api/health — deep checks', () => {
 
   it('reports stripe:fail when balance.retrieve throws', async () => {
     stripeBalanceRetrieve.mockRejectedValue(new Error('network error'));
-    const res = await GET(
-      new Request('http://localhost/api/health?token=test-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=test-secret'));
     const body = (await res.json()) as {
       status: string;
       checks: Record<string, { status: string; detail?: string }>;
@@ -192,9 +180,7 @@ describe('GET /api/health — deep checks', () => {
 
   it('reports anthropic:ok when ANTHROPIC_API_KEY is set (and never calls the API)', async () => {
     anthropicKey = 'sk-ant-real-key';
-    const res = await GET(
-      new Request('http://localhost/api/health?token=test-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=test-secret'));
     const body = (await res.json()) as {
       checks: Record<string, { status: string }>;
     };
@@ -205,9 +191,7 @@ describe('GET /api/health — deep checks', () => {
 
   it('reports anthropic:fail when ANTHROPIC_API_KEY is missing', async () => {
     anthropicKey = undefined;
-    const res = await GET(
-      new Request('http://localhost/api/health?token=test-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=test-secret'));
     const body = (await res.json()) as {
       status: string;
       checks: Record<string, { status: string; detail?: string }>;
@@ -235,9 +219,7 @@ describe('GET /api/health — deep checks', () => {
     stripeBalanceRetrieve.mockResolvedValue({ available: [] });
     anthropicKey = 'sk-ant-real-key';
 
-    const res = await GET(
-      new Request('http://localhost/api/health?token=test-secret'),
-    );
+    const res = await GET(new Request('http://localhost/api/health?token=test-secret'));
     const body = (await res.json()) as { status: string };
     expect(body.status).toBe('ok');
   });

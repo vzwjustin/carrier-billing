@@ -103,9 +103,7 @@ interface RawAuditRow {
   completed_at: string | null;
 }
 
-export default async function InventoryPage(
-  props: InventoryPageProps,
-): Promise<React.JSX.Element> {
+export default async function InventoryPage(props: InventoryPageProps): Promise<React.JSX.Element> {
   const search = props.searchParams ? await props.searchParams : undefined;
 
   const q = pickString(search?.q)?.slice(0, 80) ?? '';
@@ -119,9 +117,7 @@ export default async function InventoryPage(
       : '';
   const rawStatus = pickString(search?.status);
   const status =
-    rawStatus && VALID_STATUSES.has(rawStatus as LineStatus)
-      ? (rawStatus as LineStatus)
-      : '';
+    rawStatus && VALID_STATUSES.has(rawStatus as LineStatus) ? (rawStatus as LineStatus) : '';
   const page = parsePage(search?.page);
 
   const supabase = await createClient();
@@ -132,8 +128,7 @@ export default async function InventoryPage(
     .select('id,carrier,billing_period_end,completed_at')
     .eq('status', 'completed');
   if (carrier) auditsQuery = auditsQuery.eq('carrier', carrier);
-  const { data: auditsData, error: auditsError } = await auditsQuery
-    .returns<RawAuditRow[]>();
+  const { data: auditsData, error: auditsError } = await auditsQuery.returns<RawAuditRow[]>();
 
   if (auditsError) {
     return <InventoryError />;
@@ -228,9 +223,7 @@ export default async function InventoryPage(
   const pageStart = (safePage - 1) * PAGE_SIZE;
   const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
-  const filtersActive = Boolean(
-    q || carrier || account || deviceType || status,
-  );
+  const filtersActive = Boolean(q || carrier || account || deviceType || status);
 
   return (
     <div className="space-y-6">
@@ -248,17 +241,11 @@ export default async function InventoryPage(
         </Link>
       </div>
 
-      <section
-        aria-label="Inventory summary"
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
+      <section aria-label="Inventory summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile eyebrow="Total lines" value={stats.totalLines.toLocaleString('en-US')} />
         <StatTile eyebrow="Active" value={stats.active.toLocaleString('en-US')} />
         <StatTile eyebrow="Suspended" value={stats.suspended.toLocaleString('en-US')} />
-        <StatTile
-          eyebrow="Unique devices"
-          value={stats.uniqueDevices.toLocaleString('en-US')}
-        />
+        <StatTile eyebrow="Unique devices" value={stats.uniqueDevices.toLocaleString('en-US')} />
       </section>
 
       <InventoryFilters
@@ -285,7 +272,7 @@ export default async function InventoryPage(
       ) : (
         <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-3">Account</th>
                 <th className="px-4 py-3">Line</th>
@@ -318,21 +305,11 @@ export default async function InventoryPage(
   );
 }
 
-function StatTile({
-  eyebrow,
-  value,
-}: {
-  eyebrow: string;
-  value: string;
-}): React.JSX.Element {
+function StatTile({ eyebrow, value }: { eyebrow: string; value: string }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-        {eyebrow}
-      </p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">
-        {value}
-      </p>
+      <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">{eyebrow}</p>
+      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">{value}</p>
     </div>
   );
 }
@@ -342,9 +319,7 @@ function StatusBadge({ status }: { status: LineStatus }): React.JSX.Element {
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        status === 'active'
-          ? 'bg-green-100 text-green-700'
-          : 'bg-neutral-100 text-neutral-700',
+        status === 'active' ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-700',
       )}
     >
       {status === 'active' ? 'Active' : 'Suspended'}
@@ -354,7 +329,7 @@ function StatusBadge({ status }: { status: LineStatus }): React.JSX.Element {
 
 function DeviceTypeChip({ type }: { type: DeviceType }): React.JSX.Element {
   return (
-    <span className="ml-2 inline-flex items-center rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
+    <span className="ml-2 inline-flex items-center rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-neutral-600 uppercase">
       {DEVICE_TYPE_LABELS[type]}
     </span>
   );
@@ -377,9 +352,7 @@ function InventoryTableRow({ row }: { row: InventoryRow }): React.JSX.Element {
       <td className="px-4 py-3 text-neutral-700">
         <span className="block max-w-xs truncate">{row.planName ?? '—'}</span>
       </td>
-      <td className="px-4 py-3 text-neutral-700">
-        {formatIsoDateDisplay(row.lastSeen)}
-      </td>
+      <td className="px-4 py-3 text-neutral-700">{formatIsoDateDisplay(row.lastSeen)}</td>
       <td className="px-4 py-3 text-neutral-900">
         {row.planBaseCents !== null ? formatCents(row.planBaseCents) : '—'}
       </td>
@@ -388,16 +361,10 @@ function InventoryTableRow({ row }: { row: InventoryRow }): React.JSX.Element {
         <StatusBadge status={row.status} />
       </td>
       <td className="px-4 py-3 text-right">
-        <Link
-          href={href}
-          className="text-sm font-medium text-neutral-900 hover:underline"
-        >
+        <Link href={href} className="text-sm font-medium text-neutral-900 hover:underline">
           View
         </Link>
-        <span className="sr-only">
-          {' '}
-          history for line ending in {row.mdnLast4}
-        </span>
+        <span className="sr-only"> history for line ending in {row.mdnLast4}</span>
       </td>
     </tr>
   );
@@ -438,8 +405,7 @@ function Pagination({
   };
 }): React.JSX.Element {
   const prevHref = page > 1 ? buildHref({ ...search, page: page - 1 }) : null;
-  const nextHref =
-    page < totalPages ? buildHref({ ...search, page: page + 1 }) : null;
+  const nextHref = page < totalPages ? buildHref({ ...search, page: page + 1 }) : null;
   return (
     <div className="flex items-center justify-between">
       <div className="text-xs text-neutral-500">
@@ -477,9 +443,7 @@ function InventoryEmpty(): React.JSX.Element {
         </p>
       </div>
       <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
-        <p className="text-sm text-neutral-700">
-          You don&apos;t have any completed audits yet.
-        </p>
+        <p className="text-sm text-neutral-700">You don&apos;t have any completed audits yet.</p>
         <p className="mt-1 text-sm text-neutral-500">
           Upload a bill and we&apos;ll start building your inventory.
         </p>
@@ -496,9 +460,7 @@ function InventoryEmpty(): React.JSX.Element {
 function InventoryError(): React.JSX.Element {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-        Wireless Inventory
-      </h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Wireless Inventory</h1>
       <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
         We couldn&apos;t load your inventory. Please refresh the page.
       </div>

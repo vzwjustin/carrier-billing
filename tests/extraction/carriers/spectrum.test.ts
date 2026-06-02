@@ -64,9 +64,7 @@ describe('spectrum normalize (inherits Verizon)', () => {
 
   it('applies inherited Verizon feature category overrides (TravelPass → international)', () => {
     const bill = baseBill();
-    firstLine(bill).features = [
-      { name: 'TravelPass', category: 'other', monthly_cents: 1000 },
-    ];
+    firstLine(bill).features = [{ name: 'TravelPass', category: 'other', monthly_cents: 1000 }];
     const out = normalize(bill);
     expect(firstLine(out).features[0]?.category).toBe('international');
   });

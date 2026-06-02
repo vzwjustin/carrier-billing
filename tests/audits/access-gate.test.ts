@@ -61,20 +61,15 @@ import type { AccessGateResult } from '@/lib/access/gate';
 const assertCanRunAuditMock = vi.fn<() => Promise<AccessGateResult>>();
 // H4: route now calls `consumeAuditCreditForAudit(userId, auditId)`. Mock
 // signature accepts both args; the resolved shape includes `idempotent`.
-const decrementMock = vi.fn<
-  (
-    userId: string,
-    auditId: string,
-  ) => Promise<{ remaining: number; idempotent: boolean }>
->();
+const decrementMock =
+  vi.fn<(userId: string, auditId: string) => Promise<{ remaining: number; idempotent: boolean }>>();
 
 vi.mock('@/lib/access/gate', () => ({
   assertCanRunAudit: () => assertCanRunAuditMock(),
 }));
 
 vi.mock('@/lib/access/decrement', () => ({
-  consumeAuditCreditForAudit: (userId: string, auditId: string) =>
-    decrementMock(userId, auditId),
+  consumeAuditCreditForAudit: (userId: string, auditId: string) => decrementMock(userId, auditId),
 }));
 
 vi.mock('@/env', () => ({
@@ -238,5 +233,4 @@ describe('POST /api/audits — access gate', () => {
     // back the audit row immediately and never sign a URL.
     expect(createSignedUploadUrlMock).not.toHaveBeenCalled();
   });
-
 });

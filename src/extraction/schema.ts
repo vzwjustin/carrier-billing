@@ -143,11 +143,7 @@ export const ExtractedLineSchema = z.object({
   // Bound length so an oversized payload can't be persisted or echoed in logs.
   // H10: transform nulls likely human subscriber names while preserving
   // operational labels that help operators identify safe non-human lines.
-  user_label: z
-    .string()
-    .max(40)
-    .nullable()
-    .transform(sanitizeUserLabel),
+  user_label: z.string().max(40).nullable().transform(sanitizeUserLabel),
   device: z.string().max(40).nullable(),
   plan_name: z.string().max(120).nullable(),
   plan_base_cents: z.number().int().nonnegative().max(10_000_000).nullable(),

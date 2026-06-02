@@ -34,13 +34,7 @@ export type Severity = 'high' | 'medium' | 'low' | 'info';
  * a 'use client' boundary in. Mirrors the CHECK constraint in
  * `supabase/migrations/0023_finding_status_workflow.sql` — keep in sync.
  */
-export type FindingStatus =
-  | 'new'
-  | 'in_review'
-  | 'approved'
-  | 'rejected'
-  | 'disputed'
-  | 'resolved';
+export type FindingStatus = 'new' | 'in_review' | 'approved' | 'rejected' | 'disputed' | 'resolved';
 
 /**
  * A confidence number constrained to [0, 1]. Kept as `number` (not branded)

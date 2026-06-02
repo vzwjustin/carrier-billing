@@ -33,10 +33,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = BodySchema.safeParse(bodyJson);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: first?.message ?? 'Invalid request.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: first?.message ?? 'Invalid request.' }, { status: 400 });
   }
 
   try {
@@ -70,10 +67,7 @@ export async function POST(request: Request): Promise<Response> {
         tags: { surface: 'settings.digest.update' },
         extra: { userId: user.id },
       });
-      return NextResponse.json(
-        { error: 'Failed to update preferences.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to update preferences.' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, opt_out: parsed.data.opt_out });

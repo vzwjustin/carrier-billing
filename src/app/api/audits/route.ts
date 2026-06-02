@@ -195,12 +195,8 @@ export async function POST(request: Request): Promise<Response> {
     if (insertError) {
       console.error('[audits.create] insert failed:', {
         code: (insertError as { code?: string }).code,
-        message: scrubString(
-          (insertError as { message?: string }).message ?? 'unknown',
-        ),
-        details: scrubString(
-          (insertError as { details?: string }).details ?? 'unknown',
-        ),
+        message: scrubString((insertError as { message?: string }).message ?? 'unknown'),
+        details: scrubString((insertError as { details?: string }).details ?? 'unknown'),
       });
       return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
     }
@@ -221,8 +217,7 @@ export async function POST(request: Request): Promise<Response> {
         creditConsumed = true;
       } catch (decrementErr) {
         const isDefinitiveRefusal =
-          decrementErr instanceof Error &&
-          decrementErr.message === 'no_credits';
+          decrementErr instanceof Error && decrementErr.message === 'no_credits';
         Sentry.captureException(decrementErr, {
           tags: {
             surface: 'audits.create.decrement',
@@ -234,12 +229,7 @@ export async function POST(request: Request): Promise<Response> {
           // The RPC ran and definitively refused — user has 0 credits,
           // or audit row state was wrong. Roll back the audit row; no
           // credit was decremented so no refund is needed.
-          await deleteAuditRowBestEffort(
-            admin,
-            user.id,
-            auditId,
-            'audits.create.rollback_orphan',
-          );
+          await deleteAuditRowBestEffort(admin, user.id, auditId, 'audits.create.rollback_orphan');
           return NextResponse.json(
             {
               error: 'no_plan',
@@ -278,12 +268,8 @@ export async function POST(request: Request): Promise<Response> {
     if (signError || !signed) {
       console.error('[audits.create] signed URL failed:', {
         code: (signError as { code?: string } | null)?.code,
-        message: scrubString(
-          (signError as { message?: string } | null)?.message ?? 'unknown',
-        ),
-        name: scrubString(
-          (signError as { name?: string } | null)?.name ?? 'unknown',
-        ),
+        message: scrubString((signError as { message?: string } | null)?.message ?? 'unknown'),
+        name: scrubString((signError as { name?: string } | null)?.name ?? 'unknown'),
       });
       // Refund FIRST, while the row still exists, so the idempotent
       // `refund_orphan_audit` RPC can match it (status='pending' AND
@@ -308,13 +294,17 @@ export async function POST(request: Request): Promise<Response> {
         auditId,
         'audits.create.rollback_signed_url_orphan',
       );
-      return NextResponse.json(
-        { error: 'Failed to create upload URL.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create upload URL.' }, { status: 500 });
     }
 
-    await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'pdf', file_size_bytes: fileSize }, actorEmail: user.email ?? null });
+    await logTrailEvent({
+      userId: user.id,
+      eventType: 'audit_uploaded',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: { source: 'pdf', file_size_bytes: fileSize },
+      actorEmail: user.email ?? null,
+    });
 
     return NextResponse.json({
       auditId,

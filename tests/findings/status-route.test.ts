@@ -23,8 +23,7 @@ type MaybeSingleResult =
 
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const maybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
-const updateChainMock =
-  vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
+const updateChainMock = vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
 
 // `.from('findings').select(...).eq(...).eq(...).maybeSingle()`
 const selectEqEqMock = vi.fn(() => ({
@@ -279,14 +278,7 @@ describe('POST /api/audits/[id]/findings/[findingId]/status', () => {
   });
 
   it('accepts every documented status (liberal any-to-any transitions)', async () => {
-    const statuses = [
-      'new',
-      'in_review',
-      'approved',
-      'rejected',
-      'disputed',
-      'resolved',
-    ] as const;
+    const statuses = ['new', 'in_review', 'approved', 'rejected', 'disputed', 'resolved'] as const;
     for (const status of statuses) {
       const res = await POST(
         makeRequest({ status }),

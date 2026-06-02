@@ -6,18 +6,14 @@ import { z } from 'zod';
 import { getAdminContext } from '@/lib/admin/guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 
-export type AdminActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
 const SetRoleSchema = z.object({
   userId: z.string().uuid(),
   role: z.enum(['user', 'admin']),
 });
 
-export async function setUserRoleAction(
-  input: unknown,
-): Promise<AdminActionResult> {
+export async function setUserRoleAction(input: unknown): Promise<AdminActionResult> {
   const ctx = await getAdminContext();
   if (!ctx) return { ok: false, error: 'Not authorized.' };
 

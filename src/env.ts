@@ -42,9 +42,7 @@ export function isPlaceholderSecret(value: string | undefined): boolean {
   return PLACEHOLDER_SECRET_VALUES.has(value.toLowerCase());
 }
 
-export function assertNoPlaceholderSecrets(
-  source: NodeJS.ProcessEnv = process.env,
-): void {
+export function assertNoPlaceholderSecrets(source: NodeJS.ProcessEnv = process.env): void {
   const offenders: string[] = [];
   for (const key of REQUIRED_SERVER_SECRETS) {
     if (isPlaceholderSecret(source[key])) offenders.push(key);
@@ -64,9 +62,7 @@ export function assertNoPlaceholderSecrets(
 // it lets a single env var put a security control + billing path + durable
 // worker into fail-open with no production tripwire. Refuse to start in
 // production when it's enabled, so the fail-open can never ship silently.
-export function assertPartialSchemaNotInProduction(
-  source: NodeJS.ProcessEnv = process.env,
-): void {
+export function assertPartialSchemaNotInProduction(source: NodeJS.ProcessEnv = process.env): void {
   if (source.NODE_ENV === 'production' && source.ALLOW_PARTIAL_SCHEMA === '1') {
     throw new Error(
       'Refusing to start: ALLOW_PARTIAL_SCHEMA=1 is set in production. This ' +

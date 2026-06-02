@@ -35,12 +35,7 @@ import type {
 } from '@/extraction/schema';
 import { sanitizeUserLabel } from '@/extraction/schema';
 
-import type {
-  AutopsyResult,
-  ChangeCategory,
-  ChangeDriver,
-  ChangeDriverEvidence,
-} from './types';
+import type { AutopsyResult, ChangeCategory, ChangeDriver, ChangeDriverEvidence } from './types';
 
 const ENGINE_VERSION = 'autopsy-v1';
 
@@ -59,10 +54,7 @@ interface LinePair {
   current: ExtractedLine | null;
 }
 
-function matchAccounts(
-  previous: ExtractedBill,
-  current: ExtractedBill,
-): AccountPair[] {
+function matchAccounts(previous: ExtractedBill, current: ExtractedBill): AccountPair[] {
   const pairs: AccountPair[] = [];
   const prevByLast4 = new Map<string, ExtractedAccount>();
   const prevUnkeyed: ExtractedAccount[] = [];
@@ -236,7 +228,7 @@ function recordLine(
   current_cents: number,
   note?: string,
 ): void {
-  const mdn = (line?.mdn_last4 ?? other?.mdn_last4) ?? null;
+  const mdn = line?.mdn_last4 ?? other?.mdn_last4 ?? null;
   acc.affected_lines.add(lineKey(account_last4, mdn));
   acc.previous_cents += previous_cents;
   acc.current_cents += current_cents;
@@ -268,10 +260,7 @@ function getAcc(ctx: DriverCtx, category: ChangeCategory): DriverAccumulator {
   return acc;
 }
 
-function diffPlanAndDpp(
-  ctx: DriverCtx,
-  pair: LinePair,
-): void {
+function diffPlanAndDpp(ctx: DriverCtx, pair: LinePair): void {
   const prevPlan = planBase(pair.previous);
   const currPlan = planBase(pair.current);
   if (prevPlan !== currPlan && pair.previous && pair.current) {
@@ -318,10 +307,7 @@ function planChangeNote(prev: ExtractedLine, curr: ExtractedLine): string {
   return 'Plan base charge changed (same plan name)';
 }
 
-function dppDeltaNote(
-  prev: ExtractedLine | null,
-  curr: ExtractedLine | null,
-): string {
+function dppDeltaNote(prev: ExtractedLine | null, curr: ExtractedLine | null): string {
   const prevDevices = new Set((prev?.dpp_installments ?? []).map((d) => d.device));
   const currDevices = new Set((curr?.dpp_installments ?? []).map((d) => d.device));
   const added = [...currDevices].filter((d) => !prevDevices.has(d));
@@ -491,11 +477,7 @@ function handleSuspendedStillBilled(ctx: DriverCtx, pair: LinePair): void {
   );
 }
 
-function diffTaxesAndFees(
-  ctx: DriverCtx,
-  prevBill: ExtractedBill,
-  currBill: ExtractedBill,
-): void {
+function diffTaxesAndFees(ctx: DriverCtx, prevBill: ExtractedBill, currBill: ExtractedBill): void {
   // Account-level taxes/fees delta. Engine note: we record one entry per
   // account so the operator can see WHICH BAN's taxes moved.
   const matched = matchAccounts(prevBill, currBill);
@@ -537,7 +519,7 @@ const SHAPES: Record<ChangeCategory, CategoryShape> = {
     summaryFor: (d, n) =>
       `${n} new wireless line${n === 1 ? '' : 's'} on the current bill added ${formatCentsSigned(d)}/mo.`,
     recommendedAction:
-      'Confirm each new line was approved by an authorized requester. If any weren\'t, ask the carrier to deactivate and credit back.',
+      "Confirm each new line was approved by an authorized requester. If any weren't, ask the carrier to deactivate and credit back.",
     is_disputable: false,
     is_optimization: false,
     is_unexplained: false,
@@ -554,8 +536,7 @@ const SHAPES: Record<ChangeCategory, CategoryShape> = {
     confidence: 0.95,
   },
   plan_changes: {
-    titleFor: (d, n) =>
-      `${n} line${n === 1 ? '' : 's'} changed plan (${signedFormatted(d)}/mo)`,
+    titleFor: (d, n) => `${n} line${n === 1 ? '' : 's'} changed plan (${signedFormatted(d)}/mo)`,
     summaryFor: (d, n) =>
       `${n} line${n === 1 ? '' : 's'} moved to a different plan tier or rate, ${
         d >= 0 ? 'adding' : 'removing'
@@ -614,8 +595,7 @@ const SHAPES: Record<ChangeCategory, CategoryShape> = {
     confidence: 0.9,
   },
   credits_decreased: {
-    titleFor: (d, n) =>
-      `${n} credit${n === 1 ? '' : 's'} shrank (+${formatCentsSigned(d)}/mo)`,
+    titleFor: (d, n) => `${n} credit${n === 1 ? '' : 's'} shrank (+${formatCentsSigned(d)}/mo)`,
     summaryFor: (d, n) =>
       `${n} recurring credit${n === 1 ? '' : 's'} were smaller this cycle than last, adding ${formatCentsSigned(d)}/mo.`,
     recommendedAction:
@@ -626,8 +606,7 @@ const SHAPES: Record<ChangeCategory, CategoryShape> = {
     confidence: 0.7,
   },
   credits_increased: {
-    titleFor: (d, n) =>
-      `${n} credit${n === 1 ? '' : 's'} grew (${formatCentsSigned(d)}/mo)`,
+    titleFor: (d, n) => `${n} credit${n === 1 ? '' : 's'} grew (${formatCentsSigned(d)}/mo)`,
     summaryFor: (d, n) =>
       `${n} recurring credit${n === 1 ? '' : 's'} got larger this cycle, lowering the bill by ${formatCentsSigned(Math.abs(d))}/mo.`,
     recommendedAction: null,
@@ -664,7 +643,7 @@ const SHAPES: Record<ChangeCategory, CategoryShape> = {
     summaryFor: (d, n) =>
       `${n} line${n === 1 ? '' : 's'} had insurance/protection features added, removed, or repriced this cycle (${signedFormatted(d)}/mo).`,
     recommendedAction:
-      'Verify each insurance line item — many corporate-owned fleets self-insure and shouldn\'t carry carrier device protection.',
+      "Verify each insurance line item — many corporate-owned fleets self-insure and shouldn't carry carrier device protection.",
     is_disputable: false,
     is_optimization: true,
     is_unexplained: false,
@@ -695,10 +674,9 @@ const SHAPES: Record<ChangeCategory, CategoryShape> = {
   },
   overage_charges: {
     titleFor: (d) => `Overage charges (${signedFormatted(d)})`,
-    summaryFor: (d) =>
-      `Overage charges grew by ${formatCentsSigned(Math.abs(d))} this cycle.`,
+    summaryFor: (d) => `Overage charges grew by ${formatCentsSigned(Math.abs(d))} this cycle.`,
     recommendedAction:
-      'Review the affected lines\' usage. A plan-tier change or pooled-data plan usually pays back within 1–2 cycles when overages recur.',
+      "Review the affected lines' usage. A plan-tier change or pooled-data plan usually pays back within 1–2 cycles when overages recur.",
     is_disputable: false,
     is_optimization: true,
     is_unexplained: false,
@@ -778,10 +756,7 @@ function billTotalCents(bill: ExtractedBill): number {
 // Public entry point
 // ──────────────────────────────────────────────────────────────────────────
 
-export function compareBills(
-  previous: ExtractedBill,
-  current: ExtractedBill,
-): AutopsyResult {
+export function compareBills(previous: ExtractedBill, current: ExtractedBill): AutopsyResult {
   const ctx: DriverCtx = { byCategory: new Map() };
 
   for (const accountPair of matchAccounts(previous, current)) {
@@ -856,9 +831,7 @@ export function compareBills(
 
   // Sort by absolute impact descending so the most material drivers
   // surface first in any UI that iterates the array in order.
-  drivers.sort(
-    (a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents),
-  );
+  drivers.sort((a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents));
 
   const disputable = drivers
     .filter((d) => d.is_disputable && d.difference_cents > 0)
@@ -872,16 +845,14 @@ export function compareBills(
 
   const drivers_by_category: Partial<Record<ChangeCategory, number>> = {};
   for (const d of drivers) {
-    drivers_by_category[d.category] =
-      (drivers_by_category[d.category] ?? 0) + 1;
+    drivers_by_category[d.category] = (drivers_by_category[d.category] ?? 0) + 1;
   }
 
   return {
     previous_total_cents: prevTotal,
     current_total_cents: currTotal,
     net_change_cents: netChange,
-    percent_change_bps:
-      prevTotal === 0 ? null : Math.round((netChange / prevTotal) * 10_000),
+    percent_change_bps: prevTotal === 0 ? null : Math.round((netChange / prevTotal) * 10_000),
     disputable_cents: disputable,
     optimization_cents: optimization,
     unexplained_cents: unexplained,
@@ -921,9 +892,7 @@ function buildExecutiveSummary(input: {
     .join('\n');
   const disputeLine =
     disputable > 0
-      ? `\n\nWe found ${formatCentsSigned(
-          disputable,
-        )} that appears potentially disputable.`
+      ? `\n\nWe found ${formatCentsSigned(disputable)} that appears potentially disputable.`
       : '';
   return `The bill ${direction}${
     direction === 'unchanged' ? '' : ` by ${magnitude}`

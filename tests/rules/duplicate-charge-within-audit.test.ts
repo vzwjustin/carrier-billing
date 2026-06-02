@@ -20,14 +20,10 @@ describe('duplicate_charge_within_audit rule wrapper', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 })],
             }),
             makeLine({
-              features: [
-                makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot', monthly_cents: 1500 })],
             }),
           ],
         }),
@@ -49,9 +45,7 @@ describe('duplicate_charge_within_audit rule wrapper', () => {
           account_number_last4: '1111',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'International Pack', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'International Pack', monthly_cents: 2000 })],
             }),
           ],
         }),
@@ -59,9 +53,7 @@ describe('duplicate_charge_within_audit rule wrapper', () => {
           account_number_last4: '2222',
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'International Pack', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'International Pack', monthly_cents: 2000 })],
             }),
           ],
         }),

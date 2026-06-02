@@ -53,9 +53,7 @@ interface ResolvedTarget {
  * URL sends no SNI and validates the cert against the IP, which fails for any
  * normal hostname certificate.
  */
-export async function assertPublicHttpsTarget(
-  url: string,
-): Promise<ResolvedTarget> {
+export async function assertPublicHttpsTarget(url: string): Promise<ResolvedTarget> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -75,9 +73,7 @@ export async function assertPublicHttpsTarget(
   // URL.hostname returns IPv6 wrapped in brackets (`[::1]`); strip them
   // before passing to isIP / isBlockedAddress, which expect bare addresses.
   const rawHost =
-    hostname.startsWith('[') && hostname.endsWith(']')
-      ? hostname.slice(1, -1)
-      : hostname;
+    hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 
   // If the URL is already a literal IP, validate that directly — no DNS
   // lookup needed (and `dns.lookup` would echo it back anyway on most stacks).
@@ -227,8 +223,7 @@ function isBlockedV6(addrIn: string): boolean {
   if ((first & 0xffff) === 0x2002) {
     const h1 = hextets[1]!;
     const h2 = hextets[2]!;
-    const embedded =
-      `${(h1 >> 8) & 0xff}.${h1 & 0xff}.${(h2 >> 8) & 0xff}.${h2 & 0xff}`;
+    const embedded = `${(h1 >> 8) & 0xff}.${h1 & 0xff}.${(h2 >> 8) & 0xff}.${h2 & 0xff}`;
     return isBlockedV4(embedded);
   }
 

@@ -7,11 +7,7 @@ import {
   GetDocumentTextDetectionCommand,
   type Block,
 } from '@aws-sdk/client-textract';
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { env } from '@/env';
 
 /**
@@ -125,9 +121,7 @@ async function runSync(buffer: Buffer): Promise<string> {
 async function runAsync(buffer: Buffer): Promise<string> {
   const bucket = env.AWS_TEXTRACT_S3_BUCKET;
   if (!bucket) {
-    throw new OcrError(
-      'Async Textract requires AWS_TEXTRACT_S3_BUCKET to be configured.',
-    );
+    throw new OcrError('Async Textract requires AWS_TEXTRACT_S3_BUCKET to be configured.');
   }
 
   const key = `carrieraudit/textract-staging/${randomUUID()}.pdf`;
@@ -173,9 +167,7 @@ async function runAsync(buffer: Buffer): Promise<string> {
     // errors here so a cleanup failure doesn't mask an OCR result the caller
     // is awaiting, but we surface them to Sentry so persistent leaks show up.
     try {
-      await s3.send(
-        new DeleteObjectCommand({ Bucket: bucket, Key: key }),
-      );
+      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     } catch (cleanupErr) {
       Sentry.captureException(cleanupErr, {
         level: 'warning',
@@ -203,9 +195,7 @@ async function pollJob(jobId: string): Promise<string> {
       NextToken?: string;
     };
     try {
-      const out = await client.send(
-        new GetDocumentTextDetectionCommand({ JobId: jobId }),
-      );
+      const out = await client.send(new GetDocumentTextDetectionCommand({ JobId: jobId }));
       // The SDK's send() return type is a giant union; we narrow off the
       // response shape we know GetDocumentTextDetection returns at runtime.
       typed = out as unknown as {
@@ -220,9 +210,7 @@ async function pollJob(jobId: string): Promise<string> {
 
     const status = typed.JobStatus;
     if (status === 'FAILED') {
-      throw new OcrError(
-        `Textract job failed: ${typed.StatusMessage ?? ''}`.trim(),
-      );
+      throw new OcrError(`Textract job failed: ${typed.StatusMessage ?? ''}`.trim());
     }
     if (status === 'SUCCEEDED' || status === 'PARTIAL_SUCCESS') {
       if (status === 'PARTIAL_SUCCESS') {

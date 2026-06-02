@@ -1,0 +1,13 @@
+{"schema_version":"1.0","ts":"2026-06-02T20:23:12.806Z","seq":1,"kind":"run_start","data":{"target":"/Users/justinadams/Downloads/carrier-billing","user_goal":"Thorough audit — security, billing/rules correctness, concurrency, data integrity","advisor_model":"claude-opus-4-7","runner_model":"claude-sonnet-4-6"}}
+{"schema_version":"1.0","ts":"2026-06-02T20:28:52.321Z","seq":2,"kind":"runner_spawn","data":{"runner_name":"runner-1"}}
+{"schema_version":"1.0","ts":"2026-06-02T20:28:52.371Z","seq":3,"kind":"runner_spawn","data":{"runner_name":"runner-2"}}
+{"schema_version":"1.0","ts":"2026-06-02T20:28:52.420Z","seq":4,"kind":"runner_spawn","data":{"runner_name":"runner-3"}}
+{"schema_version":"1.0","ts":"2026-06-02T20:28:52.470Z","seq":5,"kind":"runner_spawn","data":{"runner_name":"runner-4"}}
+{"schema_version":"1.0","ts":"2026-06-02T20:28:52.520Z","seq":6,"kind":"runner_spawn","data":{"runner_name":"runner-5"}}
+{"schema_version":"1.0","ts":"2026-06-02T20:32:00.529Z","seq":7,"kind":"report_relay","data":{"runner_name":"runner-2","finding_count":4}}
+{"schema_version":"1.0","ts":"2026-06-02T20:32:00.579Z","seq":8,"kind":"report_relay","data":{"runner_name":"runner-5","finding_count":10}}
+{"schema_version":"1.0","ts":"2026-06-02T20:32:00.629Z","seq":9,"kind":"report_relay","data":{"runner_name":"runner-1","finding_count":4}}
+{"schema_version":"1.0","ts":"2026-06-02T20:32:51.750Z","seq":10,"kind":"report_relay","data":{"runner_name":"runner-3","finding_count":5}}
+{"schema_version":"1.0","ts":"2026-06-02T20:32:51.807Z","seq":11,"kind":"report_relay","data":{"runner_name":"runner-5-supplemental","finding_count":4}}
+{"schema_version":"1.0","ts":"2026-06-02T20:33:52.549Z","seq":12,"kind":"report_relay","data":{"runner_name":"runner-4","finding_count":15}}
+{"schema_version":"1.0","ts":"2026-06-02T20:41:24.993Z","seq":13,"kind":"run_end","data":{"findings_confirmed":18,"findings_rejected":5,"fixes_landed":0}}

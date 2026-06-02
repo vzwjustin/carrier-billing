@@ -57,11 +57,7 @@ describe('SavingsHero — positive savings (emerald theme)', () => {
   });
 
   it('uses the red tone for High severity when high_severity_count > 0', () => {
-    const { container } = render(
-      <SavingsHero
-        audit={makeAudit({ high_severity_count: 3 })}
-      />,
-    );
+    const { container } = render(<SavingsHero audit={makeAudit({ high_severity_count: 3 })} />);
     // Find the High severity stat block — it has tone-red classes.
     const html = container.innerHTML;
     // The stat block uses 'text-red-700' for the label tone when count > 0.
@@ -131,8 +127,6 @@ describe('SavingsHero — accessibility', () => {
   it('exposes a stable aria-label on the outer section', () => {
     const { container } = render(<SavingsHero audit={makeAudit()} />);
     const section = container.querySelector('section');
-    expect(section?.getAttribute('aria-label')).toBe(
-      'Estimated savings summary',
-    );
+    expect(section?.getAttribute('aria-label')).toBe('Estimated savings summary');
   });
 });

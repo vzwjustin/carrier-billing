@@ -87,8 +87,8 @@ export default function PreviewContractsPage(): React.JSX.Element {
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Contracts</h1>
           <p className="mt-1 text-sm text-neutral-600">
-            Upload carrier contracts, promo sheets, and order forms. Extracted
-            terms drive the <code>contract_rate_mismatch</code> rule.
+            Upload carrier contracts, promo sheets, and order forms. Extracted terms drive the{' '}
+            <code>contract_rate_mismatch</code> rule.
           </p>
         </div>
         <Link
@@ -100,7 +100,7 @@ export default function PreviewContractsPage(): React.JSX.Element {
       </div>
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
             <tr>
               <th className="px-4 py-2.5">File</th>
               <th className="px-4 py-2.5">Carrier</th>
@@ -123,7 +123,7 @@ export default function PreviewContractsPage(): React.JSX.Element {
                 <td className="px-4 py-2.5 text-neutral-700">{r.effective_date}</td>
                 <td className="px-4 py-2.5 text-neutral-700">{r.expiration_date}</td>
                 <td className="px-4 py-2.5 text-neutral-700">{r.plan_name ?? '—'}</td>
-                <td className="px-4 py-2.5 tabular-nums text-neutral-900">
+                <td className="px-4 py-2.5 text-neutral-900 tabular-nums">
                   {r.contracted_monthly_rate_cents !== null
                     ? formatCents(r.contracted_monthly_rate_cents)
                     : '—'}

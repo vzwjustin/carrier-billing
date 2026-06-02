@@ -241,9 +241,7 @@ describe('runRules — full pipeline', () => {
 
     expect(result.errors).toEqual([]);
     expect(result.findings.map((f) => f.rule_id)).toContain('zero_usage_phone_line');
-    expect(result.findings.map((f) => f.rule_id)).not.toContain(
-      'high_cost_low_usage_phone',
-    );
+    expect(result.findings.map((f) => f.rule_id)).not.toContain('high_cost_low_usage_phone');
     expect(result.findings.map((f) => f.rule_id)).not.toContain(
       'underutilized_phone_on_premium_plan',
     );
@@ -272,9 +270,7 @@ describe('runRules — full pipeline', () => {
                   monthly_cents: 1099,
                 }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 0 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 0 })],
             }),
           ],
         }),
@@ -284,12 +280,8 @@ describe('runRules — full pipeline', () => {
     const result = await runRules(ctx);
 
     expect(result.errors).toEqual([]);
-    expect(result.findings.map((f) => f.rule_id)).toContain(
-      'insurance_after_device_payoff',
-    );
-    expect(result.findings.map((f) => f.rule_id)).not.toContain(
-      'duplicate_protection_features',
-    );
+    expect(result.findings.map((f) => f.rule_id)).toContain('insurance_after_device_payoff');
+    expect(result.findings.map((f) => f.rule_id)).not.toContain('duplicate_protection_features');
     expect(
       result.findings
         .filter((f) => f.rule_id === 'insurance_after_device_payoff')

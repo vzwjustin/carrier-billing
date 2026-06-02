@@ -93,11 +93,7 @@ vi.mock('@/env', () => {
 });
 
 // Import under test AFTER the mocks are registered.
-import {
-  extractTextWithOCR,
-  OcrError,
-  __resetClientsForTests,
-} from '@/extraction/ocr';
+import { extractTextWithOCR, OcrError, __resetClientsForTests } from '@/extraction/ocr';
 import { env } from '@/env';
 
 const SYNC_BUFFER = Buffer.alloc(1024, 0); // ≤5MB → sync path
@@ -158,9 +154,9 @@ describe('extractTextWithOCR — sync path', () => {
 
   it('wraps SDK errors in OcrError', async () => {
     textractSend.mockRejectedValueOnce(new Error('boom'));
-    await expect(
-      extractTextWithOCR(SYNC_BUFFER, { pageCount: 1 }),
-    ).rejects.toBeInstanceOf(OcrError);
+    await expect(extractTextWithOCR(SYNC_BUFFER, { pageCount: 1 })).rejects.toBeInstanceOf(
+      OcrError,
+    );
   });
 });
 
@@ -170,8 +166,7 @@ describe('extractTextWithOCR — sync path', () => {
 
 describe('extractTextWithOCR — async path', () => {
   it('throws when AWS_TEXTRACT_S3_BUCKET is unset', async () => {
-    (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET =
-      undefined;
+    (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET = undefined;
 
     await expect(extractTextWithOCR(asyncBuffer())).rejects.toMatchObject({
       name: 'OcrError',
@@ -183,15 +178,12 @@ describe('extractTextWithOCR — async path', () => {
   });
 
   it('#4: routes a multi-page document under the sync size cap to the async path', async () => {
-    (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET =
-      undefined;
+    (env as { AWS_TEXTRACT_S3_BUCKET?: string }).AWS_TEXTRACT_S3_BUCKET = undefined;
     // SYNC_BUFFER is small enough for the sync API by size, but 3 pages must
     // go async (Textract sync is single-page only). With the bucket unset the
     // async path throws — proving it did NOT silently take the sync path and
     // hit Textract's UnsupportedDocumentException.
-    await expect(
-      extractTextWithOCR(SYNC_BUFFER, { pageCount: 3 }),
-    ).rejects.toMatchObject({
+    await expect(extractTextWithOCR(SYNC_BUFFER, { pageCount: 3 })).rejects.toMatchObject({
       name: 'OcrError',
       message: expect.stringContaining('AWS_TEXTRACT_S3_BUCKET'),
     });
@@ -220,10 +212,7 @@ describe('extractTextWithOCR — async path', () => {
     const s3Calls = recordCalls(s3Send);
     const tCalls = recordCalls(textractSend);
 
-    expect(s3Calls.map((c) => c.command)).toEqual([
-      'PutObjectCommand',
-      'DeleteObjectCommand',
-    ]);
+    expect(s3Calls.map((c) => c.command)).toEqual(['PutObjectCommand', 'DeleteObjectCommand']);
     expect(tCalls.map((c) => c.command)).toEqual([
       'StartDocumentTextDetectionCommand',
       'GetDocumentTextDetectionCommand',
@@ -263,15 +252,10 @@ describe('extractTextWithOCR — async path', () => {
     // Textract Start fails
     textractSend.mockRejectedValueOnce(new Error('textract down'));
 
-    await expect(extractTextWithOCR(asyncBuffer())).rejects.toBeInstanceOf(
-      OcrError,
-    );
+    await expect(extractTextWithOCR(asyncBuffer())).rejects.toBeInstanceOf(OcrError);
 
     const s3Calls = recordCalls(s3Send);
-    expect(s3Calls.map((c) => c.command)).toEqual([
-      'PutObjectCommand',
-      'DeleteObjectCommand',
-    ]);
+    expect(s3Calls.map((c) => c.command)).toEqual(['PutObjectCommand', 'DeleteObjectCommand']);
   });
 
   it('also cleans up when the job returns FAILED', async () => {
@@ -290,10 +274,7 @@ describe('extractTextWithOCR — async path', () => {
     });
 
     const s3Calls = recordCalls(s3Send);
-    expect(s3Calls.map((c) => c.command)).toEqual([
-      'PutObjectCommand',
-      'DeleteObjectCommand',
-    ]);
+    expect(s3Calls.map((c) => c.command)).toEqual(['PutObjectCommand', 'DeleteObjectCommand']);
   });
 
   it('logs S3 cleanup failure to Sentry but still returns the OCR result', async () => {
@@ -336,10 +317,7 @@ describe('extractTextWithOCR — async path', () => {
 
     // Both Put and Delete commands were attempted in that order
     const s3Calls = recordCalls(s3Send);
-    expect(s3Calls.map((c) => c.command)).toEqual([
-      'PutObjectCommand',
-      'DeleteObjectCommand',
-    ]);
+    expect(s3Calls.map((c) => c.command)).toEqual(['PutObjectCommand', 'DeleteObjectCommand']);
   });
 
   it('logs cleanup failure to Sentry even when the OCR job itself failed', async () => {
@@ -350,9 +328,7 @@ describe('extractTextWithOCR — async path', () => {
 
     textractSend.mockRejectedValueOnce(new Error('textract down'));
 
-    await expect(extractTextWithOCR(asyncBuffer())).rejects.toBeInstanceOf(
-      OcrError,
-    );
+    await expect(extractTextWithOCR(asyncBuffer())).rejects.toBeInstanceOf(OcrError);
 
     expect(sentryCaptureException).toHaveBeenCalledTimes(1);
     const [, ctx] = sentryCaptureException.mock.calls[0] as [
@@ -392,10 +368,7 @@ describe('extractTextWithOCR — async path', () => {
 
     // Cleanup must still run
     const s3Calls = recordCalls(s3Send);
-    expect(s3Calls.map((c) => c.command)).toEqual([
-      'PutObjectCommand',
-      'DeleteObjectCommand',
-    ]);
+    expect(s3Calls.map((c) => c.command)).toEqual(['PutObjectCommand', 'DeleteObjectCommand']);
   });
 
   it('throws OcrError synchronously on an unrecognised Textract status', async () => {
@@ -473,9 +446,6 @@ describe('extractTextWithOCR — async path', () => {
 
     // Cleanup must still have run.
     const s3Calls = recordCalls(s3Send);
-    expect(s3Calls.map((c) => c.command)).toEqual([
-      'PutObjectCommand',
-      'DeleteObjectCommand',
-    ]);
+    expect(s3Calls.map((c) => c.command)).toEqual(['PutObjectCommand', 'DeleteObjectCommand']);
   });
 });

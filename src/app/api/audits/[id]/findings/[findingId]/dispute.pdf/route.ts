@@ -39,11 +39,7 @@ export async function GET(
   // `/api/audits/[id]/report.pdf` pattern.
   const { renderDisputePdf } = await import('@/disputes/pdf/render');
   const pdfBuffer = await renderDisputePdf(packet);
-  const pdfBytes = new Uint8Array(
-    pdfBuffer.buffer,
-    pdfBuffer.byteOffset,
-    pdfBuffer.byteLength,
-  );
+  const pdfBytes = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
 
   const body = pdfBytes.buffer.slice(
     pdfBytes.byteOffset,

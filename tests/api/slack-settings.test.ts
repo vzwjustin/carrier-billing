@@ -13,16 +13,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *   - 200 toggles flags without requiring url
  */
 
-type Resp<T> = { data: T; error: null | { message: string; code?: string } };
+type _Resp<T> = { data: T; error: null | { message: string; code?: string } };
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 
-const {
-  getUserMock,
-  updateMock,
-} = vi.hoisted(() => ({
+const { getUserMock, updateMock } = vi.hoisted(() => ({
   getUserMock: vi.fn<() => Promise<{ data: { user: { id: string } | null }; error: null }>>(),
-  updateMock: vi.fn<(_patch: Record<string, unknown>) => Promise<{ error: null | { message: string } }>>(),
+  updateMock:
+    vi.fn<(_patch: Record<string, unknown>) => Promise<{ error: null | { message: string } }>>(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -67,9 +65,7 @@ beforeEach(() => {
     data: { user: { id: USER_ID } },
     error: null,
   } as Awaited<ReturnType<typeof getUserMock>>);
-  updateMock.mockResolvedValue({ error: null } as Awaited<
-    ReturnType<typeof updateMock>
-  >);
+  updateMock.mockResolvedValue({ error: null } as Awaited<ReturnType<typeof updateMock>>);
 });
 
 describe('POST /api/settings/slack — auth', () => {
@@ -96,9 +92,7 @@ describe('POST /api/settings/slack — body validation', () => {
   });
 
   it('rejects URLs that do not start with https://hooks.slack.com/', async () => {
-    const res = await POST(
-      makeReq({ webhook_url: 'https://evil.example.com/webhook' }),
-    );
+    const res = await POST(makeReq({ webhook_url: 'https://evil.example.com/webhook' }));
     expect(res.status).toBe(400);
     const payload = (await res.json()) as { error: string };
     expect(payload.error).toMatch(/hooks\.slack\.com/);
@@ -106,9 +100,7 @@ describe('POST /api/settings/slack — body validation', () => {
   });
 
   it('rejects http:// URLs (only https hooks.slack.com)', async () => {
-    const res = await POST(
-      makeReq({ webhook_url: 'http://hooks.slack.com/services/T1/B1/abc' }),
-    );
+    const res = await POST(makeReq({ webhook_url: 'http://hooks.slack.com/services/T1/B1/abc' }));
     expect(res.status).toBe(400);
     expect(updateMock).not.toHaveBeenCalled();
   });
@@ -135,9 +127,7 @@ describe('POST /api/settings/slack — happy path', () => {
 
     expect(updateMock).toHaveBeenCalledTimes(1);
     const patch = updateMock.mock.calls[0]?.[0];
-    expect(patch?.['slack_webhook_url']).toBe(
-      'https://hooks.slack.com/services/T1/B1/abcdef',
-    );
+    expect(patch?.['slack_webhook_url']).toBe('https://hooks.slack.com/services/T1/B1/abcdef');
     expect(patch?.['slack_notify_on_high_finding']).toBe(true);
     expect(patch?.['slack_notify_on_autopsy']).toBe(false);
   });
@@ -152,9 +142,7 @@ describe('POST /api/settings/slack — happy path', () => {
     const patch = updateMock.mock.calls[0]?.[0];
     expect(patch).not.toHaveProperty('slack_notify_on_high_finding');
     expect(patch).not.toHaveProperty('slack_notify_on_autopsy');
-    expect(patch?.['slack_webhook_url']).toBe(
-      'https://hooks.slack.com/services/T2/B2/xyz',
-    );
+    expect(patch?.['slack_webhook_url']).toBe('https://hooks.slack.com/services/T2/B2/xyz');
   });
 });
 
@@ -196,9 +184,7 @@ describe('POST /api/settings/slack — DB failure', () => {
     updateMock.mockResolvedValueOnce({
       error: { message: 'boom' },
     } as Awaited<ReturnType<typeof updateMock>>);
-    const res = await POST(
-      makeReq({ webhook_url: 'https://hooks.slack.com/services/T/B/x' }),
-    );
+    const res = await POST(makeReq({ webhook_url: 'https://hooks.slack.com/services/T/B/x' }));
     expect(res.status).toBe(500);
   });
 });

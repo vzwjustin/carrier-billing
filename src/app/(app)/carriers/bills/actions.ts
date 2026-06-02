@@ -12,13 +12,9 @@ import {
 import type { Carrier } from '@/lib/carriers/types';
 import { createClient } from '@/lib/supabase/server';
 
-export type BillActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type BillActionResult = { ok: true } | { ok: false; error: string };
 
-export type CreateBillResult =
-  | { ok: true; id: string }
-  | { ok: false; error: string };
+export type CreateBillResult = { ok: true; id: string } | { ok: false; error: string };
 
 interface BillRow {
   id: string;
@@ -64,9 +60,7 @@ export async function listBillsAction(): Promise<CarrierBill[]> {
   return Array.isArray(data) ? (data as BillRow[]).map(toBill) : [];
 }
 
-export async function createBillAction(
-  input: unknown,
-): Promise<CreateBillResult> {
+export async function createBillAction(input: unknown): Promise<CreateBillResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -92,9 +86,7 @@ export async function createBillAction(
   return { ok: true, id: (data as { id: string }).id };
 }
 
-export async function saveBillAction(
-  input: unknown,
-): Promise<BillActionResult> {
+export async function saveBillAction(input: unknown): Promise<BillActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -120,9 +112,7 @@ export async function saveBillAction(
   return { ok: true };
 }
 
-export async function deleteBillAction(
-  input: unknown,
-): Promise<BillActionResult> {
+export async function deleteBillAction(input: unknown): Promise<BillActionResult> {
   const supabase = await createClient();
   const {
     data: { user },

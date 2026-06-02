@@ -26,22 +26,19 @@ const VARIANT_STYLES: Record<
     container: 'border-amber-300 bg-amber-50',
     title: 'text-amber-900',
     body: 'text-amber-800',
-    action:
-      'bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-700',
+    action: 'bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-700',
   },
   info: {
     container: 'border-neutral-200 bg-neutral-50',
     title: 'text-neutral-900',
     body: 'text-neutral-700',
-    action:
-      'bg-neutral-900 text-neutral-50 hover:bg-neutral-800 focus-visible:ring-neutral-900',
+    action: 'bg-neutral-900 text-neutral-50 hover:bg-neutral-800 focus-visible:ring-neutral-900',
   },
   success: {
     container: 'border-emerald-200 bg-emerald-50',
     title: 'text-emerald-900',
     body: 'text-emerald-800',
-    action:
-      'bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:ring-emerald-800',
+    action: 'bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:ring-emerald-800',
   },
   error: {
     container: 'border-red-200 bg-red-50',
@@ -59,22 +56,20 @@ export function Banner(props: BannerProps): React.JSX.Element {
     <div
       role={variant === 'error' || variant === 'warning' ? 'alert' : 'status'}
       className={cn(
-        'rounded-lg border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3',
+        'flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5',
         styles.container,
         className,
       )}
     >
       <div className="space-y-1">
         <p className={cn('text-sm font-semibold', styles.title)}>{title}</p>
-        {description ? (
-          <div className={cn('text-sm', styles.body)}>{description}</div>
-        ) : null}
+        {description ? <div className={cn('text-sm', styles.body)}>{description}</div> : null}
       </div>
       {action ? (
         <Link
           href={action.href}
           className={cn(
-            'inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+            'inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
             styles.action,
           )}
         >

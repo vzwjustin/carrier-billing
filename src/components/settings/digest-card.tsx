@@ -26,11 +26,7 @@ export function DigestCard({ initialOptOut }: DigestCardProps): React.JSX.Elemen
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        toast.success(
-          nextOptOut
-            ? 'Monthly digest turned off.'
-            : 'Monthly digest turned on.',
-        );
+        toast.success(nextOptOut ? 'Monthly digest turned off.' : 'Monthly digest turned on.');
       } catch {
         // Revert the optimistic state.
         setOptOut(!nextOptOut);
@@ -42,28 +38,19 @@ export function DigestCard({ initialOptOut }: DigestCardProps): React.JSX.Elemen
   return (
     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          Monthly digest
-        </h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Monthly digest</h2>
         <p className="text-sm text-neutral-600">
-          On the 1st of each month, we&apos;ll email you a summary of what
-          you&apos;re still leaving on the table: open findings, recoverable
-          savings, and the lines worth attention first. You can unsubscribe
-          from any digest with a single click — that just turns this toggle
-          off.
+          On the 1st of each month, we&apos;ll email you a summary of what you&apos;re still leaving
+          on the table: open findings, recoverable savings, and the lines worth attention first. You
+          can unsubscribe from any digest with a single click — that just turns this toggle off.
         </p>
       </header>
 
       <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 p-4">
         <div>
-          <p className="text-sm font-medium text-neutral-900">
-            Send me the monthly digest
-          </p>
+          <p className="text-sm font-medium text-neutral-900">Send me the monthly digest</p>
           <p className="text-xs text-neutral-600">
-            Status:{' '}
-            <span className="font-medium">
-              {optOut ? 'unsubscribed' : 'subscribed'}
-            </span>
+            Status: <span className="font-medium">{optOut ? 'unsubscribed' : 'subscribed'}</span>
           </p>
         </div>
         <Button
@@ -72,11 +59,7 @@ export function DigestCard({ initialOptOut }: DigestCardProps): React.JSX.Elemen
           disabled={isPending}
           onClick={() => persist(!optOut)}
         >
-          {isPending
-            ? 'Saving…'
-            : optOut
-              ? 'Subscribe'
-              : 'Unsubscribe'}
+          {isPending ? 'Saving…' : optOut ? 'Subscribe' : 'Unsubscribe'}
         </Button>
       </div>
     </section>

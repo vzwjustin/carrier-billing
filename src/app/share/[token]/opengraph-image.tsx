@@ -80,29 +80,21 @@ export default async function Image({ params }: Params) {
           .eq('share_token', token)
           .eq('status', 'completed')
           .maybeSingle<Omit<AuditCard, 'share_token_expires_at'>>();
-        data = retry.data
-          ? { ...retry.data, share_token_expires_at: null }
-          : null;
+        data = retry.data ? { ...retry.data, share_token_expires_at: null } : null;
         expiryColumnAvailable = false;
       } else {
         data = first.data;
       }
 
-      if (
-        data &&
-        !isShareTokenExpired(data.share_token_expires_at, expiryColumnAvailable)
-      ) {
-      carrier = formatCarrier(data.carrier);
-      monthlySavings = data.estimated_monthly_savings_cents ?? 0;
-      annualSavings = data.estimated_annual_savings_cents ?? 0;
-      findingCount = data.finding_count ?? 0;
-      highCount = data.high_severity_count ?? 0;
-      lineCount = data.line_count ?? 0;
-      billingPeriod = formatIsoDatePeriod(
-        data.billing_period_start,
-        data.billing_period_end,
-      );
-      if (billingPeriod === '—') billingPeriod = null;
+      if (data && !isShareTokenExpired(data.share_token_expires_at, expiryColumnAvailable)) {
+        carrier = formatCarrier(data.carrier);
+        monthlySavings = data.estimated_monthly_savings_cents ?? 0;
+        annualSavings = data.estimated_annual_savings_cents ?? 0;
+        findingCount = data.finding_count ?? 0;
+        highCount = data.high_severity_count ?? 0;
+        lineCount = data.line_count ?? 0;
+        billingPeriod = formatIsoDatePeriod(data.billing_period_start, data.billing_period_end);
+        if (billingPeriod === '—') billingPeriod = null;
       }
     }
   } catch {
@@ -114,206 +106,204 @@ export default async function Image({ params }: Params) {
   const accent = annualSavings > 0 ? '#34d399' : '#fbbf24';
 
   return new ImageResponse(
-    (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'linear-gradient(135deg, #064e3b 0%, #0f172a 75%, #020617 100%)',
+        padding: '76px 88px',
+        fontFamily: 'system-ui, sans-serif',
+        color: 'white',
+        position: 'relative',
+      }}
+    >
+      {/* Top brand */}
       <div
         style={{
-          width: '100%',
-          height: '100%',
           display: 'flex',
-          flexDirection: 'column',
-          background: 'linear-gradient(135deg, #064e3b 0%, #0f172a 75%, #020617 100%)',
-          padding: '76px 88px',
-          fontFamily: 'system-ui, sans-serif',
-          color: 'white',
-          position: 'relative',
+          alignItems: 'center',
+          gap: 14,
+          marginBottom: 48,
         }}
       >
-        {/* Top brand */}
         <div
           style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: '#10b981',
             display: 'flex',
             alignItems: 'center',
-            gap: 14,
-            marginBottom: 48,
+            justifyContent: 'center',
+            fontSize: 26,
+            fontWeight: 800,
+            letterSpacing: '-0.05em',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.5)',
           }}
         >
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 12,
-              background: '#10b981',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 26,
-              fontWeight: 800,
-              letterSpacing: '-0.05em',
-              color: 'white',
-              boxShadow: '0 8px 24px rgba(16, 185, 129, 0.5)',
-            }}
-          >
-            CA
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em' }}>CarrierAudit</div>
-          <div
-            style={{
-              marginLeft: 'auto',
-              fontSize: 18,
-              fontWeight: 600,
-              color: 'rgba(255,255,255,0.55)',
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-            }}
-          >
-            Audit Report
-          </div>
+          CA
         </div>
+        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em' }}>CarrierAudit</div>
+        <div
+          style={{
+            marginLeft: 'auto',
+            fontSize: 18,
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.55)',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Audit Report
+        </div>
+      </div>
 
-        {/* Carrier label */}
+      {/* Carrier label */}
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: 600,
+          color: 'rgba(255,255,255,0.7)',
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+        }}
+      >
+        <span>{carrier}</span>
+        {billingPeriod && (
+          <>
+            <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
+            <span>{billingPeriod}</span>
+          </>
+        )}
+        {lineCount > 0 && (
+          <>
+            <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
+            <span>
+              {lineCount} {lineCount === 1 ? 'line' : 'lines'}
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Big savings number */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          marginBottom: 'auto',
+        }}
+      >
         <div
           style={{
             fontSize: 28,
             fontWeight: 600,
-            color: 'rgba(255,255,255,0.7)',
-            marginBottom: 12,
+            color: 'rgba(255,255,255,0.6)',
+            marginBottom: 4,
+          }}
+        >
+          {annualSavings > 0 ? 'Estimated annual savings' : 'Findings ready'}
+        </div>
+        <div
+          style={{
+            fontSize: 132,
+            fontWeight: 800,
+            lineHeight: 1,
+            letterSpacing: '-0.05em',
+            color: accent,
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'baseline',
             gap: 16,
           }}
         >
-          <span>{carrier}</span>
-          {billingPeriod && (
-            <>
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
-              <span>{billingPeriod}</span>
-            </>
-          )}
-          {lineCount > 0 && (
-            <>
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
-              <span>
-                {lineCount} {lineCount === 1 ? 'line' : 'lines'}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Big savings number */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            marginBottom: 'auto',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 28,
-              fontWeight: 600,
-              color: 'rgba(255,255,255,0.6)',
-              marginBottom: 4,
-            }}
-          >
-            {annualSavings > 0 ? 'Estimated annual savings' : 'Findings ready'}
-          </div>
-          <div
-            style={{
-              fontSize: 132,
-              fontWeight: 800,
-              lineHeight: 1,
-              letterSpacing: '-0.05em',
-              color: accent,
-              display: 'flex',
-              alignItems: 'baseline',
-              gap: 16,
-            }}
-          >
-            <span>{annualLabel}</span>
-            {annualSavings > 0 && (
-              <span
-                style={{
-                  fontSize: 36,
-                  color: 'rgba(255,255,255,0.55)',
-                  fontWeight: 500,
-                }}
-              >
-                /yr
-              </span>
-            )}
-          </div>
-          {monthlySavings > 0 && (
-            <div
+          <span>{annualLabel}</span>
+          {annualSavings > 0 && (
+            <span
               style={{
-                fontSize: 26,
+                fontSize: 36,
+                color: 'rgba(255,255,255,0.55)',
                 fontWeight: 500,
-                color: 'rgba(255,255,255,0.65)',
-                marginTop: 8,
-                display: 'flex',
               }}
             >
-              That&apos;s {monthlyLabel} per month — money your business is leaving on the table.
-            </div>
+              /yr
+            </span>
           )}
         </div>
-
-        {/* Footer chips */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 14,
-            fontSize: 22,
-            fontWeight: 600,
-            marginTop: 48,
-          }}
-        >
-          {findingCount > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '12px 22px',
-                background: 'rgba(16, 185, 129, 0.15)',
-                border: '2px solid rgba(16, 185, 129, 0.4)',
-                borderRadius: 999,
-                color: '#a7f3d0',
-              }}
-            >
-              {findingCount} {findingCount === 1 ? 'finding' : 'findings'}
-            </div>
-          )}
-          {highCount > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '12px 22px',
-                background: 'rgba(248, 113, 113, 0.15)',
-                border: '2px solid rgba(248, 113, 113, 0.4)',
-                borderRadius: 999,
-                color: '#fecaca',
-              }}
-            >
-              {highCount} high-impact
-            </div>
-          )}
+        {monthlySavings > 0 && (
           <div
             style={{
-              marginLeft: 'auto',
+              fontSize: 26,
+              fontWeight: 500,
+              color: 'rgba(255,255,255,0.65)',
+              marginTop: 8,
+              display: 'flex',
+            }}
+          >
+            That&apos;s {monthlyLabel} per month — money your business is leaving on the table.
+          </div>
+        )}
+      </div>
+
+      {/* Footer chips */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 14,
+          fontSize: 22,
+          fontWeight: 600,
+          marginTop: 48,
+        }}
+      >
+        {findingCount > 0 && (
+          <div
+            style={{
               display: 'flex',
               alignItems: 'center',
               padding: '12px 22px',
-              background: 'rgba(255,255,255,0.08)',
-              border: '2px solid rgba(255,255,255,0.18)',
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '2px solid rgba(16, 185, 129, 0.4)',
               borderRadius: 999,
-              color: 'rgba(255,255,255,0.85)',
+              color: '#a7f3d0',
             }}
           >
-            carrieraudit.io
+            {findingCount} {findingCount === 1 ? 'finding' : 'findings'}
           </div>
+        )}
+        {highCount > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '12px 22px',
+              background: 'rgba(248, 113, 113, 0.15)',
+              border: '2px solid rgba(248, 113, 113, 0.4)',
+              borderRadius: 999,
+              color: '#fecaca',
+            }}
+          >
+            {highCount} high-impact
+          </div>
+        )}
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '12px 22px',
+            background: 'rgba(255,255,255,0.08)',
+            border: '2px solid rgba(255,255,255,0.18)',
+            borderRadius: 999,
+            color: 'rgba(255,255,255,0.85)',
+          }}
+        >
+          carrieraudit.io
         </div>
       </div>
-    ),
+    </div>,
     { ...size },
   );
 }

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  UNASSIGNED_LABEL,
-  aggregateCostCenters,
-} from '@/lib/cost-centers/aggregate';
+import { UNASSIGNED_LABEL, aggregateCostCenters } from '@/lib/cost-centers/aggregate';
 
 describe('aggregateCostCenters', () => {
   it('returns an empty array when given no lines', () => {
@@ -34,9 +31,7 @@ describe('aggregateCostCenters', () => {
       { cost_center: null, plan_base_cents: 2500 },
       { cost_center: 'Ops', plan_base_cents: 9000 },
     ]);
-    const unassigned = result.find(
-      (r) => r.cost_center === UNASSIGNED_LABEL,
-    );
+    const unassigned = result.find((r) => r.cost_center === UNASSIGNED_LABEL);
     expect(unassigned).toBeDefined();
     expect(unassigned?.line_count).toBe(2);
     expect(unassigned?.monthly_total_cents).toBe(4_000);
@@ -88,11 +83,7 @@ describe('aggregateCostCenters', () => {
       { cost_center: 'Alpha', plan_base_cents: 5000 },
       { cost_center: 'Beta', plan_base_cents: 10_000 },
     ]);
-    expect(result.map((r) => r.cost_center)).toEqual([
-      'Beta',
-      'Alpha',
-      'Zeta',
-    ]);
+    expect(result.map((r) => r.cost_center)).toEqual(['Beta', 'Alpha', 'Zeta']);
   });
 
   it('does not specially position the "(unassigned)" bucket', () => {

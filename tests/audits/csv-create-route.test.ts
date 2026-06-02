@@ -23,21 +23,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 
-const {
-  getUserMock,
-  consumeRateLimitMock,
-  gateMock,
-  insertMock,
-  deleteMock,
-  signedUploadMock,
-} = vi.hoisted(() => ({
-  getUserMock: vi.fn(),
-  consumeRateLimitMock: vi.fn(),
-  gateMock: vi.fn(),
-  insertMock: vi.fn(),
-  deleteMock: vi.fn(),
-  signedUploadMock: vi.fn(),
-}));
+const { getUserMock, consumeRateLimitMock, gateMock, insertMock, deleteMock, signedUploadMock } =
+  vi.hoisted(() => ({
+    getUserMock: vi.fn(),
+    consumeRateLimitMock: vi.fn(),
+    gateMock: vi.fn(),
+    insertMock: vi.fn(),
+    deleteMock: vi.fn(),
+    signedUploadMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -55,8 +49,7 @@ vi.mock('@/lib/supabase/admin', () => ({
     }),
     storage: {
       from: () => ({
-        createSignedUploadUrl: (path: string, opts: unknown) =>
-          signedUploadMock(path, opts),
+        createSignedUploadUrl: (path: string, opts: unknown) => signedUploadMock(path, opts),
       }),
     },
   }),
@@ -130,27 +123,21 @@ describe('POST /api/audits/csv — body validation', () => {
   });
 
   it('returns 400 when size_bytes exceeds 5 MB cap', async () => {
-    const res = await POST(
-      makeReq({ filename: 'bill.csv', size_bytes: 6 * 1024 * 1024 }),
-    );
+    const res = await POST(makeReq({ filename: 'bill.csv', size_bytes: 6 * 1024 * 1024 }));
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error.toLowerCase()).toContain('5 mb');
   });
 
   it('rejects non-.csv filenames (e.g. .pdf)', async () => {
-    const res = await POST(
-      makeReq({ filename: 'bill.pdf', size_bytes: 1000 }),
-    );
+    const res = await POST(makeReq({ filename: 'bill.pdf', size_bytes: 1000 }));
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error.toLowerCase()).toContain('.csv');
   });
 
   it('accepts uppercase .CSV extension (case-insensitive)', async () => {
-    const res = await POST(
-      makeReq({ filename: 'bill.CSV', size_bytes: 1000 }),
-    );
+    const res = await POST(makeReq({ filename: 'bill.CSV', size_bytes: 1000 }));
     expect(res.status).toBe(200);
   });
 });
@@ -229,9 +216,7 @@ describe('POST /api/audits/csv — happy path', () => {
 
 describe('POST /api/audits/csv — filename sanitization', () => {
   it('strips path traversal segments before composing the storage path', async () => {
-    await POST(
-      makeReq({ filename: '../../../etc/passwd.csv', size_bytes: 100 }),
-    );
+    await POST(makeReq({ filename: '../../../etc/passwd.csv', size_bytes: 100 }));
     const row = insertMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(row.storage_path).not.toContain('..');
     expect(row.storage_path).not.toContain('/etc/');

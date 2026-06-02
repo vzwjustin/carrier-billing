@@ -12,10 +12,7 @@ import type { AnalyticsEvent } from './events';
  * PostHog server key is configured. Flushes before returning so events
  * make it out before short-lived serverless invocations terminate.
  */
-export async function trackServer(
-  event: AnalyticsEvent,
-  distinctId: string,
-): Promise<void> {
+export async function trackServer(event: AnalyticsEvent, distinctId: string): Promise<void> {
   const client = getPostHogServer();
   if (!client) return;
 

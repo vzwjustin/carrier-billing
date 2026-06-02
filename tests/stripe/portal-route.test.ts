@@ -4,13 +4,10 @@ type ProfileResult =
   | { data: { stripe_customer_id: string | null } | null; error: null }
   | { data: null; error: { message: string } };
 
-const getUserMock = vi.fn<
-  () => Promise<{ data: { user: { id: string } | null } }>
->();
+const getUserMock = vi.fn<() => Promise<{ data: { user: { id: string } | null } }>>();
 const profileMaybeSingleMock = vi.fn<() => Promise<ProfileResult>>();
-const portalSessionsCreateMock = vi.fn<
-  (args: { customer: string; return_url: string }) => Promise<{ url: string }>
->();
+const portalSessionsCreateMock =
+  vi.fn<(args: { customer: string; return_url: string }) => Promise<{ url: string }>>();
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({

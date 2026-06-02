@@ -94,14 +94,11 @@ export function OutboundWebhookCard({
   return (
     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          Outbound webhook
-        </h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Outbound webhook</h2>
         <p className="text-sm text-neutral-600">
-          When an audit completes, we POST the report payload to this URL so
-          your own automation can act on findings (open carrier tickets, file
-          internal change requests, etc.). Each request is signed with a
-          timestamp + HMAC-SHA256 of
+          When an audit completes, we POST the report payload to this URL so your own automation can
+          act on findings (open carrier tickets, file internal change requests, etc.). Each request
+          is signed with a timestamp + HMAC-SHA256 of
           <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
             {'`${timestamp}.${body}`'}
           </code>
@@ -113,8 +110,7 @@ export function OutboundWebhookCard({
           <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
             X-CarrierAudit-Timestamp
           </code>
-          . Reject requests whose timestamp is more than 5 minutes old to
-          prevent replays.
+          . Reject requests whose timestamp is more than 5 minutes old to prevent replays.
         </p>
       </header>
 
@@ -148,7 +144,7 @@ export function OutboundWebhookCard({
         <div className="space-y-2 border-t border-neutral-200 pt-4">
           <p className="text-sm font-medium text-neutral-900">Signing secret</p>
           <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <code className="break-all text-sm font-mono text-neutral-900">
+            <code className="font-mono text-sm break-all text-neutral-900">
               {revealedSecret ? revealedSecret : '•'.repeat(32)}
             </code>
             <div className="flex gap-2">
@@ -161,12 +157,7 @@ export function OutboundWebhookCard({
               >
                 {isRevealing ? 'Loading…' : revealedSecret ? 'Hide' : 'Reveal'}
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void copy()}
-              >
+              <Button type="button" size="sm" variant="outline" onClick={() => void copy()}>
                 Copy
               </Button>
             </div>
@@ -181,15 +172,12 @@ export function OutboundWebhookCard({
               t=&lt;ts&gt;,v1=&lt;hex&gt;
             </code>
             , confirm
-            <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
-              ts
-            </code>
+            <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">ts</code>
             is within 5 minutes, then compute
             <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">
               {'hmac_sha256(`${ts}.${body}`, secret)'}
             </code>
-            and compare with a constant-time check. The secret never appears
-            in webhook payloads.
+            and compare with a constant-time check. The secret never appears in webhook payloads.
           </p>
           <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
             <summary className="cursor-pointer font-medium text-neutral-900">

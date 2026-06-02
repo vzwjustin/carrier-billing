@@ -112,9 +112,7 @@ function makeFakeSupabase(): {
   }
 
   const client: AssistantSupabase = {
-    from: (table: string) => makeBuilder(table) as unknown as ReturnType<
-      AssistantSupabase['from']
-    >,
+    from: (table: string) => makeBuilder(table) as unknown as ReturnType<AssistantSupabase['from']>,
   };
 
   return {
@@ -191,8 +189,7 @@ function seedFixtures() {
       rule_id: 'expired-promo-credit',
       severity: 'high',
       title: 'Expired promo credit on line 4821',
-      description:
-        'A $10/mo promo credit ended on 2026-04-01; the line is now paying full price.',
+      description: 'A $10/mo promo credit ended on 2026-04-01; the line is now paying full price.',
       recommended_action: 'Call carrier and request a new promo credit.',
       estimated_monthly_savings_cents: 1000,
       confidence: 0.95,
@@ -232,7 +229,7 @@ function seedFixtures() {
       audit_id: AUDIT_A,
       account_id: ACCOUNT_1,
       mdn_masked: '5551234821', // intentionally a "too long" value so we can
-                                 // verify takeLast4 truncates to last 4 only
+      // verify takeLast4 truncates to last 4 only
       plan_name: 'Business Unlimited Pro 2.0',
       plan_base_cents: 9000,
       data_used_gb: 12.4,
@@ -426,9 +423,7 @@ describe('executeGetFinding', () => {
     expect(result.finding?.affected_line_last4).toEqual(['4821']);
     expect(result.finding?.affected_account_last4).toEqual(['1234']);
     expect(result.finding && 'affected_line_ids' in result.finding).toBe(false);
-    expect(result.finding && 'affected_account_ids' in result.finding).toBe(
-      false,
-    );
+    expect(result.finding && 'affected_account_ids' in result.finding).toBe(false);
     expect(result.finding && 'evidence' in result.finding).toBe(false);
   });
 
@@ -451,11 +446,7 @@ describe('executeGetFinding', () => {
 describe('executeGetAutopsy', () => {
   it('returns the latest comparison and drivers for an owned audit', async () => {
     const citations = newCitationCollector();
-    const result = (await executeGetAutopsy(
-      { audit_id: AUDIT_A },
-      ctxFor(USER_A),
-      citations,
-    )) as {
+    const result = (await executeGetAutopsy({ audit_id: AUDIT_A }, ctxFor(USER_A), citations)) as {
       comparison: { id: string; user_id?: string } | null;
       drivers: Array<{ id: string }>;
     };
@@ -488,11 +479,10 @@ describe('executeGetAutopsy', () => {
       },
     ]);
     const citations = newCitationCollector();
-    const result = (await executeGetAutopsy(
-      { audit_id: AUDIT_A },
-      ctxFor(USER_A),
-      citations,
-    )) as { comparison: unknown; missing?: string };
+    const result = (await executeGetAutopsy({ audit_id: AUDIT_A }, ctxFor(USER_A), citations)) as {
+      comparison: unknown;
+      missing?: string;
+    };
     expect(result.comparison).toBeNull();
     expect(result.missing).toBeDefined();
   });
@@ -505,11 +495,9 @@ describe('executeGetAutopsy', () => {
 describe('executeListLines', () => {
   it('returns mdn_last4 only (PII discipline) and includes account_last4', async () => {
     const citations = newCitationCollector();
-    const result = (await executeListLines(
-      { audit_id: AUDIT_A },
-      ctxFor(USER_A),
-      citations,
-    )) as { lines: Array<{ mdn_last4: string; account_last4: string }> };
+    const result = (await executeListLines({ audit_id: AUDIT_A }, ctxFor(USER_A), citations)) as {
+      lines: Array<{ mdn_last4: string; account_last4: string }>;
+    };
     expect(result.lines).toHaveLength(2);
     const mdns = result.lines.map((l) => l.mdn_last4);
     expect(mdns).toContain('4821');
@@ -535,11 +523,10 @@ describe('executeListLines', () => {
 
   it('returns missing when audit not owned', async () => {
     const citations = newCitationCollector();
-    const result = (await executeListLines(
-      { audit_id: AUDIT_B },
-      ctxFor(USER_A),
-      citations,
-    )) as { lines: unknown[]; missing?: string };
+    const result = (await executeListLines({ audit_id: AUDIT_B }, ctxFor(USER_A), citations)) as {
+      lines: unknown[];
+      missing?: string;
+    };
     expect(result.lines).toEqual([]);
     expect(result.missing).toBeDefined();
   });

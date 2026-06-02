@@ -1,9 +1,7 @@
 import type { BillReminderEmailProps } from './bill-reminder';
 
 /** Plain-text fallback for the monthly bill-upload reminder. */
-export function renderBillReminderText(
-  props: BillReminderEmailProps,
-): string {
+export function renderBillReminderText(props: BillReminderEmailProps): string {
   return [
     "Time for this month's bill audit",
     '',

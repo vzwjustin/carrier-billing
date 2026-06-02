@@ -29,9 +29,7 @@ export default async function ImportCsvPage(): Promise<React.JSX.Element> {
     return (
       <div className="mx-auto max-w-3xl space-y-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            Import CSV
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Import CSV</h1>
         </div>
         <Banner
           variant="warning"
@@ -47,17 +45,13 @@ export default async function ImportCsvPage(): Promise<React.JSX.Element> {
     return (
       <div className="mx-auto max-w-3xl space-y-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            Import CSV
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Import CSV</h1>
           <p className="mt-1 text-sm text-neutral-500">
             You need a one-time audit credit or an active subscription.
           </p>
         </div>
         <div className="rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-neutral-900">
-            Out of credits
-          </h2>
+          <h2 className="text-lg font-semibold text-neutral-900">Out of credits</h2>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href="/pricing">
               <Button>Buy credits</Button>
@@ -74,12 +68,10 @@ export default async function ImportCsvPage(): Promise<React.JSX.Element> {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Import CSV
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Import CSV</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Upload a carrier line-detail CSV export. We&apos;ll map columns to
-          the audit schema and run the same rules engine as the PDF flow.
+          Upload a carrier line-detail CSV export. We&apos;ll map columns to the audit schema and
+          run the same rules engine as the PDF flow.
         </p>
       </div>
 

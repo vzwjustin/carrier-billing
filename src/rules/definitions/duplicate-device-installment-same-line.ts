@@ -38,9 +38,7 @@ export const duplicateDeviceInstallmentSameLineRule: Rule = {
           byDevice.set(key, bucket);
         }
 
-        const duplicates = Array.from(byDevice.entries()).filter(
-          ([, rows]) => rows.length >= 2,
-        );
+        const duplicates = Array.from(byDevice.entries()).filter(([, rows]) => rows.length >= 2);
         if (duplicates.length === 0) return;
 
         // Recoverable amount = sum of the duplicated installments minus one
@@ -55,9 +53,7 @@ export const duplicateDeviceInstallmentSameLineRule: Rule = {
           // Sort by monthly_cents descending; treat the smallest as the
           // "legitimate" one and assume the larger duplicate(s) are the
           // erroneous add(s). Conservative when amounts differ.
-          const sorted = [...rows].sort(
-            (a, b) => b.monthly_cents - a.monthly_cents,
-          );
+          const sorted = [...rows].sort((a, b) => b.monthly_cents - a.monthly_cents);
           for (let i = 0; i < sorted.length - 1; i += 1) {
             recoverable += sorted[i]?.monthly_cents ?? 0;
           }
