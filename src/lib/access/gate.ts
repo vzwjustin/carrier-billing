@@ -1,9 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import { getAdminClient } from '@/lib/supabase/admin';
-import {
-  isSubscriptionStatus,
-  type SubscriptionStatus,
-} from '@/types/db-enums';
+import { isSubscriptionStatus, type SubscriptionStatus } from '@/types/db-enums';
 
 /**
  * Result of asking "is this user allowed to start a new audit right now?".
@@ -39,9 +36,7 @@ function isProfileRow(value: unknown): value is ProfileRow {
   );
 }
 
-export async function assertCanRunAudit(
-  userId: string,
-): Promise<AccessGateResult> {
+export async function assertCanRunAudit(userId: string): Promise<AccessGateResult> {
   const supabase = getAdminClient();
   const { data, error } = await supabase
     .from('profiles')
