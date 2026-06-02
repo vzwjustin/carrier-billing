@@ -88,9 +88,12 @@ export default withSentryConfig(nextConfig, {
     finalize: sentryUploadEnabled,
   },
   widenClientFileUpload: true,
-  reactComponentAnnotation: { enabled: true },
   tunnelRoute: '/monitoring',
-  hideSourceMaps: true,
-  disableLogger: true,
-  automaticVercelMonitors: false,
+  // v10 moved the three options below under `webpack` (legacy top-level keys are
+  // deprecated; per Sentry types `widenClientFileUpload`/`tunnelRoute` stay top-level).
+  webpack: {
+    reactComponentAnnotation: { enabled: true },
+    treeshake: { removeDebugLogging: true },
+    automaticVercelMonitors: false,
+  },
 });

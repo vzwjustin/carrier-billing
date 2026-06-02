@@ -1,15 +1,17 @@
 import type { ErrorEvent } from '@sentry/nextjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { initMock } = vi.hoisted(() => ({
+const { initMock, captureRouterTransitionStartMock } = vi.hoisted(() => ({
   initMock: vi.fn(),
+  captureRouterTransitionStartMock: vi.fn(),
 }));
 
 vi.mock('@sentry/nextjs', () => ({
   init: initMock,
+  captureRouterTransitionStart: captureRouterTransitionStartMock,
 }));
 
-describe('sentry.client.config', () => {
+describe('instrumentation-client', () => {
   const originalDsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
   beforeEach(() => {
@@ -27,7 +29,7 @@ describe('sentry.client.config', () => {
   });
 
   it('registers the shared PII scrubber for browser events', async () => {
-    await import('../../sentry.client.config');
+    await import('../../src/instrumentation-client');
 
     expect(initMock).toHaveBeenCalledTimes(1);
     const options = initMock.mock.calls[0]?.[0] as
