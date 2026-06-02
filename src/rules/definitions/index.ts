@@ -31,3 +31,4 @@ export { highCostLowUsagePhoneRule } from './high-cost-low-usage-phone';
 export { contractRateMismatchRule } from './contract-rate-mismatch';
 export { duplicateChargeWithinAuditRule } from './duplicate-charge-within-audit';
 export { duplicateChargeAcrossAccountsRule } from './duplicate-charge-across-accounts';
+export { promoCreditExpiresBeforeDevicePayoffRule } from './promo-credit-expires-before-device-payoff';

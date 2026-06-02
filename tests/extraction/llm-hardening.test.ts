@@ -298,3 +298,56 @@ describe('extractBill — H6 totals sanity check', () => {
     expect(sentryMock.captureMessage).not.toHaveBeenCalled();
   });
 });
+
+describe('extractBill — billing-period coherence check', () => {
+  it('downgrades confidence and appends a note when start is after end', async () => {
+    // Cycle dates transposed: start 2026-04-30 after end 2026-04-01. Totals
+    // still reconcile, so the only signal is the date order.
+    const bill = makeBalancedBill({
+      billing_period_start: '2026-04-30',
+      billing_period_end: '2026-04-01',
+    });
+    messagesCreateMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(bill) }],
+    });
+
+    const out = await extractBill(FAKE_PDF);
+    expect(out.confidence).toBe('medium');
+    expect(out.notes.some((n) => /transposed/i.test(n))).toBe(true);
+
+    expect(sentryMock.captureMessage).toHaveBeenCalledTimes(1);
+    const [msg, ctx] = sentryMock.captureMessage.mock.calls[0] ?? [];
+    expect(msg).toMatch(/billing period out of order/i);
+    const tags = (ctx as { tags?: Record<string, string> }).tags;
+    expect(tags?.surface).toBe('extraction-period-check');
+  });
+
+  it('leaves a coherent billing period untouched', async () => {
+    const bill = makeBalancedBill();
+    messagesCreateMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(bill) }],
+    });
+
+    const out = await extractBill(FAKE_PDF);
+    expect(out.confidence).toBeUndefined();
+    expect(out.notes).toEqual([]);
+    expect(sentryMock.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('treats a same-day cycle (start === end) as coherent', async () => {
+    const bill = makeBalancedBill({
+      billing_period_start: '2026-04-15',
+      billing_period_end: '2026-04-15',
+    });
+    messagesCreateMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(bill) }],
+    });
+
+    const out = await extractBill(FAKE_PDF);
+    expect(out.confidence).toBeUndefined();
+    expect(sentryMock.captureMessage).not.toHaveBeenCalled();
+  });
+});

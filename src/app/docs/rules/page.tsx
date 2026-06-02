@@ -83,6 +83,7 @@ const LOW_BAND_IDS: ReadonlySet<string> = new Set([
   'feature_appears_on_majority_of_lines_under_one_dollar',
   'feature_first_seen',
   'unassigned_user_label',
+  'promo_credit_expires_before_device_payoff',
 ]);
 
 const BAND_ORDER: ConfidenceBand[] = ['high', 'medium', 'low', 'info'];

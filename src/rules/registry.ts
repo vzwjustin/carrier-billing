@@ -35,6 +35,7 @@ import {
   contractRateMismatchRule,
   duplicateChargeWithinAuditRule,
   duplicateChargeAcrossAccountsRule,
+  promoCreditExpiresBeforeDevicePayoffRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -71,6 +72,7 @@ export const ALL_RULES: Rule[] = [
   contractRateMismatchRule,
   duplicateChargeWithinAuditRule,
   duplicateChargeAcrossAccountsRule,
+  promoCreditExpiresBeforeDevicePayoffRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);
