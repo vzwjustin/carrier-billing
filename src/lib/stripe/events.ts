@@ -7,6 +7,9 @@
  */
 export const HANDLED_STRIPE_EVENT_TYPES = {
   CheckoutSessionCompleted: 'checkout.session.completed',
+  CheckoutSessionAsyncPaymentSucceeded:
+    'checkout.session.async_payment_succeeded',
+  CheckoutSessionAsyncPaymentFailed: 'checkout.session.async_payment_failed',
   CustomerSubscriptionCreated: 'customer.subscription.created',
   CustomerSubscriptionUpdated: 'customer.subscription.updated',
   CustomerSubscriptionDeleted: 'customer.subscription.deleted',

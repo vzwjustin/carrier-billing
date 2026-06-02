@@ -101,6 +101,10 @@ const CARRIER_LABELS: Record<string, string> = {
   unknown: 'Unknown',
 };
 
+function hasQueryError(error: { message?: string } | null | undefined): boolean {
+  return error !== null && error !== undefined;
+}
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -121,94 +125,118 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     redirect('/login');
   }
 
-  const [
-    { count },
-    latestRes,
-    completedRes,
-    latestAutopsyRes,
-    completedIdsRes,
-    contractsRes,
-  ] = await Promise.all([
-    supabase.from('audits').select('id', { head: true, count: 'exact' }),
-    supabase
-      .from('audits')
-      .select(
-        'id,created_at,original_filename,carrier,status,estimated_annual_savings_cents',
-      )
-      .order('created_at', { ascending: false })
-      .limit(5)
-      .returns<DashboardAuditRow[]>(),
-    supabase
-      .from('audits')
-      .select(
-        'id,created_at,carrier,total_charges_cents,estimated_annual_savings_cents,high_severity_count',
-      )
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
-      .returns<CompletedAggregateRow[]>(),
-    // Most recent Bill Increase Autopsy across all of the user's audits.
-    // RLS scopes to the owning user; null if no autopsy has been run yet.
-    supabase
-      .from('bill_comparisons')
-      .select(
-        'id,current_audit_id,previous_audit_id,net_change_cents,percent_change_bps,disputable_cents,unexplained_cents,created_at',
-      )
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle<LatestAutopsyRow>(),
-    // Completed audit IDs, newest first. Used to (a) fetch cost-center lines
-    // across all completed audits and (b) pick the most-recent audit ID for
-    // the "Export CSV" link on the cost-center tile.
-    supabase
-      .from('audits')
-      .select('id,created_at')
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
-      .returns<CompletedAuditIdRow[]>(),
-    // Contracts with a non-null expiration_date — we filter the window in
-    // memory via findExpiringContracts so the dashboard tile and the
-    // /renewal-advisor page share one source of truth.
-    supabase
-      .from('contracts')
-      .select('id,original_filename,carrier,ban_last4,expiration_date')
-      .not('expiration_date', 'is', null)
-      .returns<DashboardContractRow[]>(),
-  ]);
+  const [countRes, latestRes, completedRes, latestAutopsyRes, completedIdsRes, contractsRes] =
+    await Promise.all([
+      supabase.from('audits').select('id', { head: true, count: 'exact' }),
+      supabase
+        .from('audits')
+        .select('id,created_at,original_filename,carrier,status,estimated_annual_savings_cents')
+        .order('created_at', { ascending: false })
+        .limit(5)
+        .returns<DashboardAuditRow[]>(),
+      supabase
+        .from('audits')
+        .select(
+          'id,created_at,carrier,total_charges_cents,estimated_annual_savings_cents,high_severity_count',
+        )
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .returns<CompletedAggregateRow[]>(),
+      // Most recent Bill Increase Autopsy across all of the user's audits.
+      // RLS scopes to the owning user; null if no autopsy has been run yet.
+      supabase
+        .from('bill_comparisons')
+        .select(
+          'id,current_audit_id,previous_audit_id,net_change_cents,percent_change_bps,disputable_cents,unexplained_cents,created_at',
+        )
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<LatestAutopsyRow>(),
+      // Completed audit IDs, newest first. Used to (a) fetch cost-center lines
+      // across all completed audits and (b) pick the most-recent audit ID for
+      // the "Export CSV" link on the cost-center tile.
+      supabase
+        .from('audits')
+        .select('id,created_at')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .returns<CompletedAuditIdRow[]>(),
+      // Contracts with a non-null expiration_date — we filter the window in
+      // memory via findExpiringContracts so the dashboard tile and the
+      // /renewal-advisor page share one source of truth.
+      supabase
+        .from('contracts')
+        .select('id,original_filename,carrier,ban_last4,expiration_date')
+        .not('expiration_date', 'is', null)
+        .returns<DashboardContractRow[]>(),
+    ]);
+
+  const primaryQueryFailed =
+    hasQueryError(countRes.error) ||
+    hasQueryError(latestRes.error) ||
+    hasQueryError(completedRes.error);
+
+  if (primaryQueryFailed) {
+    return (
+      <div className="space-y-6">
+        <section className="rounded-lg border border-red-200 bg-red-50 p-6">
+          <h1 className="text-2xl font-semibold tracking-tight text-red-950">
+            Dashboard unavailable
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-red-800">
+            We couldn&apos;t load your dashboard metrics. Please refresh the page, or open your
+            audits list while we retry the dashboard data.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href="/dashboard">
+              <Button variant="outline">Refresh dashboard</Button>
+            </Link>
+            <Link href="/audits">
+              <Button>View audits</Button>
+            </Link>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   const latest = latestRes.data ?? [];
-  const totalAudits = count ?? latest.length;
+  const totalAudits = countRes.count ?? latest.length;
   const completed = completedRes.data ?? [];
   const lifetimeSavingsCents = completed.reduce(
     (acc, row) => acc + (row.estimated_annual_savings_cents ?? 0),
     0,
   );
-  const totalHighSeverity = completed.reduce(
-    (acc, row) => acc + (row.high_severity_count ?? 0),
-    0,
-  );
-  const latestAutopsy = latestAutopsyRes.data ?? null;
+  const totalHighSeverity = completed.reduce((acc, row) => acc + (row.high_severity_count ?? 0), 0);
+  const latestAutopsyUnavailable = hasQueryError(latestAutopsyRes.error);
+  const latestAutopsy = latestAutopsyUnavailable ? null : (latestAutopsyRes.data ?? null);
 
   // Cost-center roll-up: fetch all bill_lines across the user's completed
   // audits (RLS-scoped via the audits join) and aggregate in memory. The
   // tile is hidden entirely if no lines carry a cost_center value, so we
   // skip the second query when there are no completed audits.
-  const completedAuditIds = (completedIdsRes.data ?? []).map((row) => row.id);
+  const completedIdsUnavailable = hasQueryError(completedIdsRes.error);
+  const completedAuditIds = completedIdsUnavailable
+    ? []
+    : (completedIdsRes.data ?? []).map((row) => row.id);
   let costCenterRollup: CostCenterRollupRow[] = [];
   let hasAnyCostCenter = false;
-  if (completedAuditIds.length > 0) {
+  let costCenterUnavailable = completedIdsUnavailable;
+  if (!costCenterUnavailable && completedAuditIds.length > 0) {
     const linesRes = await supabase
       .from('bill_lines')
       .select('cost_center,plan_base_cents')
       .in('audit_id', completedAuditIds)
       .returns<CostCenterLineRow[]>();
-    const lineRows = (linesRes.data ?? []) as CostCenterLineRow[];
-    hasAnyCostCenter = lineRows.some(
-      (row) => row.cost_center !== null && row.cost_center.trim() !== '',
-    );
-    if (hasAnyCostCenter) {
-      costCenterRollup = aggregateCostCenters(
-        lineRows as CostCenterLineInput[],
+    costCenterUnavailable = hasQueryError(linesRes.error);
+    if (!costCenterUnavailable) {
+      const lineRows = linesRes.data ?? [];
+      hasAnyCostCenter = lineRows.some(
+        (row) => row.cost_center !== null && row.cost_center.trim() !== '',
       );
+      if (hasAnyCostCenter) {
+        costCenterRollup = aggregateCostCenters(lineRows as CostCenterLineInput[]);
+      }
     }
   }
   const mostRecentCompletedAuditId = completedAuditIds[0] ?? null;
@@ -229,6 +257,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     created_at: row.created_at,
   }));
   let findingsSeverityRows: FindingSeverityRow[] = [];
+  let findingsUnavailable = false;
   if (findingsWindowAudits.length >= 2) {
     const findingsRes = await supabase
       .from('findings')
@@ -238,13 +267,15 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
         findingsWindowAudits.map((a) => a.id),
       )
       .returns<FindingSeverityRow[]>();
-    findingsSeverityRows = findingsRes.data ?? [];
+    findingsUnavailable = hasQueryError(findingsRes.error);
+    findingsSeverityRows = findingsUnavailable ? [] : (findingsRes.data ?? []);
   }
 
   // Upcoming renewals: contracts expiring in the next RENEWAL_WINDOW_DAYS.
   // The tile is hidden when zero so we don't add visual noise.
+  const renewalsUnavailable = hasQueryError(contractsRes.error);
   const expiringRenewalRows: RenewalContractRow[] = (
-    contractsRes.data ?? []
+    renewalsUnavailable ? [] : (contractsRes.data ?? [])
   ).map((row) => ({
     id: row.id,
     original_filename: row.original_filename,
@@ -275,8 +306,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                   Welcome to CarrierAudit
                 </h1>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Upload a business wireless bill and we&apos;ll find your
-                  wasted spend.
+                  Upload a business wireless bill and we&apos;ll find your wasted spend.
                 </p>
                 <p className="mt-3 text-xs text-neutral-500">
                   {totalAudits} audit{totalAudits === 1 ? '' : 's'} so far
@@ -305,26 +335,17 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
       )}
 
       {totalAudits > 0 ? (
-        <section
-          aria-label="Audit summary"
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        >
+        <section aria-label="Audit summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatTile
             eyebrow="Audits run"
             value={totalAudits.toLocaleString('en-US')}
             helper={
-              totalAudits === 1
-                ? 'Just getting started.'
-                : 'Across every bill you’ve uploaded.'
+              totalAudits === 1 ? 'Just getting started.' : 'Across every bill you’ve uploaded.'
             }
           />
           <StatTile
             eyebrow="Lifetime savings identified"
-            value={
-              lifetimeSavingsCents > 0
-                ? formatCents(lifetimeSavingsCents)
-                : '—'
-            }
+            value={lifetimeSavingsCents > 0 ? formatCents(lifetimeSavingsCents) : '—'}
             helper="Sum of estimated annual savings on completed audits."
           />
           <StatTile
@@ -343,24 +364,42 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           so the most important info (lifetime savings, high-sev count) stays
           at the top of the page. Each chart self-hides when its threshold
           isn't met, so this region collapses gracefully for new accounts. */}
-      {totalAudits > 0 ? (
-        <SpendByCarrierChart audits={carrierSpendInput} />
-      ) : null}
-      <FindingsOverTimeChart
-        audits={findingsWindowAudits}
-        findings={findingsSeverityRows}
-      />
+      {totalAudits > 0 ? <SpendByCarrierChart audits={carrierSpendInput} /> : null}
+      {findingsUnavailable ? (
+        <SectionUnavailable
+          title="Findings trend unavailable"
+          message="We couldn't load finding history for the trend chart. Other dashboard data is still available."
+        />
+      ) : (
+        <FindingsOverTimeChart audits={findingsWindowAudits} findings={findingsSeverityRows} />
+      )}
 
-      {expiringRenewalCount > 0 ? (
-        <UpcomingRenewalsTile count={expiringRenewalCount} />
+      {expiringRenewalCount > 0 ? <UpcomingRenewalsTile count={expiringRenewalCount} /> : null}
+
+      {renewalsUnavailable ? (
+        <SectionUnavailable
+          title="Upcoming renewals unavailable"
+          message="We couldn't load contract renewal dates right now."
+        />
       ) : null}
 
       {latestAutopsy ? <AutopsyCard autopsy={latestAutopsy} /> : null}
 
+      {latestAutopsyUnavailable ? (
+        <SectionUnavailable
+          title="Latest autopsy unavailable"
+          message="We couldn't load the latest bill comparison right now."
+        />
+      ) : null}
+
       {hasAnyCostCenter && costCenterRollup.length > 0 ? (
-        <CostCenterTile
-          rollup={costCenterRollup}
-          exportAuditId={mostRecentCompletedAuditId}
+        <CostCenterTile rollup={costCenterRollup} exportAuditId={mostRecentCompletedAuditId} />
+      ) : null}
+
+      {costCenterUnavailable ? (
+        <SectionUnavailable
+          title="Cost center spend unavailable"
+          message="We couldn't load cost center line data right now."
         />
       ) : null}
 
@@ -399,8 +438,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
               You haven&apos;t run any audits yet
             </p>
             <p className="mt-1 text-sm text-neutral-500">
-              Upload a Verizon, AT&amp;T, or T-Mobile business wireless bill to
-              see findings here.
+              Upload a Verizon, AT&amp;T, or T-Mobile business wireless bill to see findings here.
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
               <Link href="/audits/new">
@@ -414,7 +452,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
         ) : (
           <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
             <table className="w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+              <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
                 <tr>
                   <th className="px-4 py-3">Created</th>
                   <th className="px-4 py-3">File</th>
@@ -427,25 +465,18 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
               <tbody className="divide-y divide-neutral-200">
                 {latest.map((row) => (
                   <tr key={row.id} className="hover:bg-neutral-50">
-                    <td className="px-4 py-3 text-neutral-700">
-                      {formatDate(row.created_at)}
-                    </td>
+                    <td className="px-4 py-3 text-neutral-700">{formatDate(row.created_at)}</td>
                     <td className="px-4 py-3 text-neutral-900">
-                      <span className="block max-w-xs truncate">
-                        {row.original_filename}
-                      </span>
+                      <span className="block max-w-xs truncate">{row.original_filename}</span>
                     </td>
                     <td className="px-4 py-3 text-neutral-700">
-                      {row.carrier
-                        ? CARRIER_LABELS[row.carrier] ?? row.carrier
-                        : '—'}
+                      {row.carrier ? (CARRIER_LABELS[row.carrier] ?? row.carrier) : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
                           'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_STYLES[row.status] ??
-                            'bg-neutral-100 text-neutral-700',
+                          STATUS_STYLES[row.status] ?? 'bg-neutral-100 text-neutral-700',
                         )}
                       >
                         {STATUS_LABELS[row.status] ?? row.status}
@@ -476,6 +507,21 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   );
 }
 
+function SectionUnavailable({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}): React.JSX.Element {
+  return (
+    <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-medium text-amber-950">{title}</p>
+      <p className="mt-1 text-sm text-amber-800">{message}</p>
+    </section>
+  );
+}
+
 function StatTile({
   eyebrow,
   value,
@@ -487,12 +533,8 @@ function StatTile({
 }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-        {eyebrow}
-      </p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">
-        {value}
-      </p>
+      <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">{eyebrow}</p>
+      <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">{value}</p>
       <p className="mt-2 text-xs text-neutral-500">{helper}</p>
     </div>
   );
@@ -510,22 +552,14 @@ function percentLabel(bps: number | null): string {
   return `${bps >= 0 ? '+' : ''}${pct}%`;
 }
 
-function AutopsyCard({
-  autopsy,
-}: {
-  autopsy: LatestAutopsyRow;
-}): React.JSX.Element {
+function AutopsyCard({ autopsy }: { autopsy: LatestAutopsyRow }): React.JSX.Element {
   const direction =
-    autopsy.net_change_cents === 0
-      ? 'unchanged'
-      : autopsy.net_change_cents > 0
-        ? 'up'
-        : 'down';
+    autopsy.net_change_cents === 0 ? 'unchanged' : autopsy.net_change_cents > 0 ? 'up' : 'down';
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
             Latest Bill Increase Autopsy
           </p>
           <p
@@ -541,27 +575,25 @@ function AutopsyCard({
               ({percentLabel(autopsy.percent_change_bps)})
             </span>
           </p>
-          <p className="mt-2 text-xs text-neutral-500">
-            Compared with the previous bill period
-          </p>
+          <p className="mt-2 text-xs text-neutral-500">Compared with the previous bill period</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {autopsy.disputable_cents > 0 ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900">
+              <p className="text-[10px] font-semibold tracking-wider text-amber-900 uppercase">
                 Potentially disputable
               </p>
-              <p className="mt-0.5 text-base font-semibold tabular-nums text-amber-900">
+              <p className="mt-0.5 text-base font-semibold text-amber-900 tabular-nums">
                 {formatCents(autopsy.disputable_cents)}
               </p>
             </div>
           ) : null}
           {autopsy.unexplained_cents > 0 ? (
             <div className="rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+              <p className="text-[10px] font-semibold tracking-wider text-neutral-600 uppercase">
                 Unexplained
               </p>
-              <p className="mt-0.5 text-base font-semibold tabular-nums text-neutral-700">
+              <p className="mt-0.5 text-base font-semibold text-neutral-700 tabular-nums">
                 {formatCents(autopsy.unexplained_cents)}
               </p>
             </div>
@@ -585,10 +617,7 @@ function CostCenterTile({
   rollup: CostCenterRollupRow[];
   exportAuditId: string | null;
 }): React.JSX.Element {
-  const totalCents = rollup.reduce(
-    (acc, row) => acc + row.monthly_total_cents,
-    0,
-  );
+  const totalCents = rollup.reduce((acc, row) => acc + row.monthly_total_cents, 0);
   return (
     <section
       aria-label="Spend by cost center"
@@ -596,7 +625,7 @@ function CostCenterTile({
     >
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
             Spend by cost center
           </p>
           <p className="mt-1 text-lg font-semibold tracking-tight text-neutral-900">
@@ -617,7 +646,7 @@ function CostCenterTile({
       </div>
       <div className="overflow-hidden rounded-lg border border-neutral-200">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
             <tr>
               <th className="px-4 py-2">Cost center</th>
               <th className="px-4 py-2 text-right">Lines</th>
@@ -630,13 +659,11 @@ function CostCenterTile({
               const pct = Math.round(row.share * 100);
               return (
                 <tr key={row.cost_center} className="hover:bg-neutral-50">
-                  <td className="px-4 py-2 text-neutral-900">
-                    {row.cost_center}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums text-neutral-700">
+                  <td className="px-4 py-2 text-neutral-900">{row.cost_center}</td>
+                  <td className="px-4 py-2 text-right text-neutral-700 tabular-nums">
                     {row.line_count.toLocaleString('en-US')}
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums text-neutral-900">
+                  <td className="px-4 py-2 text-right text-neutral-900 tabular-nums">
                     {formatCents(row.monthly_total_cents)}
                   </td>
                   <td className="px-4 py-2">
@@ -650,9 +677,7 @@ function CostCenterTile({
                           style={{ width: `${Math.min(100, pct)}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums text-neutral-500">
-                        {pct}%
-                      </span>
+                      <span className="text-xs text-neutral-500 tabular-nums">{pct}%</span>
                     </div>
                   </td>
                 </tr>
@@ -665,11 +690,7 @@ function CostCenterTile({
   );
 }
 
-function UpcomingRenewalsTile({
-  count,
-}: {
-  count: number;
-}): React.JSX.Element {
+function UpcomingRenewalsTile({ count }: { count: number }): React.JSX.Element {
   return (
     <section
       aria-label="Upcoming renewals"
@@ -677,7 +698,7 @@ function UpcomingRenewalsTile({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
             Upcoming renewals
           </p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-neutral-900 tabular-nums">
