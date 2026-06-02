@@ -80,15 +80,58 @@ describe('promo_credit_expires_before_device_payoff rule', () => {
     expect(findings).toHaveLength(0);
   });
 
-  it('does not fire when the gap is within the noise threshold (< 2 months)', async () => {
+  it('does not fire on a true one-cycle gap (guards the cycles-vs-months off-by-one)', async () => {
     const c = ctx({
       accounts: [
         makeAccount({
           lines: [
             makeLine({
-              // ~3 months to expiry, 4 payments left → gap of 1 month.
+              // Credit expires 2026-08-31 → 3 calendar months out, i.e. it
+              // still offsets 4 cycles (May–Aug). With 5 payments remaining the
+              // true gap is 1 cycle, which is below MIN_GAP_MONTHS and must NOT
+              // fire. (The earlier months-vs-cycles math would have read the gap
+              // as 2 and fired here.)
               credits: [makeCredit({ monthly_cents: -2500, expires_on: '2026-08-31' })],
-              dpp_installments: [makeDpp({ remaining_payments: 4 })],
+              dpp_installments: [makeDpp({ remaining_payments: 5 })],
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await promoCreditExpiresBeforeDevicePayoffRule.evaluate(c);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('fires when the gap exactly meets the threshold (2 cycles)', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              // 4 cycles covered by the credit, 6 payments remaining → gap 2.
+              credits: [makeCredit({ monthly_cents: -2500, expires_on: '2026-08-31' })],
+              dpp_installments: [makeDpp({ remaining_payments: 6 })],
+            }),
+          ],
+        }),
+      ],
+    });
+    const findings = await promoCreditExpiresBeforeDevicePayoffRule.evaluate(c);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.evidence.gap_months).toBe(2);
+    expect(findings[0]?.evidence.credit_cycles_remaining).toBe(4);
+  });
+
+  it('ignores a credit that expires in the current cycle', async () => {
+    const c = ctx({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              // monthsUntil(2026-05-31, 2026-05-08) === 0 → handled by the
+              // expiring-soon / expired-credit rules, not this one.
+              credits: [makeCredit({ monthly_cents: -2500, expires_on: '2026-05-31' })],
+              dpp_installments: [makeDpp({ remaining_payments: 24 })],
             }),
           ],
         }),

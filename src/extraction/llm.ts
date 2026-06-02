@@ -488,8 +488,11 @@ function checkBillingPeriodOrder(bill: ExtractedBill): ExtractedBill {
   );
 
   const note = `Billing period start (${bill.billing_period_start}) is after end (${bill.billing_period_end}); the cycle dates may be transposed — treat any per-cycle math as approximate.`;
+  // `notes` carries a schema default of [], but guard defensively so a future
+  // schema change (or a hand-built bill) can't crash this post-parse pass.
+  const currentNotes = bill.notes ?? [];
   const notes =
-    bill.notes.length < MAX_NOTES ? [...bill.notes, note] : bill.notes;
+    currentNotes.length < MAX_NOTES ? [...currentNotes, note] : currentNotes;
 
   return { ...bill, notes, confidence: downgradeConfidence(current) };
 }

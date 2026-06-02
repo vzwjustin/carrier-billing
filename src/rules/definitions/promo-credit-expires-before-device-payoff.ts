@@ -52,15 +52,24 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
         const dppMonthsLeft = Math.max(...remainingTerms);
 
         // Promo credits with an explicit future expiry that lapses well
-        // before the device is paid off.
+        // before the device is paid off. Unit care: `remaining_payments` is a
+        // count of remaining billing cycles, while `monthsUntil` is the number
+        // of *calendar months* between today and the expiry date. A credit
+        // expiring 2026-08-31 with today 2026-05-08 reads as 3 calendar months
+        // but still offsets 4 cycles (May, Jun, Jul, Aug) — so the cycles the
+        // credit still covers is `monthsUntil(...) + 1`. Compare like-for-like
+        // (cycles vs cycles) to avoid a one-month overestimate of the gap.
+        const creditCyclesLeft = (expiresOn: string): number =>
+          monthsUntil(expiresOn, today) + 1;
+
         const expiringCredits = line.credits.filter((c) => {
           if (!c.is_promo || c.expires_on === null || c.monthly_cents >= 0) {
             return false;
           }
-          const creditMonthsLeft = monthsUntil(c.expires_on, today);
-          // Already expired (or expiring this cycle) is the other rules' job.
-          if (creditMonthsLeft < 0) return false;
-          return dppMonthsLeft - creditMonthsLeft >= MIN_GAP_MONTHS;
+          // Already expired or expiring this cycle is the other rules' job
+          // (expired_promo_credit / account_level_promo_about_to_expire).
+          if (monthsUntil(c.expires_on, today) <= 0) return false;
+          return dppMonthsLeft - creditCyclesLeft(c.expires_on) >= MIN_GAP_MONTHS;
         });
         if (expiringCredits.length === 0) return;
 
@@ -68,15 +77,17 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
           (sum, c) => sum + Math.abs(c.monthly_cents),
           0,
         );
-        const soonestExpiryMonths = Math.min(
-          ...expiringCredits.map((c) => monthsUntil(c.expires_on as string, today)),
+        // The soonest-expiring qualifying credit drives the headline horizon.
+        const soonestCyclesLeft = Math.min(
+          ...expiringCredits.map((c) => creditCyclesLeft(c.expires_on as string)),
         );
-        const gapMonths = dppMonthsLeft - soonestExpiryMonths;
+        const soonestExpiryMonths = soonestCyclesLeft - 1;
+        const gapMonths = dppMonthsLeft - soonestCyclesLeft;
 
         findings.push({
           rule_id: RULE_ID,
           severity: 'low',
-          title: `Promotional credit ends ~${soonestExpiryMonths} month(s) before the device is paid off — bill rises ${formatCents(futureIncreaseCents)}/mo`,
+          title: `Promotional credit lapses ~${gapMonths} month(s) before the device is paid off — bill rises ${formatCents(futureIncreaseCents)}/mo`,
           description: `This line carries a promotional credit set to expire in about ${soonestExpiryMonths} month(s), but the device payment plan still has ${dppMonthsLeft} payment(s) remaining — a gap of roughly ${gapMonths} month(s). Once the credit drops off, the device installment keeps billing with nothing offsetting it, so the line's monthly cost will rise by about ${formatCents(futureIncreaseCents)} for the rest of the installment term. This is the common "free/discounted phone" promo structure where the credit term is shorter than the financing term.`,
           recommended_action:
             'Before the credit lapses, confirm with the carrier whether the device will be paid off by then or whether the promo can be extended/renegotiated. If neither, budget for the higher line cost or consider paying off the remaining device balance to avoid carrying the full installment unoffset.',
@@ -90,6 +101,7 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
           evidence: {
             dpp_months_remaining: dppMonthsLeft,
             credit_expires_in_months: soonestExpiryMonths,
+            credit_cycles_remaining: soonestCyclesLeft,
             gap_months: gapMonths,
             future_monthly_increase_cents: futureIncreaseCents,
             min_gap_months: MIN_GAP_MONTHS,
