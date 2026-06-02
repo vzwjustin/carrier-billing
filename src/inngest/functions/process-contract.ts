@@ -168,33 +168,19 @@ export const processContractFn = inngest.createFunction(
       const persistResult = await step.run('persist', async () => {
         const supabase = getAdminClient();
 
-        // (a) write header fields to the parent row
-        const { data: updatedRows, error: updErr } = await supabase
-          .from('contracts')
-          .update({
-            carrier: contract.header.carrier,
-            ban_last4: contract.header.ban_last4,
-            effective_date: contract.header.effective_date,
-            expiration_date: contract.header.expiration_date,
-            status: 'parsed',
-            failure_reason: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', contractId)
-          .eq('status', 'extracting')
-          .select('id');
-        if (updErr) {
-          throw new Error(`contracts update (persist) failed: ${updErr.message}`);
-        }
-        // 0-row no-op: a concurrent run / Inngest replay already advanced the
-        // header out of 'extracting'. Short-circuit BEFORE rewriting
-        // contract_terms so we don't leave the header stale while terms churn.
-        if ((updatedRows ?? []).length === 0) {
-          return { ok: false as const, reason: 'status-guard' as const };
-        }
+        // M6: write contract_terms FIRST, flip status to 'parsed' LAST. The
+        // status-flip CAS is the single commit point. Previously the header
+        // UPDATE (which flips extracting→parsed) ran BEFORE the terms write, so
+        // if the terms insert threw, the step retried from the top, the retry's
+        // `.eq('status','extracting')` now matched 0 rows (status was already
+        // 'parsed') → returned status-guard → terms were never written → the
+        // contract was stranded in 'parsed' with missing/stale terms, and the
+        // guard blocked self-healing. Keeping status at 'extracting' until terms
+        // succeed means a retry re-admits and rewrites terms idempotently.
 
-        // (b) delete-then-insert contract_terms — idempotent on retry the
-        // same way persist-bill is.
+        // (a) delete-then-insert contract_terms — idempotent on retry. Safe to
+        // run while status is still 'extracting': contract_rate_mismatch reads
+        // terms only once status='parsed', which we flip below.
         const { error: delErr } = await supabase
           .from('contract_terms')
           .delete()
@@ -221,6 +207,31 @@ export const processContractFn = inngest.createFunction(
         });
         if (insErr) {
           throw new Error(`contract_terms insert (persist) failed: ${insErr.message}`);
+        }
+
+        // (b) commit: write header fields AND flip status, gated on
+        // 'extracting'. 0-row no-op = a concurrent run / Inngest replay already
+        // advanced the header; the terms we just (re)wrote match this run's
+        // extraction of the same contract, so no harm.
+        const { data: updatedRows, error: updErr } = await supabase
+          .from('contracts')
+          .update({
+            carrier: contract.header.carrier,
+            ban_last4: contract.header.ban_last4,
+            effective_date: contract.header.effective_date,
+            expiration_date: contract.header.expiration_date,
+            status: 'parsed',
+            failure_reason: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contractId)
+          .eq('status', 'extracting')
+          .select('id');
+        if (updErr) {
+          throw new Error(`contracts update (persist) failed: ${updErr.message}`);
+        }
+        if ((updatedRows ?? []).length === 0) {
+          return { ok: false as const, reason: 'status-guard' as const };
         }
         return { ok: true as const };
       });

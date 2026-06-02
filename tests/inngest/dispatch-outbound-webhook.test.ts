@@ -237,7 +237,6 @@ describe('postOutboundWebhook — payload contract', () => {
     expect(typeof body.delivered_at).toBe('string');
     expect(body.audit).toMatchObject({
       id: '22222222-2222-4222-8222-222222222222',
-      user_id: '33333333-3333-4333-8333-333333333333',
       status: 'completed',
       carrier: 'verizon',
       estimated_monthly_savings_cents: 5000,
@@ -245,6 +244,8 @@ describe('postOutboundWebhook — payload contract', () => {
       finding_count: 3,
       high_severity_count: 1,
     });
+    // M3: internal Supabase auth user_id must NOT be in the outbound payload.
+    expect(body.audit).not.toHaveProperty('user_id');
   });
 
   it('coerces null cents fields to 0 in the payload', async () => {
