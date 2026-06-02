@@ -75,6 +75,21 @@ const {
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: getUserMock },
+    // The ownership FETCH now goes through the RLS-scoped user client (the
+    // privileged writes still use the admin client below). Route the audits
+    // select to the same auditsFetchMock the admin mock used.
+    from: (table: string) => {
+      if (table === 'audits') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => auditsFetchMock(),
+            }),
+          }),
+        };
+      }
+      throw new Error(`unexpected user-client table: ${table}`);
+    },
   }),
 }));
 

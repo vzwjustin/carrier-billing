@@ -19,7 +19,11 @@ export const duplicateProtectionFeaturesRule: Rule = {
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
         const grouped = categorizeFeatureSet(line.features);
-        const insurance = grouped.insurance;
+        // Only paid insurance features can overlap into waste. Two $0 (bundled/
+        // free) entries would compute savings = total - mostExpensive = 0 and
+        // fire a spurious "$0 savings" finding card. Filter them out the same
+        // way duplicates/detect.ts does before deciding whether a stack exists.
+        const insurance = grouped.insurance.filter((f) => f.monthly_cents > 0);
         if (insurance.length <= 1) return;
 
         const sortedAsc = [...insurance].sort(

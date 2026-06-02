@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { env } from '@/env';
 
-const PROTECTED_PREFIXES = ['/dashboard', '/audits', '/settings', '/billing'];
+const PROTECTED_PREFIXES = ['/dashboard', '/audits', '/settings', '/billing', '/admin'];
 const AUTH_PAGES = new Set(['/login', '/signup']);
 
 /**
