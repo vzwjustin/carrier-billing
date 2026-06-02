@@ -80,7 +80,13 @@ export const ExtractedDppSchema = z
       d.remaining_payments === null ||
       d.total_payments === null ||
       d.remaining_payments <= d.total_payments,
-    { message: 'remaining_payments cannot exceed total_payments' },
+    {
+      message: 'remaining_payments cannot exceed total_payments',
+      // Point the issue at the offending field rather than the whole DPP object
+      // so the retry-on-validation feedback in llm.ts (which joins issue.path)
+      // tells the model exactly which field to fix.
+      path: ['remaining_payments'],
+    },
   );
 export type ExtractedDpp = z.infer<typeof ExtractedDppSchema>;
 

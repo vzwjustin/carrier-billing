@@ -576,6 +576,10 @@ export const processBillFn = inngest.createFunction(
             page_count: pageCount,
             file_size_bytes: sizeBytes,
             source_format: source === 'edi811' ? 'edi_811' : 'pdf',
+            // Persist the bill-level extraction confidence (migration 0037).
+            // Absent ⇒ 'high' — the schema marks it optional and treats a
+            // missing value as high confidence (see schema.ts BillConfidence).
+            extraction_confidence: bill.confidence ?? 'high',
             updated_at: new Date().toISOString(),
           };
           let markAnalyzingQuery = supabase
@@ -607,6 +611,7 @@ export const processBillFn = inngest.createFunction(
               'file_size_bytes',
               'account_count',
               'line_count',
+              'extraction_confidence',
             ];
             const stripped: Record<string, unknown> = { ...baseUpdate };
             for (const col of candidateCols) {

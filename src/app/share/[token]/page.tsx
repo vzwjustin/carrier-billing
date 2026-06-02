@@ -157,6 +157,7 @@ interface AuditRow {
   finding_count: number | null;
   high_severity_count: number | null;
   completed_at: string | null;
+  extraction_confidence: string | null;
   share_token_expires_at: string | null;
 }
 
@@ -197,9 +198,9 @@ export default async function ShareReportPage({
   // is missing it (older deployment), retry without — the expiry check
   // becomes a no-op (audit.share_token_expires_at stays null).
   const fullColumns =
-    'id,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,completed_at,share_token_expires_at';
+    'id,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,completed_at,extraction_confidence,share_token_expires_at';
   const fallbackColumns =
-    'id,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,completed_at';
+    'id,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,completed_at,extraction_confidence';
 
   let audit: AuditRow | null = null;
   let error: { code?: string; message?: string } | null = null;
@@ -292,6 +293,7 @@ export default async function ShareReportPage({
     estimated_monthly_savings_cents: audit.estimated_monthly_savings_cents,
     estimated_annual_savings_cents: audit.estimated_annual_savings_cents,
     completed_at: audit.completed_at,
+    extraction_confidence: audit.extraction_confidence,
   };
 
   const report: ReportData = buildReportData({

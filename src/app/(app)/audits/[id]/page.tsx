@@ -62,6 +62,8 @@ interface AuditRow {
   completed_at: string | null;
   // F5: page_count surfaces the >100-page slowdown notice in audit-viewer.
   page_count: number | null;
+  // Migration 0037: bill-level extraction confidence for the caution banner.
+  extraction_confidence: string | null;
 }
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -86,7 +88,7 @@ export default async function AuditDetailPage({
   const { data, error } = await supabase
     .from('audits')
     .select(
-      'id,original_filename,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,failure_reason,completed_at,page_count',
+      'id,original_filename,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,failure_reason,completed_at,page_count,extraction_confidence',
     )
     .eq('id', parsed.data.id)
     .maybeSingle<AuditRow>();
@@ -193,6 +195,7 @@ export default async function AuditDetailPage({
       estimated_monthly_savings_cents: data.estimated_monthly_savings_cents,
       estimated_annual_savings_cents: data.estimated_annual_savings_cents,
       completed_at: data.completed_at,
+      extraction_confidence: data.extraction_confidence,
     };
 
     report = buildReportData({

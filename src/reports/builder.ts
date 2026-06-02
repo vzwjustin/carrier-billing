@@ -135,6 +135,7 @@ export function buildReportData(input: BuildReportInput): ReportData {
     estimated_monthly_savings_cents: audit.estimated_monthly_savings_cents ?? 0,
     estimated_annual_savings_cents: audit.estimated_annual_savings_cents ?? 0,
     completed_at: audit.completed_at,
+    extraction_confidence: audit.extraction_confidence ?? null,
   };
 
   return {
