@@ -1,19 +1,23 @@
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 
 /**
- * Thin wrapper around `pdf-parse`. Returns extracted text and page count.
- * `pdf-parse` is CommonJS — imported via the default export.
+ * Thin wrapper around `pdf-parse` (v2). Returns extracted text and page count.
+ * v2 exposes a class-based API (`PDFParse`) instead of v1's single function;
+ * `destroy()` must be awaited to release the worker.
  */
 export async function extractText(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
+  // Buffer extends Uint8Array; pdf-parse normalises it to a typed array internally.
+  const parser = new PDFParse({ data: buffer });
   try {
-    // `max: 0` parses all pages.
-    const data = await pdfParse(buffer, { max: 0 });
+    const data = await parser.getText();
     return {
       text: data.text ?? '',
-      pageCount: data.numpages ?? 0,
+      pageCount: data.total ?? 0,
     };
   } catch (err) {
     throw new PdfParseError('Failed to parse PDF', err);
+  } finally {
+    await parser.destroy();
   }
 }
 

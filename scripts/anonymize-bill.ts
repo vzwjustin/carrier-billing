@@ -148,15 +148,14 @@ function usage(): never {
 }
 
 async function extractText(pdfBuffer: Buffer): Promise<string> {
-  const mod = (await import('pdf-parse')) as unknown as {
-    default?: (buf: Buffer) => Promise<{ text: string }>;
-  };
-  const pdfParse = mod.default;
-  if (typeof pdfParse !== 'function') {
-    throw new Error('pdf-parse default export is not a function');
+  const { PDFParse } = await import('pdf-parse');
+  const parser = new PDFParse({ data: pdfBuffer });
+  try {
+    const result = await parser.getText();
+    return result.text;
+  } finally {
+    await parser.destroy();
   }
-  const result = await pdfParse(pdfBuffer);
-  return result.text;
 }
 
 // Roughly chunk the cleaned text into pages for the rebuilt PDF. pdf-parse

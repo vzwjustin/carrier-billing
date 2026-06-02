@@ -782,10 +782,17 @@ async function buildCliPromptFromMessages(messages: Message[]): Promise<string> 
       } else if (block.type === 'document') {
         const pdfBuffer = Buffer.from(block.source.data, 'base64');
         // Lazy-load pdf-parse — only used in the CLI path.
-        const { default: pdfParse } = (await import('pdf-parse')) as unknown as {
-          default: (b: Buffer) => Promise<{ text: string; numpages: number }>;
-        };
-        const { text, numpages } = await pdfParse(pdfBuffer);
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: pdfBuffer });
+        let text: string;
+        let numpages: number;
+        try {
+          const result = await parser.getText();
+          text = result.text;
+          numpages = result.total;
+        } finally {
+          await parser.destroy();
+        }
         parts.push(`<bill_text pages="${numpages}">\n${text.trim()}\n</bill_text>`);
       }
     }
@@ -816,22 +823,23 @@ async function loadStubBill(pdfBuffer: Buffer): Promise<ExtractedBill> {
   //    real pipeline uses. We can't import from `@/extraction/detect` at the
   //    top of this module without a circular-ish look, but detect.ts is leaf
   //    so a dynamic import is cheap.
-  const [{ detectCarrier }, { default: pdfParse }] = await Promise.all([
+  const [{ detectCarrier }, { PDFParse }] = await Promise.all([
     import('@/extraction/detect'),
-    import('pdf-parse') as unknown as Promise<{
-      default: (b: Buffer) => Promise<{ text: string; numpages: number }>;
-    }>,
+    import('pdf-parse'),
   ]);
 
   let detected: 'verizon' | 'att' | 'tmobile' = 'verizon';
+  const parser = new PDFParse({ data: pdfBuffer });
   try {
-    const { text } = await pdfParse(pdfBuffer);
+    const { text } = await parser.getText();
     const carrier = detectCarrier(text);
     if (carrier === 'verizon' || carrier === 'att' || carrier === 'tmobile') {
       detected = carrier;
     }
   } catch {
     // PDF parse failed — keep the verizon default.
+  } finally {
+    await parser.destroy();
   }
 
   const cached = stubCache.get(detected);
