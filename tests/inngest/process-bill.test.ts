@@ -114,7 +114,10 @@ describe('processBillFn — H6 mark-analyzing status guard', () => {
     const src = getHandlerSource();
     const idx = src.indexOf('mark-completed');
     expect(idx).toBeGreaterThan(-1);
-    const block = src.slice(idx, idx + 2000);
+    // 6000-char window mirrors the mark-analyzing test above; Vite 8/Vitest 4
+    // SSR preserves more of the surrounding comments, so 2000 chars no longer
+    // reaches the bail-out literal. Behaviour assertion is unchanged.
+    const block = src.slice(idx, idx + 6000);
     expect(block).toMatch(/status-guard/);
     // The minified output uses the variable name from .select('id') ('rows' or
     // 'data'), so match the length===0 bail-out pattern generically.
