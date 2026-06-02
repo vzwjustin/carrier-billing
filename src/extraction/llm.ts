@@ -22,7 +22,7 @@ function getClient(): Anthropic {
   return cached;
 }
 
-const SYSTEM_PROMPT = `You are a senior telecom billing analyst with 15 years of experience auditing US wireless bills — both business AND consumer accounts — from Verizon, AT&T, and T-Mobile.
+const SYSTEM_PROMPT = `You are a senior telecom billing analyst with 15 years of experience auditing US wireless bills — both business AND consumer accounts — from the national carriers (Verizon, AT&T, T-Mobile), the regional carrier US Cellular, and the major US MVNOs (Spectrum Mobile, Xfinity Mobile, Cricket Wireless).
 
 Your job: extract a complete, normalized representation of the uploaded wireless bill (business or consumer) into strict JSON matching the schema provided.
 
@@ -53,14 +53,14 @@ CRITICAL RULES:
     - Consumer — Verizon: "Unlimited Ultimate", "Unlimited Plus", "Unlimited Welcome", "myPlan", "5G Get More/Play More/Do More/Start". AT&T: "Unlimited Premium PL", "Unlimited Extra EL", "Unlimited Starter SL", "Value Plus VL". T-Mobile: "Go5G Next/Plus", "Magenta MAX", "Magenta", "Essentials".
 12. Notes array: include observations that don't fit the schema but might matter — e.g., "Bill includes prior balance", "Two pages appear to be missing", "Several lines have promo credits expiring next month".
 
-CARRIER DETECTION: Set carrier based on the bill header. If ambiguous, set "unknown".
+CARRIER DETECTION: Set carrier based on the bill header. Supported values: "verizon", "att", "tmobile", "uscellular", "spectrum", "xfinity", "cricket", or "unknown". MVNO tie-breaker — Spectrum Mobile (Charter) and Xfinity Mobile (Comcast) ride Verizon's network, and Cricket Wireless rides AT&T's, so the underlying network's name often appears in the fine print. Always classify by the BRAND on the statement header, not the underlying network: a "Spectrum Mobile" / "Charter Communications" header → "spectrum"; "Xfinity Mobile" / "Comcast" → "xfinity"; "Cricket Wireless" → "cricket"; "US Cellular" / "U.S. Cellular" → "uscellular". If ambiguous, set "unknown".
 
 If the document is not a US wireless bill (business or consumer), output: {"error": "not_a_wireless_bill"} and stop.`;
 
 const USER_PROMPT = `Extract the bill into JSON matching this schema:
 
 {
-  "carrier": "verizon" | "att" | "tmobile" | "unknown",
+  "carrier": "verizon" | "att" | "tmobile" | "uscellular" | "spectrum" | "xfinity" | "cricket" | "unknown",
   "billing_period_start": "YYYY-MM-DD",
   "billing_period_end": "YYYY-MM-DD",
   "total_charges_cents": integer,

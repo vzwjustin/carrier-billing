@@ -60,15 +60,28 @@ export const ExtractedCreditSchema = z.object({
 });
 export type ExtractedCredit = z.infer<typeof ExtractedCreditSchema>;
 
-export const ExtractedDppSchema = z.object({
-  // Bound length so a model leak of full device/PII strings can't bloat logs
-  // or, via Sentry beforeSend, exfiltrate large bodies. 40 chars covers all
-  // canonical SKU strings ("iPhone 15 Pro Max 256GB" is 22).
-  device: z.string().min(1).max(40),
-  monthly_cents: z.number().int().nonnegative().max(1_000_000),
-  remaining_payments: z.number().int().nonnegative().nullable(),
-  total_payments: z.number().int().positive().nullable(),
-});
+export const ExtractedDppSchema = z
+  .object({
+    // Bound length so a model leak of full device/PII strings can't bloat logs
+    // or, via Sentry beforeSend, exfiltrate large bodies. 40 chars covers all
+    // canonical SKU strings ("iPhone 15 Pro Max 256GB" is 22).
+    device: z.string().min(1).max(40),
+    monthly_cents: z.number().int().nonnegative().max(1_000_000),
+    remaining_payments: z.number().int().nonnegative().nullable(),
+    total_payments: z.number().int().positive().nullable(),
+  })
+  // A device-payment plan can never have more payments left than its total
+  // term (e.g. "month 12 of 24" → remaining 12, total 24). An LLM transcription
+  // slip that inverts the two would silently corrupt every "months remaining" /
+  // "percent complete" calculation downstream, so reject it at the boundary.
+  // Null on either side means "not printed" and is left unconstrained.
+  .refine(
+    (d) =>
+      d.remaining_payments === null ||
+      d.total_payments === null ||
+      d.remaining_payments <= d.total_payments,
+    { message: 'remaining_payments cannot exceed total_payments' },
+  );
 export type ExtractedDpp = z.infer<typeof ExtractedDppSchema>;
 
 // H10: defense-in-depth name redaction. The LLM prompt instructs the model to
