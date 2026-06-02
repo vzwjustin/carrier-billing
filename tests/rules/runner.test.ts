@@ -219,4 +219,130 @@ describe('runRules — full pipeline', () => {
     const result = await runRules(ctx, [wildRule]);
     expect(result.findings.map((f) => f.confidence)).toEqual([1, 0]);
   });
+
+  it('arbitrates zero-usage premium phone overlap to one line-removal finding', async () => {
+    const bill = makeBill({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              plan_name: 'Business Unlimited Pro 2.0',
+              plan_base_cents: 8000,
+              data_used_gb: 0,
+              voice_used_min: 0,
+              sms_used_count: 0,
+            }),
+          ],
+        }),
+      ],
+    });
+    const ctx: RuleContext = { bill, today: TEST_TODAY, carrier: bill.carrier };
+    const result = await runRules(ctx);
+
+    expect(result.errors).toEqual([]);
+    expect(result.findings.map((f) => f.rule_id)).toContain('zero_usage_phone_line');
+    expect(result.findings.map((f) => f.rule_id)).not.toContain(
+      'high_cost_low_usage_phone',
+    );
+    expect(result.findings.map((f) => f.rule_id)).not.toContain(
+      'underutilized_phone_on_premium_plan',
+    );
+    expect(
+      result.findings
+        .filter((f) => f.affected_line_indexes.includes(0))
+        .reduce((sum, f) => sum + f.estimated_monthly_savings_cents, 0),
+    ).toBe(8000);
+  });
+
+  it('arbitrates paid-off-device insurance overlap to the remove-all finding', async () => {
+    const bill = makeBill({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              features: [
+                makeFeature({
+                  name: 'Mobile Protect',
+                  category: 'insurance',
+                  monthly_cents: 1700,
+                }),
+                makeFeature({
+                  name: 'AppleCare+',
+                  category: 'insurance',
+                  monthly_cents: 1099,
+                }),
+              ],
+              dpp_installments: [
+                makeDpp({ total_payments: 36, remaining_payments: 0 }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const ctx: RuleContext = { bill, today: TEST_TODAY, carrier: bill.carrier };
+    const result = await runRules(ctx);
+
+    expect(result.errors).toEqual([]);
+    expect(result.findings.map((f) => f.rule_id)).toContain(
+      'insurance_after_device_payoff',
+    );
+    expect(result.findings.map((f) => f.rule_id)).not.toContain(
+      'duplicate_protection_features',
+    );
+    expect(
+      result.findings
+        .filter((f) => f.rule_id === 'insurance_after_device_payoff')
+        .reduce((sum, f) => sum + f.estimated_monthly_savings_cents, 0),
+    ).toBe(2799);
+  });
+
+  it('preserves non-overlapping findings from arbitrated rule families', async () => {
+    const bill = makeBill({
+      accounts: [
+        makeAccount({
+          lines: [
+            makeLine({
+              plan_name: 'Business Unlimited Pro 2.0',
+              plan_base_cents: 8000,
+              data_used_gb: 0,
+              voice_used_min: 0,
+              sms_used_count: 0,
+            }),
+            makeLine({
+              plan_name: 'Business Unlimited Pro 2.0',
+              plan_base_cents: 8000,
+              data_used_gb: 1,
+              voice_used_min: 10,
+              sms_used_count: 5,
+            }),
+            makeLine({
+              features: [
+                makeFeature({
+                  name: 'Mobile Protect',
+                  category: 'insurance',
+                  monthly_cents: 1700,
+                }),
+                makeFeature({
+                  name: 'AppleCare+',
+                  category: 'insurance',
+                  monthly_cents: 1099,
+                }),
+              ],
+              dpp_installments: [],
+            }),
+          ],
+        }),
+      ],
+    });
+    const ctx: RuleContext = { bill, today: TEST_TODAY, carrier: bill.carrier };
+    const result = await runRules(ctx);
+    const byRule = result.findings.map((f) => f.rule_id);
+
+    expect(result.errors).toEqual([]);
+    expect(byRule).toContain('zero_usage_phone_line');
+    expect(byRule).toContain('high_cost_low_usage_phone');
+    expect(byRule).toContain('underutilized_phone_on_premium_plan');
+    expect(byRule).toContain('duplicate_protection_features');
+  });
 });
