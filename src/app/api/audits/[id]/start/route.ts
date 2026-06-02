@@ -63,10 +63,7 @@ export async function POST(
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!data || !isAuditRow(data)) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -76,10 +73,7 @@ export async function POST(
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
     }
     if (data.status !== 'pending') {
-      return NextResponse.json(
-        { error: `Audit is already ${data.status}.` },
-        { status: 409 },
-      );
+      return NextResponse.json({ error: `Audit is already ${data.status}.` }, { status: 409 });
     }
 
     const rateLimit = await consumeRateLimit({
@@ -122,15 +116,10 @@ export async function POST(
           storagePath: data.storage_path,
           retryCount: data.retry_count,
         },
-    });
+      });
     } catch (sendErr) {
-      const safeMessage = scrubString(
-        sendErr instanceof Error ? sendErr.message : String(sendErr),
-      );
-      console.error(
-        '[audits.start] inngest.send failed:',
-        safeMessage,
-      );
+      const safeMessage = scrubString(sendErr instanceof Error ? sendErr.message : String(sendErr));
+      console.error('[audits.start] inngest.send failed:', safeMessage);
       Sentry.captureException(new Error(safeMessage), {
         tags: { surface: 'audits.start.inngest_send' },
         extra: { auditId },
@@ -144,17 +133,11 @@ export async function POST(
     return NextResponse.json({ ok: true });
   } catch (err) {
     const safeMessage = scrubString(err instanceof Error ? err.message : String(err));
-    console.error(
-      '[audits.start] unhandled error:',
-      safeMessage,
-    );
+    console.error('[audits.start] unhandled error:', safeMessage);
     Sentry.captureException(new Error(safeMessage), {
       tags: { surface: 'audits.start' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

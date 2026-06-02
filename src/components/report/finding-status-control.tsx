@@ -32,14 +32,11 @@ export function FindingStatusControl({
       setStatus(next);
       setIsSaving(true);
       try {
-        const res = await fetch(
-          `/api/audits/${auditId}/findings/${findingId}/status`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: next }),
-          },
-        );
+        const res = await fetch(`/api/audits/${auditId}/findings/${findingId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: next }),
+        });
         if (!res.ok) {
           setStatus(previous);
           toast.error('Could not update finding status.');
@@ -65,7 +62,7 @@ export function FindingStatusControl({
           void handleChange(event);
         }}
         disabled={isSaving}
-        className="rounded-md border border-neutral-200 bg-white px-1.5 py-0.5 text-xs font-medium text-neutral-700 shadow-sm focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:cursor-wait disabled:opacity-60"
+        className="rounded-md border border-neutral-200 bg-white px-1.5 py-0.5 text-xs font-medium text-neutral-700 shadow-sm focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400 focus:outline-none disabled:cursor-wait disabled:opacity-60"
         aria-label="Reviewer status"
       >
         {FINDING_STATUS_VALUES.map((s) => (

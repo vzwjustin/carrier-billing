@@ -23,9 +23,7 @@ const COLORS = {
   white: '#ffffff',
 } as const;
 
-export function BillReminderEmail(
-  props: BillReminderEmailProps,
-): React.ReactElement {
+export function BillReminderEmail(props: BillReminderEmailProps): React.ReactElement {
   const { uploadUrl } = props;
 
   const containerStyle: React.CSSProperties = {
@@ -75,17 +73,15 @@ export function BillReminderEmail(
       <div style={cardStyle}>
         <h1 style={headingStyle}>Time for this month&apos;s bill audit</h1>
         <p style={bodyStyle}>
-          New month, new wireless bill. Upload your latest statement and
-          we&apos;ll re-check it for overcharges, expired promos, and plan
-          mismatches — usually in under five minutes.
+          New month, new wireless bill. Upload your latest statement and we&apos;ll re-check it for
+          overcharges, expired promos, and plan mismatches — usually in under five minutes.
         </p>
         <a href={uploadUrl} style={ctaStyle}>
           Upload this month&apos;s bill
         </a>
         <div style={footerStyle}>
           <p style={{ margin: '0 0 8px 0' }}>
-            Don&apos;t want these reminders? Manage notifications in your
-            settings.
+            Don&apos;t want these reminders? Manage notifications in your settings.
           </p>
           <p style={{ margin: 0 }}>CarrierAudit</p>
         </div>

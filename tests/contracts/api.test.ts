@@ -182,10 +182,7 @@ describe('POST /api/contracts', () => {
     expect(typeof body.storagePath).toBe('string');
 
     expect(contractsInsertMock).toHaveBeenCalledTimes(1);
-    const insertArgs = contractsInsertMock.mock.calls[0]?.[0] as Record<
-      string,
-      unknown
-    >;
+    const insertArgs = contractsInsertMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(insertArgs?.user_id).toBe(TEST_USER_ID);
     expect(insertArgs?.status).toBe('pending');
     expect(insertArgs?.original_filename).toBe('contract.pdf');

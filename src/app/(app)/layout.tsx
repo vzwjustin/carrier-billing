@@ -33,8 +33,7 @@ function isProfileRow(value: unknown): value is ProfileRow {
   const v = value as Record<string, unknown>;
   return (
     (v.audit_credits === null || typeof v.audit_credits === 'number') &&
-    (v.subscription_status === null ||
-      typeof v.subscription_status === 'string') &&
+    (v.subscription_status === null || typeof v.subscription_status === 'string') &&
     (v.role === null || typeof v.role === 'string')
   );
 }
@@ -77,11 +76,7 @@ function getBadgeState(profile: ProfileRow | null): BadgeState {
   };
 }
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -103,15 +98,13 @@ export default async function AppLayout({
   const profile = isProfileRow(profileData) ? profileData : null;
   const badge = getBadgeState(profile);
   const navItems =
-    profile?.role === 'admin'
-      ? [...NAV_ITEMS, { href: '/admin', label: 'Admin' }]
-      : NAV_ITEMS;
+    profile?.role === 'admin' ? [...NAV_ITEMS, { href: '/admin', label: 'Admin' }] : NAV_ITEMS;
 
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-950">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:outline-none"
       >
         Skip to main content
       </a>
@@ -121,7 +114,7 @@ export default async function AppLayout({
             <Link
               href="/dashboard"
               aria-label="CarrierAudit dashboard"
-              className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:text-neutral-100"
+              className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-neutral-100"
             >
               CarrierAudit
             </Link>
@@ -133,7 +126,7 @@ export default async function AppLayout({
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="rounded-md px-1 py-0.5 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:hover:text-neutral-100"
+                  className="rounded-md px-1 py-0.5 transition-colors hover:text-neutral-900 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:hover:text-neutral-100"
                 >
                   {item.label}
                 </Link>
@@ -165,9 +158,7 @@ export default async function AppLayout({
                 {badge.label}
               </span>
             )}
-            <span className="hidden text-sm text-neutral-500 lg:inline">
-              {user.email}
-            </span>
+            <span className="hidden text-sm text-neutral-500 lg:inline">{user.email}</span>
             <form action="/auth/signout" method="post" className="hidden sm:block">
               <Button type="submit" variant="outline" size="sm">
                 Sign out

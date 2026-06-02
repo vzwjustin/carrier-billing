@@ -36,14 +36,8 @@ export const lineWithOnlyCreditsRule: Rule = {
         if (line.credits.length === 0) return;
 
         const planBase = line.plan_base_cents ?? 0;
-        const featuresTotal = line.features.reduce(
-          (sum, f) => sum + f.monthly_cents,
-          0,
-        );
-        const creditsTotal = line.credits.reduce(
-          (sum, c) => sum + c.monthly_cents,
-          0,
-        );
+        const featuresTotal = line.features.reduce((sum, f) => sum + f.monthly_cents, 0);
+        const creditsTotal = line.credits.reduce((sum, c) => sum + c.monthly_cents, 0);
         const net = planBase + featuresTotal + creditsTotal;
         if (net > 0) return;
 

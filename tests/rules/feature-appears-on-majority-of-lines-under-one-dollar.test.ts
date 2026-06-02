@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { featureAppearsOnMajorityOfLinesUnderOneDollarRule } from '@/rules/definitions/feature-appears-on-majority-of-lines-under-one-dollar';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);
@@ -32,8 +26,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
         }),
       ],
     });
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(1);
     const f = findings[0];
     if (!f) throw new Error('expected finding');
@@ -50,9 +43,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
           lines: [
             ...Array.from({ length: 4 }).map(() =>
               makeLine({
-                features: [
-                  makeFeature({ name: 'Tiny Fee', monthly_cents: 25 }),
-                ],
+                features: [makeFeature({ name: 'Tiny Fee', monthly_cents: 25 })],
               }),
             ),
             makeLine({ features: [] }),
@@ -61,8 +52,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
       ],
     });
     // 4 of 5 = 80% (≥ ceil(5*0.8)=4)
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(1);
   });
 
@@ -73,9 +63,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
           lines: [
             ...Array.from({ length: 3 }).map(() =>
               makeLine({
-                features: [
-                  makeFeature({ name: 'Tiny Fee', monthly_cents: 25 }),
-                ],
+                features: [makeFeature({ name: 'Tiny Fee', monthly_cents: 25 })],
               }),
             ),
             ...Array.from({ length: 2 }).map(() => makeLine({ features: [] })),
@@ -84,8 +72,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
       ],
     });
     // 3 of 5 = 60% < 80%
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(0);
   });
 
@@ -107,8 +94,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
         }),
       ],
     });
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(0);
   });
 
@@ -127,8 +113,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
         }),
       ],
     });
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(0);
   });
 
@@ -138,16 +123,13 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
         makeAccount({
           lines: Array.from({ length: 5 }).map(() =>
             makeLine({
-              features: [
-                makeFeature({ name: 'Documentation Row', monthly_cents: 0 }),
-              ],
+              features: [makeFeature({ name: 'Documentation Row', monthly_cents: 0 })],
             }),
           ),
         }),
       ],
     });
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(0);
   });
 
@@ -168,8 +150,7 @@ describe('feature_appears_on_majority_of_lines_under_one_dollar rule', () => {
         }),
       ],
     });
-    const findings =
-      await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
+    const findings = await featureAppearsOnMajorityOfLinesUnderOneDollarRule.evaluate(c);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.evidence.occurrences).toBe(4);
   });

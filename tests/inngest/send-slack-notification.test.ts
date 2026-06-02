@@ -25,8 +25,7 @@ import {
   sendSlackHighFindingFn,
 } from '@/inngest/functions/send-slack-notification';
 
-const { buildHighFindingPayload, buildAutopsyPayload, postToSlack, formatCents } =
-  __testables;
+const { buildHighFindingPayload, buildAutopsyPayload, postToSlack, formatCents } = __testables;
 
 const AUDIT_ID = '11111111-1111-4111-8111-111111111111';
 const FINDING_ID = '22222222-2222-4222-8222-222222222222';
@@ -38,15 +37,13 @@ beforeEach(() => {
   lastCall = null;
   vi.stubGlobal(
     'fetch',
-    vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        lastCall = {
-          input: typeof input === 'string' ? input : input.toString(),
-          init: init ?? {},
-        };
-        return new Response('ok', { status: 200 });
-      },
-    ),
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      lastCall = {
+        input: typeof input === 'string' ? input : input.toString(),
+        init: init ?? {},
+      };
+      return new Response('ok', { status: 200 });
+    }),
   );
 });
 
@@ -56,9 +53,7 @@ afterEach(() => {
 
 describe('registration', () => {
   it('registers both Slack notifier functions in the registry', () => {
-    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) =>
-      fn.id(),
-    );
+    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) => fn.id());
     expect(ids.some((id) => id.includes('send-slack-high-finding'))).toBe(true);
     expect(ids.some((id) => id.includes('send-slack-autopsy'))).toBe(true);
   });
@@ -103,9 +98,9 @@ describe('buildHighFindingPayload — shape + PII discipline', () => {
     expect(serialized).not.toMatch(/@/); // no email-like content
 
     // Button URL points back to the finding anchor.
-    const actions = payload.blocks.find(
-      (b) => (b as { type?: string }).type === 'actions',
-    ) as { elements?: Array<{ url?: string }> } | undefined;
+    const actions = payload.blocks.find((b) => (b as { type?: string }).type === 'actions') as
+      | { elements?: Array<{ url?: string }> }
+      | undefined;
     expect(actions?.elements?.[0]?.url).toContain(`/audits/${AUDIT_ID}`);
     expect(actions?.elements?.[0]?.url).toContain(`finding-${FINDING_ID}`);
   });
@@ -150,12 +145,10 @@ describe('buildAutopsyPayload — shape', () => {
     expect(serialized).toContain('$120.00');
     expect(serialized).toContain('3'); // drivers count
     // Button URL targets the autopsy detail page.
-    const actions = payload.blocks.find(
-      (b) => (b as { type?: string }).type === 'actions',
-    ) as { elements?: Array<{ url?: string }> } | undefined;
-    expect(actions?.elements?.[0]?.url).toContain(
-      `/audits/${AUDIT_ID}/autopsy/${COMPARISON_ID}`,
-    );
+    const actions = payload.blocks.find((b) => (b as { type?: string }).type === 'actions') as
+      | { elements?: Array<{ url?: string }> }
+      | undefined;
+    expect(actions?.elements?.[0]?.url).toContain(`/audits/${AUDIT_ID}/autopsy/${COMPARISON_ID}`);
   });
 
   it('handles a single change driver (no plural "s")', () => {
@@ -201,9 +194,7 @@ describe('postToSlack — delivery', () => {
     );
     expect(result).toEqual({ ok: true, status: 200 });
     expect(lastCall).not.toBeNull();
-    expect(lastCall!.input).toBe(
-      'https://hooks.slack.com/services/T0/B0/secret',
-    );
+    expect(lastCall!.input).toBe('https://hooks.slack.com/services/T0/B0/secret');
     expect(lastCall!.init.method).toBe('POST');
     const headers = lastCall!.init.headers as Record<string, string>;
     expect(headers['Content-Type']).toBe('application/json');

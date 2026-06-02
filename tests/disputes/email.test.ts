@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildDisputePacket,
-  type DisputeBuilderInput,
-} from '@/disputes/builder';
+import { buildDisputePacket, type DisputeBuilderInput } from '@/disputes/builder';
 import { buildDisputeEml, buildDisputeEmail } from '@/disputes/email';
 
-function packetFromBaseline(
-  overrides: Partial<DisputeBuilderInput> = {},
-) {
+function packetFromBaseline(overrides: Partial<DisputeBuilderInput> = {}) {
   const input: DisputeBuilderInput = {
     audit: {
       id: '11111111-1111-4111-8111-111111111111',
@@ -143,8 +138,6 @@ describe('buildDisputeEml', () => {
   it('embeds the audit short id + rule id as an X- header for traceability', () => {
     const packet = packetFromBaseline();
     const eml = buildDisputeEml(packet);
-    expect(eml).toContain(
-      `X-CarrierAudit-Packet: ${packet.auditShortId}/${packet.ruleId}`,
-    );
+    expect(eml).toContain(`X-CarrierAudit-Packet: ${packet.auditShortId}/${packet.ruleId}`);
   });
 });

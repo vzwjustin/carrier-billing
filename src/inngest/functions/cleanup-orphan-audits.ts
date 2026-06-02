@@ -125,9 +125,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
         .lt('updated_at', cutoff)
         .select('id');
       if (error) {
-        throw new Error(
-          `audits update (fail-subscription-orphans) failed: ${error.message}`,
-        );
+        throw new Error(`audits update (fail-subscription-orphans) failed: ${error.message}`);
       }
       const count = (data ?? []).length;
       if (count > 0) {
@@ -154,9 +152,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
         .eq('credit_consumed', true)
         .lt('updated_at', cutoff);
       if (error) {
-        throw new Error(
-          `audits select (refund-leaked-credits) failed: ${error.message}`,
-        );
+        throw new Error(`audits select (refund-leaked-credits) failed: ${error.message}`);
       }
       const rows = (data ?? []) as Array<{ id: string; user_id: string }>;
       let refunded = 0;
@@ -197,9 +193,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
         .eq('source_format', 'csv')
         .lt('updated_at', cutoff);
       if (error) {
-        throw new Error(
-          `audits select (complete-stuck-csv-analyzing) failed: ${error.message}`,
-        );
+        throw new Error(`audits select (complete-stuck-csv-analyzing) failed: ${error.message}`);
       }
       const rows = (data ?? []) as Array<{ id: string }>;
       let completed = 0;
@@ -216,10 +210,7 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
           severity: string;
           estimated_monthly_savings_cents: number | null;
         }>;
-        const monthly = findings.reduce(
-          (s, f) => s + (f.estimated_monthly_savings_cents ?? 0),
-          0,
-        );
+        const monthly = findings.reduce((s, f) => s + (f.estimated_monthly_savings_cents ?? 0), 0);
         const high = findings.filter((f) => f.severity === 'high').length;
         const now = new Date().toISOString();
         const { error: upErr } = await supabase

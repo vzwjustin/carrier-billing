@@ -19,15 +19,7 @@ import { functions } from '@/inngest/functions';
  */
 
 const SRC = readFileSync(
-  resolve(
-    __dirname,
-    '..',
-    '..',
-    'src',
-    'inngest',
-    'functions',
-    'send-bill-upload-reminders.ts',
-  ),
+  resolve(__dirname, '..', '..', 'src', 'inngest', 'functions', 'send-bill-upload-reminders.ts'),
   'utf8',
 );
 

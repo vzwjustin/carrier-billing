@@ -90,10 +90,7 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
 
     const result = compareBills(prev, curr);
     const planChange = result.drivers.find((d) => d.category === 'plan_changes');
-    expect(planChange?.evidence.lines?.map((line) => line.user_label)).toEqual([
-      null,
-      'Store 42',
-    ]);
+    expect(planChange?.evidence.lines?.map((line) => line.user_label)).toEqual([null, 'Store 42']);
   });
 
   it('attributes a removed line as a "removed_lines" driver (negative diff)', () => {
@@ -142,9 +139,7 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
       total_charges_cents: 9500,
       accounts: [
         makeAccount({
-          lines: [
-            makeLine({ mdn_last4: '1111', plan_base_cents: 4500, credits: [] }),
-          ],
+          lines: [makeLine({ mdn_last4: '1111', plan_base_cents: 4500, credits: [] })],
         }),
       ],
     });
@@ -174,9 +169,7 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
             makeLine({
               mdn_last4: '1111',
               plan_base_cents: 4500,
-              dpp_installments: [
-                makeDpp({ device: 'iPhone 16 Pro', monthly_cents: 2833 }),
-              ],
+              dpp_installments: [makeDpp({ device: 'iPhone 16 Pro', monthly_cents: 2833 })],
             }),
           ],
         }),
@@ -184,9 +177,7 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
     });
     const result = compareBills(prev, curr);
     expect(result.net_change_cents).toBe(2833);
-    const dppAdded = result.drivers.find(
-      (d) => d.category === 'device_installments_added',
-    );
+    const dppAdded = result.drivers.find((d) => d.category === 'device_installments_added');
     expect(dppAdded?.difference_cents).toBe(2833);
   });
 
@@ -229,7 +220,11 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
   it('classifies an insurance feature add as insurance_changes (optimization bucket)', () => {
     const prev = makeBill({
       total_charges_cents: 4500,
-      accounts: [makeAccount({ lines: [makeLine({ mdn_last4: '1111', plan_base_cents: 4500, features: [] })] })],
+      accounts: [
+        makeAccount({
+          lines: [makeLine({ mdn_last4: '1111', plan_base_cents: 4500, features: [] })],
+        }),
+      ],
     });
     const curr = makeBill({
       total_charges_cents: 6200,
@@ -312,9 +307,7 @@ describe('compareBills — Bill Increase Autopsy engine', () => {
         }),
       ],
     });
-    const taxes = compareBills(prev, curr).drivers.find(
-      (d) => d.category === 'taxes_fees_change',
-    );
+    const taxes = compareBills(prev, curr).drivers.find((d) => d.category === 'taxes_fees_change');
     expect(taxes).toBeDefined();
     expect(taxes?.difference_cents).toBe(1500);
     expect(taxes?.evidence.accounts?.[0]?.account_last4).toBe('7777');

@@ -11,9 +11,7 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Log in
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Log in</h1>
         <p className="text-sm text-neutral-500">
           Welcome back. Enter your credentials to access your audits.
         </p>

@@ -21,10 +21,7 @@ export function detectCarrier(text: string): Carrier {
   // Spectrum Mobile (Charter MVNO on Verizon). "Charter Communications" is a
   // secondary brand signal — sometimes only the parent brand appears on the
   // corporate-billing header.
-  if (
-    /spectrum\s+mobile/.test(haystack) ||
-    /charter\s+communications/.test(haystack)
-  ) {
+  if (/spectrum\s+mobile/.test(haystack) || /charter\s+communications/.test(haystack)) {
     return 'spectrum';
   }
 

@@ -54,9 +54,7 @@ export const ListLinesInputSchema = z.object({
   // `has_feature` is a coarse filter against the bill_features.category enum:
   // 'insurance' | 'international' | 'cloud' | 'hotspot' | 'addon'. The
   // assistant model uses it for questions like "which lines have insurance".
-  has_feature: z
-    .enum(['insurance', 'international', 'cloud', 'hotspot', 'addon'])
-    .optional(),
+  has_feature: z.enum(['insurance', 'international', 'cloud', 'hotspot', 'addon']).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -305,10 +303,7 @@ interface FindingRow {
   created_at: string;
 }
 
-async function assertAuditOwnership(
-  ctx: ToolContext,
-  auditId: string,
-): Promise<boolean> {
+async function assertAuditOwnership(ctx: ToolContext, auditId: string): Promise<boolean> {
   const { data, error } = await ctx.supabase
     .from('audits')
     .select('id')
@@ -433,9 +428,7 @@ export async function executeGetFinding(
       .in('id', row.affected_account_ids)
       .eq('audit_id', row.audit_id);
     if (accountsError) {
-      throw new Error(
-        `get_finding accounts lookup failed: ${accountsError.message}`,
-      );
+      throw new Error(`get_finding accounts lookup failed: ${accountsError.message}`);
     }
     affectedAccountLast4 = ((accounts ?? []) as AccountLast4Row[])
       .map((a) => takeLast4(a.account_number_masked))
@@ -579,8 +572,7 @@ export async function executeListLines(
   ctx: ToolContext,
   citations: CitationCollector,
 ): Promise<unknown> {
-  const { audit_id, account_last4, has_feature } =
-    ListLinesInputSchema.parse(rawInput);
+  const { audit_id, account_last4, has_feature } = ListLinesInputSchema.parse(rawInput);
 
   const owns = await assertAuditOwnership(ctx, audit_id);
   if (!owns) return { audit_id, lines: [], missing: 'audit not found' };
@@ -638,9 +630,7 @@ export async function executeListLines(
     if (featureError) {
       throw new Error(`list_lines feature filter failed: ${featureError.message}`);
     }
-    const featureLineIds = new Set(
-      ((featureRows ?? []) as FeatureLinkRow[]).map((f) => f.line_id),
-    );
+    const featureLineIds = new Set(((featureRows ?? []) as FeatureLinkRow[]).map((f) => f.line_id));
     lines = lines.filter((l) => featureLineIds.has(l.id));
   }
 
@@ -666,8 +656,7 @@ export async function executeListLines(
 // Dispatcher
 // ---------------------------------------------------------------------------
 
-export type AssistantToolName =
-  (typeof ASSISTANT_TOOL_DEFINITIONS)[number]['name'];
+export type AssistantToolName = (typeof ASSISTANT_TOOL_DEFINITIONS)[number]['name'];
 
 export async function executeAssistantTool(
   name: string,

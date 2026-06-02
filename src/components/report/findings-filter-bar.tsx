@@ -17,10 +17,7 @@ import {
   parseFilterState,
   serializeFilterState,
 } from './finding-filter';
-import {
-  FINDING_STATUS_LABEL,
-  FINDING_STATUS_VALUES,
-} from './finding-status-meta';
+import { FINDING_STATUS_LABEL, FINDING_STATUS_VALUES } from './finding-status-meta';
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   high: 'High',
@@ -40,8 +37,7 @@ const SORT_LABEL: Record<SortKey, string> = {
 const CHIP_BASE =
   'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-1';
 const CHIP_ACTIVE = 'border-neutral-900 bg-neutral-900 text-white';
-const CHIP_INACTIVE =
-  'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100';
+const CHIP_INACTIVE = 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100';
 
 interface ChipProps {
   label: string;
@@ -62,22 +58,12 @@ function Chip({ label, selected, onToggle }: ChipProps): React.JSX.Element {
   );
 }
 
-function toggleSeverity(
-  list: readonly Severity[],
-  value: Severity,
-): Severity[] {
-  return list.includes(value)
-    ? list.filter((v) => v !== value)
-    : [...list, value];
+function toggleSeverity(list: readonly Severity[], value: Severity): Severity[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
-function toggleStatus(
-  list: readonly FindingStatus[],
-  value: FindingStatus,
-): FindingStatus[] {
-  return list.includes(value)
-    ? list.filter((v) => v !== value)
-    : [...list, value];
+function toggleStatus(list: readonly FindingStatus[], value: FindingStatus): FindingStatus[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
 export interface FindingsFilterBarProps {
@@ -158,14 +144,13 @@ export function FindingsFilterBar({
   }, [pushState]);
 
   const showStat = totalFindingCount > 0;
-  const isFiltering =
-    visibleFindingCount !== totalFindingCount || isFilterActive(state);
+  const isFiltering = visibleFindingCount !== totalFindingCount || isFilterActive(state);
 
   return (
     <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+          <span className="text-xs font-medium tracking-wider text-neutral-500 uppercase">
             Severity
           </span>
           {SEVERITY_VALUES.map((sev) => (
@@ -180,7 +165,7 @@ export function FindingsFilterBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+        <span className="text-xs font-medium tracking-wider text-neutral-500 uppercase">
           Status
         </span>
         {FINDING_STATUS_VALUES.map((status) => (
@@ -194,25 +179,23 @@ export function FindingsFilterBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex flex-1 min-w-[200px] items-center gap-2 text-xs text-neutral-600">
+        <label className="flex min-w-[200px] flex-1 items-center gap-2 text-xs text-neutral-600">
           <span className="sr-only">Search findings</span>
           <input
             type="search"
             value={queryDraft}
             onChange={(event) => setQueryDraft(event.target.value)}
             placeholder="Search title or rule id…"
-            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:ring-1 focus:ring-neutral-500 focus:outline-none"
             aria-label="Search findings"
           />
         </label>
         <label className="flex items-center gap-2 text-xs text-neutral-600">
-          <span className="font-medium uppercase tracking-wider text-neutral-500">
-            Sort
-          </span>
+          <span className="font-medium tracking-wider text-neutral-500 uppercase">Sort</span>
           <select
             value={state.sort}
             onChange={onChangeSort}
-            className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-medium text-neutral-700 shadow-sm focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+            className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-medium text-neutral-700 shadow-sm focus:border-neutral-500 focus:ring-1 focus:ring-neutral-500 focus:outline-none"
             aria-label="Sort findings"
           >
             {SORT_VALUES.map((s) => (
@@ -234,11 +217,7 @@ export function FindingsFilterBar({
       </div>
 
       {showStat ? (
-        <p
-          className="text-xs text-neutral-500"
-          aria-live="polite"
-          aria-atomic="true"
-        >
+        <p className="text-xs text-neutral-500" aria-live="polite" aria-atomic="true">
           {isFiltering
             ? `Showing ${visibleFindingCount} of ${totalFindingCount} findings`
             : `${totalFindingCount} finding${totalFindingCount === 1 ? '' : 's'}`}

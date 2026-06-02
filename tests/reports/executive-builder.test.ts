@@ -259,9 +259,7 @@ describe('buildExecutiveReport', () => {
     const labels = data.byCategory.map((r) => r.category_label);
     // Top bucket by savings is "Missing/expired promos" (2_000 + 500).
     expect(labels[0]).toBe('Missing/expired promos');
-    const promos = data.byCategory.find(
-      (r) => r.category_label === 'Missing/expired promos',
-    );
+    const promos = data.byCategory.find((r) => r.category_label === 'Missing/expired promos');
     expect(promos?.estimated_monthly_savings_cents).toBe(2_500);
     expect(promos?.finding_count).toBe(2);
 
@@ -312,24 +310,19 @@ describe('buildExecutiveReport', () => {
       billLines: [],
     });
 
-    expect(data.topFindings.map((f) => f.title)).toEqual([
-      'Actionable',
-      'In review',
-    ]);
+    expect(data.topFindings.map((f) => f.title)).toEqual(['Actionable', 'In review']);
   });
 
   it('truncates top findings and top drivers to 5', () => {
     const audits = [makeAudit({ id: 'a1' })];
-    const findings: ExecutiveFindingRow[] = Array.from(
-      { length: 8 },
-      (_, i) =>
-        makeFinding({
-          id: `f${i}`,
-          severity: 'high',
-          rule_id: 'expired_promo_credit',
-          title: `Finding ${i}`,
-          estimated_monthly_savings_cents: (8 - i) * 1_000,
-        }),
+    const findings: ExecutiveFindingRow[] = Array.from({ length: 8 }, (_, i) =>
+      makeFinding({
+        id: `f${i}`,
+        severity: 'high',
+        rule_id: 'expired_promo_credit',
+        title: `Finding ${i}`,
+        estimated_monthly_savings_cents: (8 - i) * 1_000,
+      }),
     );
 
     const data = buildExecutiveReport({
@@ -388,9 +381,7 @@ describe('buildExecutiveReport', () => {
     const eng = data.byCostCenter?.find((r) => r.cost_center === 'Engineering');
     expect(eng?.monthly_total_cents).toBe(10_000);
     expect(eng?.line_count).toBe(2);
-    const unassigned = data.byCostCenter?.find(
-      (r) => r.cost_center === '(unassigned)',
-    );
+    const unassigned = data.byCostCenter?.find((r) => r.cost_center === '(unassigned)');
     expect(unassigned?.monthly_total_cents).toBe(3_000);
     expect(unassigned?.line_count).toBe(2);
   });
@@ -398,15 +389,9 @@ describe('buildExecutiveReport', () => {
 
 describe('categoryLabelForRule', () => {
   it('matches the longest known prefix', () => {
-    expect(categoryLabelForRule('expired_promo_credit')).toBe(
-      'Missing/expired promos',
-    );
-    expect(categoryLabelForRule('expired_promo_credit_v2')).toBe(
-      'Missing/expired promos',
-    );
-    expect(categoryLabelForRule('account_promo_expiring_soon')).toBe(
-      'Missing/expired promos',
-    );
+    expect(categoryLabelForRule('expired_promo_credit')).toBe('Missing/expired promos');
+    expect(categoryLabelForRule('expired_promo_credit_v2')).toBe('Missing/expired promos');
+    expect(categoryLabelForRule('account_promo_expiring_soon')).toBe('Missing/expired promos');
   });
 
   it('falls back to Title Case for unmapped rule ids', () => {

@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { featureFirstSeenRule } from '@/rules/definitions/feature-first-seen';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);

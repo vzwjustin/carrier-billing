@@ -31,7 +31,12 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
     'PID*F****iPhone 15~',
     'IT1**1*EA*60.00**VP*Business Unlimited Pro 2.0~',
     buildSac({ indicator: 'A', code: 'F050', amount: '10.00', description: 'Q1 promo credit' }),
-    buildSac({ indicator: 'C', code: 'B660', amount: '15.00', description: 'Total Mobile Protection' }),
+    buildSac({
+      indicator: 'C',
+      code: 'B660',
+      amount: '15.00',
+      description: 'Total Mobile Protection',
+    }),
     'QTY*DG*22~',
     // Subscriber #2
     'HL*3*1*B~',
@@ -140,8 +145,18 @@ describe('runEdi811Pipeline — AT&T fixture', () => {
     'REF*MN*5550001111~',
     'PID*F****Samsung Galaxy S24~',
     'IT1**1*EA*70.00**VP*Business Unlimited Premium~',
-    buildSac({ indicator: 'C', code: 'B610', amount: '12.00', description: 'AT&T Mobile Insurance' }),
-    buildSac({ indicator: 'C', code: 'F210', amount: '10.00', description: 'International Day Pass' }),
+    buildSac({
+      indicator: 'C',
+      code: 'B610',
+      amount: '12.00',
+      description: 'AT&T Mobile Insurance',
+    }),
+    buildSac({
+      indicator: 'C',
+      code: 'F210',
+      amount: '10.00',
+      description: 'International Day Pass',
+    }),
     buildSac({
       indicator: 'C',
       code: 'D830',
@@ -264,10 +279,7 @@ describe('runEdi811Pipeline — failure modes', () => {
     // (~480 KB) so the byte cap won't fire first.
     const isa = buildIsa({ senderId: 'VZW', receiverId: 'ACME' });
     const gs = buildGs('VZWBILLING');
-    const stuffer = Array.from(
-      { length: MAX_EDI_SEGMENTS + 5 },
-      () => 'N1*RE*X~',
-    ).join('');
+    const stuffer = Array.from({ length: MAX_EDI_SEGMENTS + 5 }, () => 'N1*RE*X~').join('');
     const body = `ST*811*0001~${stuffer}SE*${MAX_EDI_SEGMENTS + 7}*0001~`;
     const interchange = buildInterchange({ isa, gs, body });
 

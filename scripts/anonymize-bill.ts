@@ -34,8 +34,7 @@ type RedactionSummary = {
 };
 
 // Phone numbers: 555-555-1212, 5555551212, (555) 555-1212, etc.
-const PHONE_RE =
-  /\b(?:\(\d{3}\)\s*|\d{3}[-.\s])?\d{3}[-.\s]?\d{4}\b|\b\d{10}\b/g;
+const PHONE_RE = /\b(?:\(\d{3}\)\s*|\d{3}[-.\s])?\d{3}[-.\s]?\d{4}\b|\b\d{10}\b/g;
 // Verizon-style 12-digit account numbers; preserve the last 4 via masking.
 const ACCOUNT_RE = /\b\d{12}\b/g;
 

@@ -181,10 +181,7 @@ export function parseCsvToBill(
   const accounts: ExtractedAccount[] = [];
   let billTotal = 0;
   for (const bucket of buckets.values()) {
-    const accountTotal = bucket.lines.reduce<number>(
-      (sum, l) => sum + (l.plan_base_cents ?? 0),
-      0,
-    );
+    const accountTotal = bucket.lines.reduce<number>((sum, l) => sum + (l.plan_base_cents ?? 0), 0);
     billTotal += accountTotal;
     const account: ExtractedAccount = {
       account_number_last4: bucket.key,
@@ -253,17 +250,13 @@ export function parseCsvRows(input: string): string[][] {
 
   const pushCell = (): void => {
     if (cell.length > MAX_CELL_LENGTH) {
-      throw new Error(
-        `cell exceeds maximum length of ${MAX_CELL_LENGTH} characters`,
-      );
+      throw new Error(`cell exceeds maximum length of ${MAX_CELL_LENGTH} characters`);
     }
     row.push(cell);
     cell = '';
     cellCount += 1;
     if (cellCount > MAX_CELLS) {
-      throw new Error(
-        `CSV exceeds maximum cell count of ${MAX_CELLS}`,
-      );
+      throw new Error(`CSV exceeds maximum cell count of ${MAX_CELLS}`);
     }
   };
   const pushRow = (): void => {
@@ -353,14 +346,10 @@ function nonNegCentsFromMoney(raw: string | null | undefined): number | null {
 }
 
 function firstOfMonth(d: Date): string {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-    .toISOString()
-    .slice(0, 10);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10);
 }
 
 function lastOfMonth(d: Date): string {
   // The 0th day of next month == last day of current month.
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
-    .toISOString()
-    .slice(0, 10);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
 }

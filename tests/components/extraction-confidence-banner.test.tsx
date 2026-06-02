@@ -11,30 +11,22 @@ import { ExtractionConfidenceBanner } from '@/components/report/extraction-confi
  */
 describe('ExtractionConfidenceBanner', () => {
   it('renders nothing for high confidence', () => {
-    const { container } = render(
-      <ExtractionConfidenceBanner confidence="high" />,
-    );
+    const { container } = render(<ExtractionConfidenceBanner confidence="high" />);
     expect(container.firstChild).toBeNull();
   });
 
   it('renders nothing for null (pre-migration rows)', () => {
-    const { container } = render(
-      <ExtractionConfidenceBanner confidence={null} />,
-    );
+    const { container } = render(<ExtractionConfidenceBanner confidence={null} />);
     expect(container.firstChild).toBeNull();
   });
 
   it('renders nothing for an unexpected value', () => {
-    const { container } = render(
-      <ExtractionConfidenceBanner confidence="bogus" />,
-    );
+    const { container } = render(<ExtractionConfidenceBanner confidence="bogus" />);
     expect(container.firstChild).toBeNull();
   });
 
   it('renders an amber caution banner for medium confidence', () => {
-    const { container, getByText } = render(
-      <ExtractionConfidenceBanner confidence="medium" />,
-    );
+    const { container, getByText } = render(<ExtractionConfidenceBanner confidence="medium" />);
     const section = container.querySelector('section');
     expect(section).not.toBeNull();
     expect(section?.className).toContain('amber');
@@ -43,9 +35,7 @@ describe('ExtractionConfidenceBanner', () => {
   });
 
   it('renders a red caution banner for low confidence', () => {
-    const { container, getByText } = render(
-      <ExtractionConfidenceBanner confidence="low" />,
-    );
+    const { container, getByText } = render(<ExtractionConfidenceBanner confidence="low" />);
     const section = container.querySelector('section');
     expect(section).not.toBeNull();
     expect(section?.className).toContain('red');
@@ -53,9 +43,7 @@ describe('ExtractionConfidenceBanner', () => {
   });
 
   it('exposes a status role for assistive tech', () => {
-    const { getByRole } = render(
-      <ExtractionConfidenceBanner confidence="low" />,
-    );
+    const { getByRole } = render(<ExtractionConfidenceBanner confidence="low" />);
     expect(getByRole('status')).toBeTruthy();
   });
 });

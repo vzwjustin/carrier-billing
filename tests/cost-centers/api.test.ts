@@ -25,8 +25,7 @@ type LineMaybeSingleResult =
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditMaybeSingleMock = vi.fn<() => Promise<AuditMaybeSingleResult>>();
 const lineMaybeSingleMock = vi.fn<() => Promise<LineMaybeSingleResult>>();
-const updateChainMock =
-  vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
+const updateChainMock = vi.fn<() => Promise<{ data: null; error: null | { message: string } }>>();
 
 // audits: .from('audits').select(cols).eq('id', auditId).maybeSingle()
 const auditSelectEqMock = vi.fn((_col: string, _val: string) => ({
@@ -203,10 +202,7 @@ describe('POST /api/audits/[id]/lines/[lineId]/cost-center', () => {
   });
 
   it('returns 400 when the body omits cost_center entirely', async () => {
-    const res = await POST(
-      makeRequest({}),
-      makeContext(VALID_AUDIT_ID, VALID_LINE_ID),
-    );
+    const res = await POST(makeRequest({}), makeContext(VALID_AUDIT_ID, VALID_LINE_ID));
     expect(res.status).toBe(400);
     expect(updateMock).not.toHaveBeenCalled();
   });

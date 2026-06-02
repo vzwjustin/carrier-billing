@@ -43,7 +43,11 @@ describe('duplicate_protection_features rule', () => {
               features: [
                 makeFeature({ name: 'Mobile Protect', category: 'insurance', monthly_cents: 1700 }),
                 makeFeature({ name: 'AppleCare+', category: 'insurance', monthly_cents: 1099 }),
-                makeFeature({ name: 'Asurion Premier', category: 'insurance', monthly_cents: 1500 }),
+                makeFeature({
+                  name: 'Asurion Premier',
+                  category: 'insurance',
+                  monthly_cents: 1500,
+                }),
               ],
             }),
           ],
@@ -59,11 +63,7 @@ describe('duplicate_protection_features rule', () => {
       count: number;
     };
     expect(evidence.count).toBe(3);
-    expect(evidence.feature_names).toEqual([
-      'Mobile Protect',
-      'AppleCare+',
-      'Asurion Premier',
-    ]);
+    expect(evidence.feature_names).toEqual(['Mobile Protect', 'AppleCare+', 'Asurion Premier']);
   });
 
   it('ignores non-insurance features when counting duplicates', async () => {

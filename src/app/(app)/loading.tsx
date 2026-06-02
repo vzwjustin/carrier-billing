@@ -18,10 +18,7 @@ export default function AppLoading(): React.JSX.Element {
       {/* Stat tiles skeleton */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
-          >
+          <div key={i} className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
             <div className="h-3 w-24 animate-pulse rounded bg-neutral-100" />
             <div className="mt-3 h-8 w-20 animate-pulse rounded bg-neutral-200" />
             <div className="mt-3 h-3 w-32 animate-pulse rounded bg-neutral-100" />
@@ -36,10 +33,7 @@ export default function AppLoading(): React.JSX.Element {
           <div className="border-b border-neutral-200 bg-neutral-50 px-4 py-3">
             <div className="grid grid-cols-6 gap-4">
               {[0, 1, 2, 3, 4, 5].map((i) => (
-                <div
-                  key={i}
-                  className="h-3 w-16 animate-pulse rounded bg-neutral-200"
-                />
+                <div key={i} className="h-3 w-16 animate-pulse rounded bg-neutral-200" />
               ))}
             </div>
           </div>

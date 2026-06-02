@@ -129,12 +129,10 @@ type DocumentBlock = {
   type: 'document';
   source: { type: 'base64'; media_type: 'application/pdf'; data: string };
 } & CacheControl;
-type TextBlock = ({ type: 'text'; text: string }) & CacheControl;
+type TextBlock = { type: 'text'; text: string } & CacheControl;
 type UserContent = Array<DocumentBlock | TextBlock>;
 
-type Message =
-  | { role: 'user'; content: UserContent }
-  | { role: 'assistant'; content: string };
+type Message = { role: 'user'; content: UserContent } | { role: 'assistant'; content: string };
 
 /**
  * Extract a normalized bill JSON from a PDF buffer using Claude with native
@@ -229,10 +227,7 @@ function isRetryableLlmError(err: unknown): boolean {
   // The SDK sometimes wraps fetch errors; their `name` is 'APIConnectionError'
   // or similar. Treat any obvious transport error as retryable.
   const name = (err as { name?: unknown }).name;
-  if (
-    typeof name === 'string' &&
-    /Connection|Timeout|FetchError|Network/.test(name)
-  ) {
+  if (typeof name === 'string' && /Connection|Timeout|FetchError|Network/.test(name)) {
     return true;
   }
   return false;
@@ -284,12 +279,7 @@ async function callModel(messages: Message[]): Promise<string> {
   } as unknown as Parameters<typeof client.messages.create>[0];
 
   type AnthropicResponse = {
-    stop_reason:
-      | 'end_turn'
-      | 'max_tokens'
-      | 'stop_sequence'
-      | 'tool_use'
-      | null;
+    stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | null;
     content: Array<{ type: string; text?: string }>;
   };
 
@@ -303,9 +293,7 @@ async function callModel(messages: Message[]): Promise<string> {
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
     try {
-      response = (await client.messages.create(
-        createParams,
-      )) as unknown as AnthropicResponse;
+      response = (await client.messages.create(createParams)) as unknown as AnthropicResponse;
       break;
     } catch (err) {
       lastErr = err;
@@ -314,7 +302,7 @@ async function callModel(messages: Message[]): Promise<string> {
       }
       const status =
         typeof (err as { status?: unknown }).status === 'number'
-          ? ((err as { status: number }).status)
+          ? (err as { status: number }).status
           : 'transport';
       Sentry.addBreadcrumb({
         category: 'extraction',
@@ -329,9 +317,7 @@ async function callModel(messages: Message[]): Promise<string> {
   }
   if (!response) {
     // Defensive: the loop above either assigns `response` or throws.
-    throw lastErr instanceof Error
-      ? lastErr
-      : new ExtractionError('LLM call exhausted retries');
+    throw lastErr instanceof Error ? lastErr : new ExtractionError('LLM call exhausted retries');
   }
   const finalResponse: AnthropicResponse = response;
 
@@ -474,25 +460,21 @@ function checkBillingPeriodOrder(bill: ExtractedBill): ExtractedBill {
   if (start <= end) return bill;
 
   const current: BillConfidence = bill.confidence ?? 'high';
-  Sentry.captureMessage(
-    'Extraction billing period out of order — confidence downgraded',
-    {
-      level: 'warning',
-      tags: { surface: 'extraction-period-check' },
-      extra: {
-        billing_period_start: bill.billing_period_start,
-        billing_period_end: bill.billing_period_end,
-        original_confidence: current,
-      },
+  Sentry.captureMessage('Extraction billing period out of order — confidence downgraded', {
+    level: 'warning',
+    tags: { surface: 'extraction-period-check' },
+    extra: {
+      billing_period_start: bill.billing_period_start,
+      billing_period_end: bill.billing_period_end,
+      original_confidence: current,
     },
-  );
+  });
 
   const note = `Billing period start (${bill.billing_period_start}) is after end (${bill.billing_period_end}); the cycle dates may be transposed — treat any per-cycle math as approximate.`;
   // `notes` carries a schema default of [], but guard defensively so a future
   // schema change (or a hand-built bill) can't crash this post-parse pass.
   const currentNotes = bill.notes ?? [];
-  const notes =
-    currentNotes.length < MAX_NOTES ? [...currentNotes, note] : currentNotes;
+  const notes = currentNotes.length < MAX_NOTES ? [...currentNotes, note] : currentNotes;
 
   return { ...bill, notes, confidence: downgradeConfidence(current) };
 }
@@ -510,9 +492,7 @@ type AccountMismatch = {
   tolerance_cents: number;
 };
 
-function reconcileAccountTotals(
-  account: ExtractedAccount,
-): AccountMismatch | null {
+function reconcileAccountTotals(account: ExtractedAccount): AccountMismatch | null {
   let computed = 0;
   for (const line of account.lines) {
     computed += line.plan_base_cents ?? 0;
@@ -567,9 +547,7 @@ const OPENROUTER_TIMEOUT_MS = 4 * 60 * 1000;
 async function callModelViaOpenRouter(messages: Message[]): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey || apiKey.length === 0) {
-    throw new ExtractionError(
-      'OPENROUTER_API_KEY is not set but USE_OPENROUTER=1',
-    );
+    throw new ExtractionError('OPENROUTER_API_KEY is not set but USE_OPENROUTER=1');
   }
   const model = process.env.OPENROUTER_MODEL || 'google/gemini-3.5-flash';
 
@@ -624,8 +602,7 @@ async function callModelViaOpenRouter(messages: Message[]): Promise<string> {
           'Content-Type': 'application/json',
           // Attribution headers recommended by OpenRouter so the call shows
           // up under this app's name in the operator's OpenRouter dashboard.
-          'HTTP-Referer':
-            process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
+          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
           'X-Title': 'CarrierAudit',
         },
         body: JSON.stringify(body),
@@ -637,10 +614,10 @@ async function callModelViaOpenRouter(messages: Message[]): Promise<string> {
         // Mirror the Anthropic retry policy for transient upstream errors.
         if (RETRYABLE_STATUSES.has(status) && attempt < MAX_LLM_ATTEMPTS) {
           await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 250);
-          lastErr = new ExtractionError(
-            `OpenRouter HTTP ${status} (attempt ${attempt})`,
-            { status, snippet: errText.slice(0, 300) },
-          );
+          lastErr = new ExtractionError(`OpenRouter HTTP ${status} (attempt ${attempt})`, {
+            status,
+            snippet: errText.slice(0, 300),
+          });
           continue;
         }
         throw new ExtractionError(`OpenRouter HTTP ${status}`, {
@@ -676,9 +653,7 @@ async function callModelViaOpenRouter(messages: Message[]): Promise<string> {
       clearTimeout(timer);
     }
   }
-  throw lastErr instanceof Error
-    ? lastErr
-    : new ExtractionError('OpenRouter exhausted retries');
+  throw lastErr instanceof Error ? lastErr : new ExtractionError('OpenRouter exhausted retries');
 }
 
 // ---------------------------------------------------------------------------
@@ -811,9 +786,7 @@ async function buildCliPromptFromMessages(messages: Message[]): Promise<string> 
           default: (b: Buffer) => Promise<{ text: string; numpages: number }>;
         };
         const { text, numpages } = await pdfParse(pdfBuffer);
-        parts.push(
-          `<bill_text pages="${numpages}">\n${text.trim()}\n</bill_text>`,
-        );
+        parts.push(`<bill_text pages="${numpages}">\n${text.trim()}\n</bill_text>`);
       }
     }
   }

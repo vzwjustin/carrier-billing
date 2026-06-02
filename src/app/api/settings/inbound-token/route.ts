@@ -46,10 +46,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const parsed = BodySchema.safeParse(rawBody);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Invalid request body.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
 
   const admin = getAdminClient();
@@ -66,10 +63,7 @@ export async function POST(request: Request): Promise<Response> {
       Sentry.captureException(error, {
         tags: { surface: 'inbound_token.revoke' },
       });
-      return NextResponse.json(
-        { error: 'Could not revoke token.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Could not revoke token.' }, { status: 500 });
     }
     return NextResponse.json({ ok: true });
   }
@@ -93,10 +87,7 @@ export async function POST(request: Request): Promise<Response> {
       Sentry.captureException(error, {
         tags: { surface: 'inbound_token.generate' },
       });
-      return NextResponse.json(
-        { error: 'Could not generate token.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Could not generate token.' }, { status: 500 });
     }
   }
   return NextResponse.json(

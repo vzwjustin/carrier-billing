@@ -14,13 +14,7 @@
  * also MUST NOT widen the surface area (no full phone numbers, no labels
  * with potential PII bubbled through aggregation logic).
  */
-export type DeviceType =
-  | 'phone'
-  | 'tablet'
-  | 'watch'
-  | 'hotspot'
-  | 'router'
-  | 'other';
+export type DeviceType = 'phone' | 'tablet' | 'watch' | 'hotspot' | 'router' | 'other';
 
 /**
  * Status of a line on the most-recent audit it appears on.
@@ -99,9 +93,11 @@ const NO_MDN_SENTINEL = 'no-mdn';
 // sense to avoid false positives (e.g. "Pad" inside "Padfone").
 const WATCH_REGEX = /\b(apple\s*watch|watch\s*ultra|galaxy\s*watch|gizmo\s*watch|smartwatch)\b/i;
 const HOTSPOT_REGEX = /\b(jetpack|mifi|inseego|hotspot|mobile\s*hotspot|orbic\s*speed)\b/i;
-const ROUTER_REGEX = /\b(cradlepoint|netgear\s*nighthawk\s*m|5g\s*router|lte\s*router|gateway|fwa)\b/i;
+const ROUTER_REGEX =
+  /\b(cradlepoint|netgear\s*nighthawk\s*m|5g\s*router|lte\s*router|gateway|fwa)\b/i;
 const TABLET_REGEX = /\b(ipad|galaxy\s*tab|tablet|surface\s*pro)\b/i;
-const PHONE_REGEX = /\b(iphone|pixel|galaxy(?:\s*s|\s*note|\s*z|\s*a)?\d?|moto|oneplus|smartphone|phone)\b/i;
+const PHONE_REGEX =
+  /\b(iphone|pixel|galaxy(?:\s*s|\s*note|\s*z|\s*a)?\d?|moto|oneplus|smartphone|phone)\b/i;
 
 /**
  * Classify a free-text device description into one of the supported types.
@@ -134,9 +130,7 @@ export function buildLineKey(
 }
 
 /** Parse the URL `lineKey` segment back into its account/mdn components. */
-export function parseLineKey(
-  lineKey: string,
-): { accountLast4: string; mdnLast4: string } | null {
+export function parseLineKey(lineKey: string): { accountLast4: string; mdnLast4: string } | null {
   const idx = lineKey.indexOf('/');
   if (idx <= 0 || idx === lineKey.length - 1) return null;
   const accountLast4 = lineKey.slice(0, idx);
@@ -265,9 +259,7 @@ export function summarizeInventory(rows: ReadonlyArray<InventoryRow>): Inventory
 /**
  * Per-line history rows for the drill-down view, sorted most-recent first.
  */
-export function lineHistory(
-  lines: ReadonlyArray<InventoryLineInput>,
-): InventoryHistoryEntry[] {
+export function lineHistory(lines: ReadonlyArray<InventoryLineInput>): InventoryHistoryEntry[] {
   const sorted = [...lines].sort(compareRecency);
   return sorted.map((line) => ({
     auditId: line.audit_id,

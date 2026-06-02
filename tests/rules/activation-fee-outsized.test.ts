@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { activationFeeOutsizedRule } from '@/rules/definitions/activation-fee-outsized';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);
@@ -21,9 +15,7 @@ describe('activation_fee_outsized rule', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Activation Fee', monthly_cents: 4500 }),
-              ],
+              features: [makeFeature({ name: 'Activation Fee', monthly_cents: 4500 })],
             }),
           ],
         }),
@@ -67,9 +59,7 @@ describe('activation_fee_outsized rule', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Activation Fee', monthly_cents: 3500 }),
-              ],
+              features: [makeFeature({ name: 'Activation Fee', monthly_cents: 3500 })],
             }),
           ],
         }),
@@ -85,9 +75,7 @@ describe('activation_fee_outsized rule', () => {
         makeAccount({
           lines: [
             makeLine({
-              features: [
-                makeFeature({ name: 'Activation Fee', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'Activation Fee', monthly_cents: 2000 })],
             }),
           ],
         }),

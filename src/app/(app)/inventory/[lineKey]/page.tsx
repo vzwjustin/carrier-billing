@@ -63,9 +63,7 @@ function StatusBadge({ status }: { status: LineStatus }): React.JSX.Element {
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        status === 'active'
-          ? 'bg-green-100 text-green-700'
-          : 'bg-neutral-100 text-neutral-700',
+        status === 'active' ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-700',
       )}
     >
       {status === 'active' ? 'Active' : 'Suspended'}
@@ -155,17 +153,12 @@ export default async function InventoryLinePage({
   const minBase = baseValues.length > 0 ? Math.min(...baseValues) : null;
   const maxBase = baseValues.length > 0 ? Math.max(...baseValues) : null;
   const deltaCents =
-    baseValues.length >= 2 && minBase !== null && maxBase !== null
-      ? maxBase - minBase
-      : null;
+    baseValues.length >= 2 && minBase !== null && maxBase !== null ? maxBase - minBase : null;
 
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          href="/inventory"
-          className="text-xs text-neutral-500 hover:text-neutral-900"
-        >
+        <Link href="/inventory" className="text-xs text-neutral-500 hover:text-neutral-900">
           ← All inventory
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-neutral-900">
@@ -184,11 +177,7 @@ export default async function InventoryLinePage({
         <SummaryTile eyebrow="Latest plan" value={headEntry.planName ?? '—'} />
         <SummaryTile
           eyebrow="Latest plan base"
-          value={
-            headEntry.planBaseCents !== null
-              ? formatCents(headEntry.planBaseCents)
-              : '—'
-          }
+          value={headEntry.planBaseCents !== null ? formatCents(headEntry.planBaseCents) : '—'}
         />
         <SummaryTile
           eyebrow="Appears on"
@@ -198,17 +187,15 @@ export default async function InventoryLinePage({
 
       {deltaCents !== null && minBase !== null && maxBase !== null && deltaCents > 0 ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          Plan base ranged from{' '}
-          <span className="font-medium">{formatCents(minBase)}</span> to{' '}
-          <span className="font-medium">{formatCents(maxBase)}</span> across the
-          audits below — a swing of{' '}
-          <span className="font-medium">{formatCents(deltaCents)}</span>.
+          Plan base ranged from <span className="font-medium">{formatCents(minBase)}</span> to{' '}
+          <span className="font-medium">{formatCents(maxBase)}</span> across the audits below — a
+          swing of <span className="font-medium">{formatCents(deltaCents)}</span>.
         </div>
       ) : null}
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
             <tr>
               <th className="px-4 py-3">Billing period end</th>
               <th className="px-4 py-3">Device</th>
@@ -225,14 +212,10 @@ export default async function InventoryLinePage({
                   {formatIsoDateDisplay(h.billingPeriodEnd)}
                 </td>
                 <td className="px-4 py-3 text-neutral-900">
-                  <span className="block max-w-xs truncate">
-                    {h.device ?? '—'}
-                  </span>
+                  <span className="block max-w-xs truncate">{h.device ?? '—'}</span>
                 </td>
                 <td className="px-4 py-3 text-neutral-700">
-                  <span className="block max-w-xs truncate">
-                    {h.planName ?? '—'}
-                  </span>
+                  <span className="block max-w-xs truncate">{h.planName ?? '—'}</span>
                 </td>
                 <td className="px-4 py-3 text-neutral-900">
                   {h.planBaseCents !== null ? formatCents(h.planBaseCents) : '—'}
@@ -257,21 +240,11 @@ export default async function InventoryLinePage({
   );
 }
 
-function SummaryTile({
-  eyebrow,
-  value,
-}: {
-  eyebrow: string;
-  value: string;
-}): React.JSX.Element {
+function SummaryTile({ eyebrow, value }: { eyebrow: string; value: string }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-        {eyebrow}
-      </p>
-      <p className="mt-2 truncate text-lg font-semibold tracking-tight text-neutral-900">
-        {value}
-      </p>
+      <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">{eyebrow}</p>
+      <p className="mt-2 truncate text-lg font-semibold tracking-tight text-neutral-900">{value}</p>
     </div>
   );
 }

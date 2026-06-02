@@ -129,9 +129,7 @@ describe('ExtractedBillSchema', () => {
     if (!firstAccount) throw new Error('fixture missing account');
     const firstLine = firstAccount.lines[0];
     if (!firstLine) throw new Error('fixture missing line');
-    firstLine.features = [
-      { name: 'Mobile Protect', category: 'insurance', monthly_cents: -1500 },
-    ];
+    firstLine.features = [{ name: 'Mobile Protect', category: 'insurance', monthly_cents: -1500 }];
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(false);
   });
@@ -229,10 +227,7 @@ describe('ExtractedBillSchema', () => {
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(true);
     if (!result.success) return;
-    const totalLines = result.data.accounts.reduce(
-      (sum, a) => sum + a.lines.length,
-      0,
-    );
+    const totalLines = result.data.accounts.reduce((sum, a) => sum + a.lines.length, 0);
     // process-bill.ts throws Error('no lines extracted') iff this is 0.
     expect(totalLines).toBe(0);
   });
@@ -386,7 +381,14 @@ describe('ExtractedBillSchema', () => {
   it('rejects DPP monthly_cents above 1,000,000', () => {
     const bill = minimalBill();
     const line = bill.accounts[0]!.lines[0]!;
-    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 2_000_000_000, remaining_payments: null, total_payments: null }];
+    line.dpp_installments = [
+      {
+        device: 'iPhone',
+        monthly_cents: 2_000_000_000,
+        remaining_payments: null,
+        total_payments: null,
+      },
+    ];
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(false);
   });
@@ -394,7 +396,9 @@ describe('ExtractedBillSchema', () => {
   it('accepts DPP where remaining_payments equals total_payments', () => {
     const bill = minimalBill();
     const line = bill.accounts[0]!.lines[0]!;
-    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 3333, remaining_payments: 24, total_payments: 24 }];
+    line.dpp_installments = [
+      { device: 'iPhone', monthly_cents: 3333, remaining_payments: 24, total_payments: 24 },
+    ];
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(true);
   });
@@ -402,7 +406,9 @@ describe('ExtractedBillSchema', () => {
   it('rejects DPP where remaining_payments exceeds total_payments', () => {
     const bill = minimalBill();
     const line = bill.accounts[0]!.lines[0]!;
-    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 3333, remaining_payments: 25, total_payments: 24 }];
+    line.dpp_installments = [
+      { device: 'iPhone', monthly_cents: 3333, remaining_payments: 25, total_payments: 24 },
+    ];
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(false);
   });
@@ -410,7 +416,9 @@ describe('ExtractedBillSchema', () => {
   it('accepts DPP with remaining_payments set but total_payments null (not printed)', () => {
     const bill = minimalBill();
     const line = bill.accounts[0]!.lines[0]!;
-    line.dpp_installments = [{ device: 'iPhone', monthly_cents: 3333, remaining_payments: 12, total_payments: null }];
+    line.dpp_installments = [
+      { device: 'iPhone', monthly_cents: 3333, remaining_payments: 12, total_payments: null },
+    ];
     const result = ExtractedBillSchema.safeParse(bill);
     expect(result.success).toBe(true);
   });

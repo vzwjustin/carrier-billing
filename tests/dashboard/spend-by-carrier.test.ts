@@ -53,11 +53,7 @@ describe('aggregateSpendByCarrier', () => {
       { carrier: '   ', total_charges_cents: 1_000 },
       { carrier: 'verizon', total_charges_cents: 20_000 },
     ]);
-    expect(result.map((r) => r.carrier)).toEqual([
-      'att',
-      'verizon',
-      'unknown',
-    ]);
+    expect(result.map((r) => r.carrier)).toEqual(['att', 'verizon', 'unknown']);
     const unknown = result.find((r) => r.carrier === 'unknown');
     expect(unknown?.total_cents).toBe(6_000);
   });

@@ -15,10 +15,7 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 
 import { postToSlack } from '@/inngest/functions/send-slack-notification';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -54,13 +51,9 @@ export async function POST(_request: Request): Promise<Response> {
       tags: { surface: 'settings.slack.test.load' },
       extra: { userId: user.id },
     });
-    return NextResponse.json(
-      { error: 'Could not load Slack settings.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Could not load Slack settings.' }, { status: 500 });
   }
-  const url = (data as { slack_webhook_url?: string | null } | null)
-    ?.slack_webhook_url;
+  const url = (data as { slack_webhook_url?: string | null } | null)?.slack_webhook_url;
   if (!url) {
     return NextResponse.json(
       {

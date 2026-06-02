@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  benchmarkPlans,
-  type BillLineRow,
-} from '@/lib/renewals/plan-benchmarks';
+import { benchmarkPlans, type BillLineRow } from '@/lib/renewals/plan-benchmarks';
 
 describe('benchmarkPlans', () => {
   it('returns an empty array when given no lines', () => {
@@ -133,14 +130,7 @@ describe('benchmarkPlans', () => {
       },
     ];
     const result = benchmarkPlans(lines);
-    expect(result.map((r) => r.carrier)).toEqual([
-      'att',
-      'tmobile',
-      'verizon',
-    ]);
-    expect(result.map((r) => r.estimated_monthly_savings_cents)).toEqual([
-      2000, 1400, 700,
-    ]);
+    expect(result.map((r) => r.carrier)).toEqual(['att', 'tmobile', 'verizon']);
+    expect(result.map((r) => r.estimated_monthly_savings_cents)).toEqual([2000, 1400, 700]);
   });
-
 });

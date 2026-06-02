@@ -65,10 +65,7 @@ export async function dispatchAuditCompletedSideEffects(opts: {
     } catch (analyticsErr) {
       logger?.error('dispatchAuditCompletedSideEffects: trackServer failed', {
         auditId,
-        message:
-          analyticsErr instanceof Error
-            ? analyticsErr.message
-            : 'unknown analytics error',
+        message: analyticsErr instanceof Error ? analyticsErr.message : 'unknown analytics error',
       });
     }
   });
@@ -85,8 +82,7 @@ export async function dispatchAuditCompletedSideEffects(opts: {
     } catch (trailErr) {
       logger?.error('dispatchAuditCompletedSideEffects: logTrailEvent failed', {
         auditId,
-        message:
-          trailErr instanceof Error ? trailErr.message : 'unknown trail error',
+        message: trailErr instanceof Error ? trailErr.message : 'unknown trail error',
       });
     }
   });
@@ -100,14 +96,10 @@ export async function dispatchAuditCompletedSideEffects(opts: {
       });
     });
   } catch (sendErr) {
-    logger?.error(
-      'dispatchAuditCompletedSideEffects: audit.completed send failed',
-      {
-        auditId,
-        userId,
-        message:
-          sendErr instanceof Error ? sendErr.message : 'unknown send error',
-      },
-    );
+    logger?.error('dispatchAuditCompletedSideEffects: audit.completed send failed', {
+      auditId,
+      userId,
+      message: sendErr instanceof Error ? sendErr.message : 'unknown send error',
+    });
   }
 }

@@ -222,11 +222,7 @@ function PageFooter({
     <View style={styles.footer} fixed>
       <Text>CarrierAudit Executive · {reportId}</Text>
       <Text>{generatedAt}</Text>
-      <Text
-        render={({ pageNumber, totalPages }) =>
-          `Page ${pageNumber} of ${totalPages}`
-        }
-      />
+      <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   );
 }
@@ -259,15 +255,13 @@ function CoverPage({
           </Text>
 
           <View style={styles.coverHero}>
-            <Text style={styles.coverHeroLabel}>
-              Lifetime annual savings identified
-            </Text>
+            <Text style={styles.coverHeroLabel}>Lifetime annual savings identified</Text>
             <Text style={styles.coverHeroValue}>
               {formatCents(data.lifetime.annual_savings_cents)}
             </Text>
             <Text style={styles.coverHeroHelp}>
-              Sum of estimated annual savings across the {data.audits.length}{' '}
-              most recent completed audit{data.audits.length === 1 ? '' : 's'}.
+              Sum of estimated annual savings across the {data.audits.length} most recent completed
+              audit{data.audits.length === 1 ? '' : 's'}.
             </Text>
           </View>
 
@@ -295,8 +289,8 @@ function CoverPage({
 
         <View>
           <Text style={styles.coverFootnote}>
-            Confidential — prepared for the bill owner. Not affiliated with
-            Verizon, AT&amp;T, or T-Mobile.
+            Confidential — prepared for the bill owner. Not affiliated with Verizon, AT&amp;T, or
+            T-Mobile.
           </Text>
         </View>
       </View>
@@ -321,12 +315,8 @@ function TrendPage({
   const innerWidth = chartWidth - padLeft - padRight;
   const innerHeight = chartHeight - 16; // leave 16pt headroom for value labels
   const points = data.trend;
-  const max = points.reduce(
-    (m, p) => (p.total_charges_cents > m ? p.total_charges_cents : m),
-    0,
-  );
-  const slotW =
-    points.length > 0 ? innerWidth / points.length : innerWidth;
+  const max = points.reduce((m, p) => (p.total_charges_cents > m ? p.total_charges_cents : m), 0);
+  const slotW = points.length > 0 ? innerWidth / points.length : innerWidth;
   // 60% of the slot width is the bar; 20% padding on each side.
   const barW = slotW * 0.6;
   const barPad = slotW * 0.2;
@@ -334,9 +324,7 @@ function TrendPage({
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.sectionTitle}>Spend trend</Text>
-      <Text style={styles.sectionSubtitle}>
-        Total charges across the audited billing periods.
-      </Text>
+      <Text style={styles.sectionSubtitle}>Total charges across the audited billing periods.</Text>
 
       {points.length === 0 ? (
         <Text style={styles.tableCellMuted}>No periods to display.</Text>
@@ -352,8 +340,7 @@ function TrendPage({
               fill={COLORS.border}
             />
             {points.map((p, i) => {
-              const h =
-                max > 0 ? (p.total_charges_cents / max) * innerHeight : 0;
+              const h = max > 0 ? (p.total_charges_cents / max) * innerHeight : 0;
               const x = padLeft + i * slotW + barPad;
               const y = innerHeight - h;
               return (
@@ -371,43 +358,21 @@ function TrendPage({
 
           <View style={styles.table}>
             <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderCell, { flex: 2 }]}>
-                Period ending
-              </Text>
-              <Text
-                style={[
-                  styles.tableHeaderCell,
-                  { flex: 1, textAlign: 'right' },
-                ]}
-              >
-                Total
-              </Text>
-              <Text
-                style={[
-                  styles.tableHeaderCell,
-                  { flex: 1, textAlign: 'right' },
-                ]}
-              >
+              <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Period ending</Text>
+              <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Total</Text>
+              <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>
                 Δ vs prior
               </Text>
             </View>
             {points.map((p, i) => (
               <View
                 key={p.audit_id}
-                style={[
-                  styles.tableRow,
-                  i === points.length - 1 ? styles.tableRowLast : {},
-                ]}
+                style={[styles.tableRow, i === points.length - 1 ? styles.tableRowLast : {}]}
               >
                 <Text style={[styles.tableCell, { flex: 2 }]}>
                   {formatIsoDateDisplay(p.billing_period_end)}
                 </Text>
-                <Text
-                  style={[
-                    styles.tableCell,
-                    { flex: 1, textAlign: 'right' },
-                  ]}
-                >
+                <Text style={[styles.tableCell, { flex: 1, textAlign: 'right' }]}>
                   {formatCents(p.total_charges_cents)}
                 </Text>
                 <Text
@@ -439,11 +404,7 @@ function TrendPage({
   );
 }
 
-function AuditTable({
-  audits,
-}: {
-  audits: ExecutiveAuditSummary[];
-}): ReactElement {
+function AuditTable({ audits }: { audits: ExecutiveAuditSummary[] }): ReactElement {
   if (audits.length === 0) {
     return <Text style={styles.tableCellMuted}>No audits to display.</Text>;
   }
@@ -452,33 +413,16 @@ function AuditTable({
       <View style={styles.tableHeader}>
         <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Carrier</Text>
         <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Period</Text>
-        <Text
-          style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-        >
-          Lines
-        </Text>
-        <Text
-          style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-        >
-          Findings
-        </Text>
-        <Text
-          style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-        >
-          Total
-        </Text>
+        <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Lines</Text>
+        <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Findings</Text>
+        <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Total</Text>
       </View>
       {audits.map((a, i) => (
         <View
           key={a.id}
-          style={[
-            styles.tableRow,
-            i === audits.length - 1 ? styles.tableRowLast : {},
-          ]}
+          style={[styles.tableRow, i === audits.length - 1 ? styles.tableRowLast : {}]}
         >
-          <Text style={[styles.tableCell, { flex: 1 }]}>
-            {carrierName(a.carrier)}
-          </Text>
+          <Text style={[styles.tableCell, { flex: 1 }]}>{carrierName(a.carrier)}</Text>
           <Text style={[styles.tableCellMuted, { flex: 2 }]}>
             {formatIsoDatePeriod(a.billing_period_start, a.billing_period_end)}
           </Text>
@@ -509,24 +453,17 @@ function TopFindingsPage({
     <Page size="A4" style={styles.page}>
       <Text style={styles.sectionTitle}>Top findings</Text>
       <Text style={styles.sectionSubtitle}>
-        The five largest monthly-savings opportunities still open across the
-        audits in this report.
+        The five largest monthly-savings opportunities still open across the audits in this report.
       </Text>
       {data.topFindings.length === 0 ? (
-        <Text style={styles.tableCellMuted}>
-          No actionable findings across these audits.
-        </Text>
+        <Text style={styles.tableCellMuted}>No actionable findings across these audits.</Text>
       ) : (
         <View style={styles.table}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Severity</Text>
             <Text style={[styles.tableHeaderCell, { flex: 3 }]}>Title</Text>
             <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Category</Text>
-            <Text
-              style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-            >
-              Monthly
-            </Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Monthly</Text>
           </View>
           {data.topFindings.map((f, i) => (
             <View
@@ -536,20 +473,10 @@ function TopFindingsPage({
                 i === data.topFindings.length - 1 ? styles.tableRowLast : {},
               ]}
             >
-              <Text style={[styles.tableCell, { flex: 1 }]}>
-                {severityLabel(f.severity)}
-              </Text>
+              <Text style={[styles.tableCell, { flex: 1 }]}>{severityLabel(f.severity)}</Text>
               <Text style={[styles.tableCell, { flex: 3 }]}>{f.title}</Text>
-              <Text style={[styles.tableCellMuted, { flex: 2 }]}>
-                {f.category_label}
-              </Text>
-              <Text
-                style={[
-                  styles.tableCell,
-                  styles.positive,
-                  { flex: 1, textAlign: 'right' },
-                ]}
-              >
+              <Text style={[styles.tableCellMuted, { flex: 2 }]}>{f.category_label}</Text>
+              <Text style={[styles.tableCell, styles.positive, { flex: 1, textAlign: 'right' }]}>
                 {formatCents(f.estimated_monthly_savings_cents)}
               </Text>
             </View>
@@ -573,26 +500,19 @@ function TopDriversPage({
     <Page size="A4" style={styles.page}>
       <Text style={styles.sectionTitle}>Top bill-change drivers</Text>
       <Text style={styles.sectionSubtitle}>
-        The five largest period-over-period swings detected by Bill Increase
-        Autopsy across the audits in this report.
+        The five largest period-over-period swings detected by Bill Increase Autopsy across the
+        audits in this report.
       </Text>
       <View style={styles.table}>
         <View style={styles.tableHeader}>
           <Text style={[styles.tableHeaderCell, { flex: 3 }]}>Driver</Text>
           <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Lines</Text>
-          <Text
-            style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-          >
-            Δ
-          </Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Δ</Text>
         </View>
         {drivers.map((d, i) => (
           <View
             key={`${d.comparison_id}-${i}`}
-            style={[
-              styles.tableRow,
-              i === drivers.length - 1 ? styles.tableRowLast : {},
-            ]}
+            style={[styles.tableRow, i === drivers.length - 1 ? styles.tableRowLast : {}]}
           >
             <Text style={[styles.tableCell, { flex: 3 }]}>{d.title}</Text>
             <Text style={[styles.tableCell, { flex: 1 }]}>
@@ -633,49 +553,30 @@ function CostCenterPage({
     <Page size="A4" style={styles.page}>
       <Text style={styles.sectionTitle}>Spend by cost center</Text>
       <Text style={styles.sectionSubtitle}>
-        Monthly base plan spend grouped by operator-tagged cost center,
-        aggregated across the audits in this report.
+        Monthly base plan spend grouped by operator-tagged cost center, aggregated across the audits
+        in this report.
         {total > 0 ? ` Total: ${formatCents(total)}/mo.` : ''}
       </Text>
       <View style={styles.table}>
         <View style={styles.tableHeader}>
           <Text style={[styles.tableHeaderCell, { flex: 3 }]}>Cost center</Text>
-          <Text
-            style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-          >
-            Lines
-          </Text>
-          <Text
-            style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-          >
-            Monthly
-          </Text>
-          <Text
-            style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}
-          >
-            Share
-          </Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Lines</Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Monthly</Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'right' }]}>Share</Text>
         </View>
         {rows.map((row, i) => (
           <View
             key={row.cost_center}
-            style={[
-              styles.tableRow,
-              i === rows.length - 1 ? styles.tableRowLast : {},
-            ]}
+            style={[styles.tableRow, i === rows.length - 1 ? styles.tableRowLast : {}]}
           >
-            <Text style={[styles.tableCell, { flex: 3 }]}>
-              {row.cost_center}
-            </Text>
+            <Text style={[styles.tableCell, { flex: 3 }]}>{row.cost_center}</Text>
             <Text style={[styles.tableCell, { flex: 1, textAlign: 'right' }]}>
               {row.line_count.toLocaleString('en-US')}
             </Text>
             <Text style={[styles.tableCell, { flex: 1, textAlign: 'right' }]}>
               {formatCents(row.monthly_total_cents)}
             </Text>
-            <Text
-              style={[styles.tableCellMuted, { flex: 1, textAlign: 'right' }]}
-            >
+            <Text style={[styles.tableCellMuted, { flex: 1, textAlign: 'right' }]}>
               {Math.round(row.share * 100)}%
             </Text>
           </View>
@@ -697,10 +598,7 @@ function CategoryPage({
   // Horizontal stacked bars — one per category. We only chart positive
   // savings; categories without savings still appear in the table.
   const max = rows.reduce(
-    (m, r) =>
-      r.estimated_monthly_savings_cents > m
-        ? r.estimated_monthly_savings_cents
-        : m,
+    (m, r) => (r.estimated_monthly_savings_cents > m ? r.estimated_monthly_savings_cents : m),
     0,
   );
   const chartWidth = 460;
@@ -720,18 +618,13 @@ function CategoryPage({
         <>
           <View style={styles.barGroup}>
             {rows.map((row) => {
-              const pct =
-                max > 0 ? row.estimated_monthly_savings_cents / max : 0;
+              const pct = max > 0 ? row.estimated_monthly_savings_cents / max : 0;
               const w = Math.max(1, Math.round(pct * chartWidth));
               return (
-                <View
-                  key={row.category_label}
-                  style={{ marginBottom: 10 }}
-                >
+                <View key={row.category_label} style={{ marginBottom: 10 }}>
                   <View style={styles.barLabelRow}>
                     <Text style={styles.barLabel}>
-                      {row.category_label} ·{' '}
-                      {row.finding_count.toLocaleString('en-US')} finding
+                      {row.category_label} · {row.finding_count.toLocaleString('en-US')} finding
                       {row.finding_count === 1 ? '' : 's'}
                     </Text>
                     <Text style={styles.barValue}>
@@ -739,20 +632,8 @@ function CategoryPage({
                     </Text>
                   </View>
                   <Svg width={chartWidth} height={barHeight}>
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={chartWidth}
-                      height={barHeight}
-                      fill={COLORS.card}
-                    />
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={w}
-                      height={barHeight}
-                      fill={COLORS.bar}
-                    />
+                    <Rect x={0} y={0} width={chartWidth} height={barHeight} fill={COLORS.card} />
+                    <Rect x={0} y={0} width={w} height={barHeight} fill={COLORS.bar} />
                   </Svg>
                 </View>
               );
@@ -769,37 +650,28 @@ function CategoryPage({
 }
 
 // ── 7. Footer page ───────────────────────────────────────────────────
-function FooterPage({
-  generatedOn,
-}: {
-  generatedOn: string;
-}): ReactElement {
+function FooterPage({ generatedOn }: { generatedOn: string }): ReactElement {
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.sectionTitle}>About this report</Text>
-      <Text style={styles.sectionSubtitle}>
-        How to use this executive summary.
-      </Text>
+      <Text style={styles.sectionSubtitle}>How to use this executive summary.</Text>
 
       <Text style={styles.groupHeading}>What&apos;s in here</Text>
       <Text style={[styles.tableCell, { marginBottom: 10 }]}>
-        This document rolls up the findings, totals, and bill-change drivers
-        from the most recent CarrierAudit audits. Per-line detail and PII —
-        phone numbers, names, employee IDs — never leave the per-audit
-        report. This summary is safe to share with finance leadership.
+        This document rolls up the findings, totals, and bill-change drivers from the most recent
+        CarrierAudit audits. Per-line detail and PII — phone numbers, names, employee IDs — never
+        leave the per-audit report. This summary is safe to share with finance leadership.
       </Text>
 
       <Text style={styles.groupHeading}>Savings estimates</Text>
       <Text style={[styles.tableCell, { marginBottom: 10 }]}>
-        Estimated monthly savings come directly from the per-audit findings.
-        Annual figures are 12× monthly. Savings are estimates that assume
-        recommended actions are taken and underlying rates remain stable.
+        Estimated monthly savings come directly from the per-audit findings. Annual figures are 12×
+        monthly. Savings are estimates that assume recommended actions are taken and underlying
+        rates remain stable.
       </Text>
 
       <View style={styles.hr} />
-      <Text style={styles.coverFootnote}>
-        Generated {generatedOn} · Generated by CarrierAudit
-      </Text>
+      <Text style={styles.coverFootnote}>Generated {generatedOn} · Generated by CarrierAudit</Text>
 
       <PageFooter reportId="executive" generatedAt={generatedOn} />
     </Page>
@@ -826,10 +698,7 @@ function ExecutiveDocument({
       <TrendPage data={data} generatedOn={generatedOn} />
       <TopFindingsPage data={data} generatedOn={generatedOn} />
       {data.topAutopsyDrivers.length > 0 ? (
-        <TopDriversPage
-          drivers={data.topAutopsyDrivers}
-          generatedOn={generatedOn}
-        />
+        <TopDriversPage drivers={data.topAutopsyDrivers} generatedOn={generatedOn} />
       ) : null}
       {data.byCostCenter && data.byCostCenter.length > 0 ? (
         <CostCenterPage rows={data.byCostCenter} generatedOn={generatedOn} />
@@ -856,7 +725,5 @@ export async function renderExecutivePdf(
   data: ExecutiveReportData,
   options: RenderExecutiveOptions,
 ): Promise<Buffer> {
-  return renderToBuffer(
-    <ExecutiveDocument data={data} generatedOn={options.generatedOn} />,
-  );
+  return renderToBuffer(<ExecutiveDocument data={data} generatedOn={options.generatedOn} />);
 }

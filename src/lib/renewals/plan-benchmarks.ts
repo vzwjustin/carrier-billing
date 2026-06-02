@@ -14,10 +14,7 @@
  * Used by /src/app/(app)/renewal-advisor/page.tsx.
  */
 import { CarrierSchema, type Carrier } from '@/extraction/schema';
-import {
-  findMatchingLegacyPlan,
-  type LegacyPlanPattern,
-} from '@/rules/helpers';
+import { findMatchingLegacyPlan, type LegacyPlanPattern } from '@/rules/helpers';
 
 /**
  * Shape consumed from the `bill_lines` table. The page selects only the
@@ -67,9 +64,7 @@ function coerceCarrier(value: string | null): Carrier {
  * one BenchmarkRow per group, sorted by estimated_monthly_savings_cents desc
  * (with legacy_plan_name as a stable tiebreaker).
  */
-export function benchmarkPlans(
-  lines: ReadonlyArray<BillLineRow>,
-): BenchmarkRow[] {
+export function benchmarkPlans(lines: ReadonlyArray<BillLineRow>): BenchmarkRow[] {
   // Key by `${carrier}::${pattern.source}` so the same legacy plan name
   // surfaces separately for different carriers (e.g. legacy AT&T "Unlimited
   // Plus" vs Spectrum "Unlimited Plus").
@@ -103,8 +98,7 @@ export function benchmarkPlans(
       // Anchor the row to the pattern's declared carrier (e.g. 'verizon')
       // rather than the line's possibly-'unknown' carrier so the UI can
       // label the row reliably.
-      const anchorCarrier: Carrier =
-        match.carrier === 'all' ? carrier : match.carrier;
+      const anchorCarrier: Carrier = match.carrier === 'all' ? carrier : match.carrier;
       buckets.set(key, {
         carrier: anchorCarrier,
         pattern: match,
@@ -117,11 +111,8 @@ export function benchmarkPlans(
 
   const rows: BenchmarkRow[] = Array.from(buckets.values()).map((b) => {
     const avg =
-      b.lines_with_plan_base > 0
-        ? Math.round(b.total_plan_base_cents / b.lines_with_plan_base)
-        : 0;
-    const monthly =
-      b.line_count * b.pattern.estimated_monthly_savings_cents;
+      b.lines_with_plan_base > 0 ? Math.round(b.total_plan_base_cents / b.lines_with_plan_base) : 0;
+    const monthly = b.line_count * b.pattern.estimated_monthly_savings_cents;
     return {
       carrier: b.carrier,
       legacy_plan_name: b.pattern.pattern.source,
@@ -129,8 +120,7 @@ export function benchmarkPlans(
       source_note: b.pattern.source_note,
       line_count: b.line_count,
       current_avg_monthly_cents: avg,
-      estimated_per_line_savings_cents:
-        b.pattern.estimated_monthly_savings_cents,
+      estimated_per_line_savings_cents: b.pattern.estimated_monthly_savings_cents,
       estimated_monthly_savings_cents: monthly,
       estimated_annual_savings_cents: monthly * 12,
     };
@@ -138,9 +128,7 @@ export function benchmarkPlans(
 
   rows.sort((a, b) => {
     if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
-      return (
-        b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents
-      );
+      return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
     }
     return a.legacy_plan_name.localeCompare(b.legacy_plan_name);
   });

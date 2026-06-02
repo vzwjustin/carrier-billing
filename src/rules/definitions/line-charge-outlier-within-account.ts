@@ -93,7 +93,7 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
           title: `Line costs ${formatCents(cost)}/mo vs ${formatCents(med)} median across peer lines`,
           description: `This phone line costs ${formatCents(cost)}/mo (plan + features) while the median for other phone lines on this account is ${formatCents(med)}/mo. A 2× gap typically points to a richer plan tier or stacked add-ons that don't match the rest of the fleet — sometimes a legitimate executive line, sometimes a forgotten upgrade or a SOC stack that drifted from the standard.`,
           recommended_action:
-            'Compare this line\'s plan tier and feature list against a typical peer line on the same account. If the upgrade is intentional, document why; if not, ask your carrier rep to right-size the plan or remove the extra add-ons.',
+            "Compare this line's plan tier and feature list against a typical peer line on the same account. If the upgrade is intentional, document why; if not, ask your carrier rep to right-size the plan or remove the extra add-ons.",
           // Down-to-median is a reasonable upper bound on what's recoverable
           // by realigning the line to the fleet standard.
           estimated_monthly_savings_cents: excess,

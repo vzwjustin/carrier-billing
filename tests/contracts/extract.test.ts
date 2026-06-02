@@ -19,10 +19,7 @@ describe('ContractTermsSchema', () => {
       plan_name: 'Business Unlimited Pro 2.0',
       contracted_monthly_rate_cents: 4500,
       discount_percentage_bps: 1250,
-      waived_fees: [
-        { name: 'activation fee', monthly_cents: 0 },
-        { name: 'upgrade fee' },
-      ],
+      waived_fees: [{ name: 'activation fee', monthly_cents: 0 }, { name: 'upgrade fee' }],
       promo_credit_cents: 1000,
       promo_duration_months: 24,
       device_credit_terms: '$800 over 36 months on eligible devices',

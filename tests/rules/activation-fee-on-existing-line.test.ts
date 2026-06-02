@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { activationFeeOnExistingLineRule } from '@/rules/definitions/activation-fee-on-existing-line';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeDpp,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeDpp, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
@@ -27,9 +20,7 @@ describe('activation_fee_on_existing_line rule', () => {
           lines: [
             makeLine({
               features: [makeFeature({ name: 'Activation Fee', monthly_cents: 3500 })],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 12 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 12 })],
             }),
           ],
         }),
@@ -58,9 +49,7 @@ describe('activation_fee_on_existing_line rule', () => {
             lines: [
               makeLine({
                 features: [makeFeature({ name, monthly_cents: 2000 })],
-                dpp_installments: [
-                  makeDpp({ total_payments: 24, remaining_payments: 6 }),
-                ],
+                dpp_installments: [makeDpp({ total_payments: 24, remaining_payments: 6 })],
               }),
             ],
           }),
@@ -81,9 +70,7 @@ describe('activation_fee_on_existing_line rule', () => {
                 makeFeature({ name: 'Activation Fee', monthly_cents: 3500 }),
                 makeFeature({ name: 'Connection Fee', monthly_cents: 1000 }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 24, remaining_payments: 6 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 24, remaining_payments: 6 })],
             }),
           ],
         }),
@@ -120,9 +107,7 @@ describe('activation_fee_on_existing_line rule', () => {
             makeLine({
               features: [makeFeature({ name: 'Activation Fee', monthly_cents: 3500 })],
               // remaining === total means no payments have been posted yet.
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 36 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 36 })],
             }),
           ],
         }),
@@ -139,9 +124,7 @@ describe('activation_fee_on_existing_line rule', () => {
           lines: [
             makeLine({
               features: [makeFeature({ name: 'Activation Fee', monthly_cents: 3500 })],
-              dpp_installments: [
-                makeDpp({ total_payments: null, remaining_payments: null }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: null, remaining_payments: null })],
             }),
           ],
         }),
@@ -158,9 +141,7 @@ describe('activation_fee_on_existing_line rule', () => {
           lines: [
             makeLine({
               features: [makeFeature({ name: 'Mobile Protect', monthly_cents: 1500 })],
-              dpp_installments: [
-                makeDpp({ total_payments: 24, remaining_payments: 6 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 24, remaining_payments: 6 })],
             }),
           ],
         }),

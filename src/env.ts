@@ -42,9 +42,7 @@ export function isPlaceholderSecret(value: string | undefined): boolean {
   return PLACEHOLDER_SECRET_VALUES.has(value.toLowerCase());
 }
 
-export function assertNoPlaceholderSecrets(
-  source: NodeJS.ProcessEnv = process.env,
-): void {
+export function assertNoPlaceholderSecrets(source: NodeJS.ProcessEnv = process.env): void {
   const offenders: string[] = [];
   for (const key of REQUIRED_SERVER_SECRETS) {
     if (isPlaceholderSecret(source[key])) offenders.push(key);

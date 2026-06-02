@@ -91,10 +91,7 @@ function PricingCard(props: PricingCardProps): React.ReactElement {
         const data = (await res.json().catch(() => ({}))) as CheckoutResponse;
 
         if (!res.ok || !data.url) {
-          setError(
-            data.error ??
-              'Checkout could not be started. Please try again.',
-          );
+          setError(data.error ?? 'Checkout could not be started. Please try again.');
           return;
         }
 
@@ -109,16 +106,12 @@ function PricingCard(props: PricingCardProps): React.ReactElement {
     <div
       className={cn(
         'flex flex-col gap-6 rounded-xl border bg-white p-6 shadow-sm',
-        props.highlight
-          ? 'border-neutral-900'
-          : 'border-neutral-200',
+        props.highlight ? 'border-neutral-900' : 'border-neutral-200',
       )}
     >
       <div>
         <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">
-            {props.title}
-          </h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{props.title}</h2>
           {props.highlight ? (
             <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-xs font-medium text-neutral-50">
               Best value
@@ -165,10 +158,7 @@ function PricingCard(props: PricingCardProps): React.ReactElement {
           {isPending ? 'Starting checkout...' : props.ctaLabel}
         </Button>
         {error ? (
-          <p
-            role="alert"
-            className="text-xs text-red-600"
-          >
+          <p role="alert" className="text-xs text-red-600">
             {error}
           </p>
         ) : null}

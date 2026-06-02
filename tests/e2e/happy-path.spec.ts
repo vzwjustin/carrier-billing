@@ -119,7 +119,10 @@ d('CarrierAudit happy path', () => {
       await postal.fill('94103');
     }
 
-    await page.getByRole('button', { name: /pay|subscribe/i }).first().click();
+    await page
+      .getByRole('button', { name: /pay|subscribe/i })
+      .first()
+      .click();
 
     await page.waitForURL(/\/dashboard\?checkout=success/, { timeout: 60_000 });
   });
@@ -170,9 +173,7 @@ d('CarrierAudit happy path', () => {
     });
     // Finding cards live inside src/components/report/finding-card.tsx — match
     // by the severity badge text any finding will render.
-    const severityBadge = page
-      .getByText(/^(high|medium|low|info)$/i)
-      .first();
+    const severityBadge = page.getByText(/^(high|medium|low|info)$/i).first();
     await expect(severityBadge).toBeVisible({ timeout: 10_000 });
   });
 
@@ -196,10 +197,7 @@ d('CarrierAudit happy path', () => {
     await popup.close();
   });
 
-  test('i. share link renders the report in an anonymous context', async ({
-    page,
-    browser,
-  }) => {
+  test('i. share link renders the report in an anonymous context', async ({ page, browser }) => {
     expect(state.auditId).not.toBeNull();
     await page.goto(`/audits/${state.auditId}`);
 
@@ -221,9 +219,9 @@ d('CarrierAudit happy path', () => {
     try {
       const anonPage = await anon.newPage();
       await anonPage.goto(shareUrl);
-      await expect(
-        anonPage.getByText(/estimated monthly savings/i),
-      ).toBeVisible({ timeout: 30_000 });
+      await expect(anonPage.getByText(/estimated monthly savings/i)).toBeVisible({
+        timeout: 30_000,
+      });
     } finally {
       await anon.close();
     }

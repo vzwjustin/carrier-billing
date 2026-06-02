@@ -221,10 +221,7 @@ function buildWithinAuditFinding(group: Group, accountIndexes: number[]): Findin
   };
 }
 
-function buildAcrossAccountsFinding(
-  group: Group,
-  accountIndexes: number[],
-): Finding {
+function buildAcrossAccountsFinding(group: Group, accountIndexes: number[]): Finding {
   const count = group.refs.length;
   // M1: a finding with line indexes alongside multiple account indexes
   // gets its line indexes wiped by translateLineIndexes (per its single-

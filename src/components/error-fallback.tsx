@@ -28,12 +28,10 @@ export function ErrorFallback({
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
-      <h1 className="mb-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-        {title}
-      </h1>
+      <h1 className="mb-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{title}</h1>
       <p className="mb-6 max-w-md text-sm text-neutral-600 dark:text-neutral-400">
-        We hit an unexpected error and the team has been notified. You can try
-        again, or head back and retry in a moment.
+        We hit an unexpected error and the team has been notified. You can try again, or head back
+        and retry in a moment.
       </p>
       <Button type="button" onClick={() => reset()}>
         Try again

@@ -16,9 +16,7 @@ interface CreateContractResponse {
   token: string;
 }
 
-function isCreateContractResponse(
-  value: unknown,
-): value is CreateContractResponse {
+function isCreateContractResponse(value: unknown): value is CreateContractResponse {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return (

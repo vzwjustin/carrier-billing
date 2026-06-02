@@ -108,8 +108,7 @@ function decodeBase64Attachment(value: string): Buffer | null {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) return null;
   const remainder = normalized.length % 4;
   if (remainder === 1) return null;
-  const padded =
-    remainder === 0 ? normalized : `${normalized}${'='.repeat(4 - remainder)}`;
+  const padded = remainder === 0 ? normalized : `${normalized}${'='.repeat(4 - remainder)}`;
   return Buffer.from(padded, 'base64');
 }
 
@@ -123,16 +122,10 @@ function hasPdfMagic(bytes: Buffer): boolean {
  * bypass dedupe and re-upload the same bill repeatedly. The triple
  * `userId|pdfSha256|normalizedFilename` is what we actually want to be unique.
  */
-function computeEventHash(
-  userId: string,
-  pdfBytes: Buffer,
-  filename: string,
-): string {
+function computeEventHash(userId: string, pdfBytes: Buffer, filename: string): string {
   const pdfSha256 = createHash('sha256').update(pdfBytes).digest('hex');
   const normalizedFilename = safeFilename(filename).toLowerCase();
-  return createHash('sha256')
-    .update(`${userId}|${pdfSha256}|${normalizedFilename}`)
-    .digest('hex');
+  return createHash('sha256').update(`${userId}|${pdfSha256}|${normalizedFilename}`).digest('hex');
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -144,10 +137,7 @@ function isUniqueViolation(error: unknown): boolean {
 async function releaseDedupeClaim(eventHash: string): Promise<void> {
   try {
     const admin = getAdminClient();
-    const { error } = await admin
-      .from('inbound_email_events')
-      .delete()
-      .eq('event_hash', eventHash);
+    const { error } = await admin.from('inbound_email_events').delete().eq('event_hash', eventHash);
     if (error) {
       throw new Error(error.message);
     }
@@ -236,11 +226,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'missing_content_length' }, { status: 411 });
   }
   const contentLength = Number(contentLengthHeader);
-  if (
-    !Number.isFinite(contentLength) ||
-    contentLength <= 0 ||
-    contentLength > MAX_REQUEST_BYTES
-  ) {
+  if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > MAX_REQUEST_BYTES) {
     return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   }
 
@@ -439,8 +425,7 @@ export async function POST(request: Request): Promise<Response> {
         // dedupe claim for definitive refusal. Transient errors leave
         // the row pending so orphan-cleanup can refund if the RPC did
         // commit server-side.
-        const isDefinitiveRefusal =
-          decErr instanceof Error && decErr.message === 'no_credits';
+        const isDefinitiveRefusal = decErr instanceof Error && decErr.message === 'no_credits';
         Sentry.captureException(decErr, {
           tags: {
             surface: 'inbound.email.decrement',

@@ -27,16 +27,11 @@ export const activationFeeOnExistingLineRule: Rule = {
 
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
-        const activationFeatures = line.features.filter((f) =>
-          ACTIVATION_FEE_RE.test(f.name),
-        );
+        const activationFeatures = line.features.filter((f) => ACTIVATION_FEE_RE.test(f.name));
         if (activationFeatures.length === 0) return;
         if (!hasExistingDpp(line)) return;
 
-        const total = activationFeatures.reduce(
-          (sum, f) => sum + f.monthly_cents,
-          0,
-        );
+        const total = activationFeatures.reduce((sum, f) => sum + f.monthly_cents, 0);
         const names = activationFeatures.map((f) => f.name).join(', ');
         // H1: activation/connection/SIM-setup/upgrade fees are ONE-TIME
         // charges, not monthly. Carrying the dollar amount in

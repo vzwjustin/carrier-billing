@@ -71,41 +71,38 @@ interface DppRow {
  * missing audit. Returns null if the audit hasn't completed and bill rows
  * don't exist yet.
  */
-export async function reconstructExtractedBill(
-  auditId: string,
-): Promise<ExtractedBill | null> {
+export async function reconstructExtractedBill(auditId: string): Promise<ExtractedBill | null> {
   const admin = getAdminClient();
 
-  const [auditRes, accountsRes, linesRes, featuresRes, creditsRes, dppRes] =
-    await Promise.all([
-      admin
-        .from('audits')
-        .select('carrier,billing_period_start,billing_period_end,total_charges_cents')
-        .eq('id', auditId)
-        .maybeSingle<AuditRow>(),
-      admin
-        .from('bill_accounts')
-        .select('id,account_number_masked,account_label,total_charges_cents,taxes_fees_cents')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_lines')
-        .select(
-          'id,account_id,mdn_masked,user_label,device_description,plan_name,plan_base_cents,data_used_gb,voice_used_min,sms_used_count,is_suspended',
-        )
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_features')
-        .select('line_id,name,category,monthly_charge_cents')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_credits')
-        .select('line_id,account_id,name,monthly_amount_cents,expires_on,is_promo')
-        .eq('audit_id', auditId),
-      admin
-        .from('bill_dpp_installments')
-        .select('line_id,device_description,monthly_payment_cents,remaining_payments,total_payments')
-        .eq('audit_id', auditId),
-    ]);
+  const [auditRes, accountsRes, linesRes, featuresRes, creditsRes, dppRes] = await Promise.all([
+    admin
+      .from('audits')
+      .select('carrier,billing_period_start,billing_period_end,total_charges_cents')
+      .eq('id', auditId)
+      .maybeSingle<AuditRow>(),
+    admin
+      .from('bill_accounts')
+      .select('id,account_number_masked,account_label,total_charges_cents,taxes_fees_cents')
+      .eq('audit_id', auditId),
+    admin
+      .from('bill_lines')
+      .select(
+        'id,account_id,mdn_masked,user_label,device_description,plan_name,plan_base_cents,data_used_gb,voice_used_min,sms_used_count,is_suspended',
+      )
+      .eq('audit_id', auditId),
+    admin
+      .from('bill_features')
+      .select('line_id,name,category,monthly_charge_cents')
+      .eq('audit_id', auditId),
+    admin
+      .from('bill_credits')
+      .select('line_id,account_id,name,monthly_amount_cents,expires_on,is_promo')
+      .eq('audit_id', auditId),
+    admin
+      .from('bill_dpp_installments')
+      .select('line_id,device_description,monthly_payment_cents,remaining_payments,total_payments')
+      .eq('audit_id', auditId),
+  ]);
 
   if (auditRes.error || !auditRes.data) return null;
   const audit = auditRes.data;
@@ -116,7 +113,13 @@ export async function reconstructExtractedBill(
   ) {
     return null;
   }
-  if (accountsRes.error || linesRes.error || featuresRes.error || creditsRes.error || dppRes.error) {
+  if (
+    accountsRes.error ||
+    linesRes.error ||
+    featuresRes.error ||
+    creditsRes.error ||
+    dppRes.error
+  ) {
     return null;
   }
 
@@ -139,9 +142,10 @@ export async function reconstructExtractedBill(
   const dppByLine = bucketBy(dpp, (d) => d.line_id);
   const linesByAccount = bucketBy(lines, (l) => l.account_id);
 
-  const carrier = audit.carrier && ['verizon', 'att', 'tmobile'].includes(audit.carrier)
-    ? audit.carrier
-    : 'unknown';
+  const carrier =
+    audit.carrier && ['verizon', 'att', 'tmobile'].includes(audit.carrier)
+      ? audit.carrier
+      : 'unknown';
 
   const reconstructed: unknown = {
     carrier,

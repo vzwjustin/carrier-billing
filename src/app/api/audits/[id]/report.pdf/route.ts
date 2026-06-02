@@ -26,10 +26,7 @@ import type {
   ReportLineRow,
 } from '@/reports/types';
 import * as Sentry from '@sentry/nextjs';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -137,9 +134,7 @@ export async function GET(
         .eq('id', auditId)
         .eq('share_token', token)
         .maybeSingle<Omit<AuditFullRow, 'share_token_expires_at'>>();
-      data = retry.data
-        ? { ...retry.data, share_token_expires_at: null }
-        : null;
+      data = retry.data ? { ...retry.data, share_token_expires_at: null } : null;
       error = retry.error;
       expiryColumnAvailable = false;
     }
@@ -156,12 +151,7 @@ export async function GET(
     // the query, but if it's been nulled out between SELECT planning and
     // execution we'd never get here; the expiry check catches the lifecycle
     // case where the row still has the token but the window has elapsed.
-    if (
-      isShareTokenExpired(
-        audit.share_token_expires_at,
-        expiryColumnAvailable,
-      )
-    ) {
+    if (isShareTokenExpired(audit.share_token_expires_at, expiryColumnAvailable)) {
       return new NextResponse('Not found.', { status: 404 });
     }
   } else {
@@ -270,12 +260,10 @@ export async function GET(
   // but capture the failure (H9). Silently discarding the upload result meant
   // every subsequent download did a full cold render (DB query + heavy
   // @react-pdf/renderer pass) with no signal that the cache was broken.
-  const cacheWrite = await admin.storage
-    .from('reports')
-    .upload(storagePath, pdfBytes, {
-      contentType: 'application/pdf',
-      upsert: true,
-    });
+  const cacheWrite = await admin.storage.from('reports').upload(storagePath, pdfBytes, {
+    contentType: 'application/pdf',
+    upsert: true,
+  });
   if (cacheWrite.error) {
     Sentry.captureException(cacheWrite.error, {
       tags: { surface: 'pdf.cache_write' },
@@ -288,9 +276,7 @@ export async function GET(
     // only an optimization, but a stuck corrupt object is operationally
     // meaningful.
     try {
-      const { error: removeError } = await admin.storage
-        .from('reports')
-        .remove([storagePath]);
+      const { error: removeError } = await admin.storage.from('reports').remove([storagePath]);
       if (removeError) {
         Sentry.captureException(removeError, {
           tags: { surface: 'pdf.cache_scrub' },
@@ -323,7 +309,13 @@ async function trackPdfDownload(
   // Auth-only audit trail: a public share-token download isn't attributable
   // to the authenticated user, so we never forge a trail row in that case.
   if (shareToken === null) {
-    await logTrailEvent({ userId, eventType: 'report_downloaded', entityType: 'audit', entityId: auditId, metadata: { format: 'pdf' } });
+    await logTrailEvent({
+      userId,
+      eventType: 'report_downloaded',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: { format: 'pdf' },
+    });
   }
   try {
     await trackServer(

@@ -17,12 +17,7 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const DRIVER_ID = '11111111-1111-4111-8111-111111111111';
 const COMPARISON_ID = '22222222-2222-4222-8222-222222222222';
 
-const {
-  getUserMock,
-  maybeSingleMock,
-  updateMock,
-  consumeRateLimitMock,
-} = vi.hoisted(() => ({
+const { getUserMock, maybeSingleMock, updateMock, consumeRateLimitMock } = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   maybeSingleMock: vi.fn(),
   updateMock: vi.fn(),
@@ -64,9 +59,7 @@ vi.mock('@/env', () => ({
 
 import { POST } from '@/app/api/autopsy/drivers/[driverId]/explain/route';
 
-function makeContext(
-  driverId: string = DRIVER_ID,
-): { params: Promise<{ driverId: string }> } {
+function makeContext(driverId: string = DRIVER_ID): { params: Promise<{ driverId: string }> } {
   return { params: Promise.resolve({ driverId }) };
 }
 

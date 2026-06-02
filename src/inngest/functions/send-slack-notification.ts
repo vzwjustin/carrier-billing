@@ -65,11 +65,7 @@ export const sendSlackHighFindingFn = inngest.createFunction(
   },
   { event: 'finding.created' },
   async ({ event, step, logger }) => {
-    const data = parseEventData(
-      'finding.created',
-      event.data,
-      FindingCreatedDataSchema,
-    );
+    const data = parseEventData('finding.created', event.data, FindingCreatedDataSchema);
 
     if (data.severity !== 'high') {
       logger.info('sendSlackHighFinding: skipped (not high severity)', {
@@ -173,9 +169,7 @@ async function loadSlackProfile(userId: string): Promise<ProfileSlackRow | null>
   const admin = getAdminClient();
   const { data, error } = await admin
     .from('profiles')
-    .select(
-      'id, slack_webhook_url, slack_notify_on_high_finding, slack_notify_on_autopsy',
-    )
+    .select('id, slack_webhook_url, slack_notify_on_high_finding, slack_notify_on_autopsy')
     .eq('id', userId)
     .maybeSingle();
   if (error) {
@@ -206,9 +200,7 @@ interface BuildHighFindingInput {
   estimatedMonthlySavingsCents: number | null;
 }
 
-export function buildHighFindingPayload(
-  input: BuildHighFindingInput,
-): SlackBlockKitPayload {
+export function buildHighFindingPayload(input: BuildHighFindingInput): SlackBlockKitPayload {
   const url = `${env.NEXT_PUBLIC_APP_URL}/audits/${input.auditId}#finding-${input.findingId}`;
   const savings = input.estimatedMonthlySavingsCents ?? 0;
   const savingsLine =
@@ -259,9 +251,7 @@ interface BuildAutopsyInput {
   driversCount: number;
 }
 
-export function buildAutopsyPayload(
-  input: BuildAutopsyInput,
-): SlackBlockKitPayload {
+export function buildAutopsyPayload(input: BuildAutopsyInput): SlackBlockKitPayload {
   const url = `${env.NEXT_PUBLIC_APP_URL}/audits/${input.currentAuditId}/autopsy/${input.comparisonId}`;
   const direction = input.netChangeCents >= 0 ? 'up' : 'down';
   const netAbs = formatCents(Math.abs(input.netChangeCents));

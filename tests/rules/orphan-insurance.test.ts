@@ -41,7 +41,11 @@ describe('orphan_insurance rule', () => {
               device: null,
               dpp_installments: [],
               features: [
-                makeFeature({ name: 'Total Mobile Protection', category: 'insurance', monthly_cents: 1500 }),
+                makeFeature({
+                  name: 'Total Mobile Protection',
+                  category: 'insurance',
+                  monthly_cents: 1500,
+                }),
               ],
             }),
           ],

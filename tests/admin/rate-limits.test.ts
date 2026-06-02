@@ -83,9 +83,7 @@ vi.mock('@/env', () => ({
   },
 }));
 
-const { default: AdminRateLimitsPage } = await import(
-  '@/app/(app)/admin/rate-limits/page'
-);
+const { default: AdminRateLimitsPage } = await import('@/app/(app)/admin/rate-limits/page');
 
 beforeEach(() => {
   getUserMock.mockReset();

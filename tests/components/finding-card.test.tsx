@@ -46,36 +46,24 @@ function makeFinding(over: Partial<Finding> = {}): Finding {
 
 describe('FindingCard — owner view', () => {
   it('renders the interactive status control when auditId + finding.id are present and not public', () => {
-    const { getByTestId } = render(
-      <FindingCard finding={makeFinding()} auditId="audit-1" />,
-    );
+    const { getByTestId } = render(<FindingCard finding={makeFinding()} auditId="audit-1" />);
     const control = getByTestId('status-control');
     expect(control).toBeInTheDocument();
-    expect(control.getAttribute('data-finding-id')).toBe(
-      '11111111-1111-4111-8111-111111111111',
-    );
+    expect(control.getAttribute('data-finding-id')).toBe('11111111-1111-4111-8111-111111111111');
   });
 
   it('renders the bulk-select checkbox when the parent opts in via onToggleSelected', () => {
     const onToggle = vi.fn();
     const { container } = render(
-      <FindingCard
-        finding={makeFinding()}
-        auditId="audit-1"
-        onToggleSelected={onToggle}
-      />,
+      <FindingCard finding={makeFinding()} auditId="audit-1" onToggleSelected={onToggle} />,
     );
-    const checkbox = container.querySelector(
-      'input[type="checkbox"]',
-    ) as HTMLInputElement | null;
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
     expect(checkbox).not.toBeNull();
     expect(checkbox?.checked).toBe(false);
   });
 
   it('does NOT render the checkbox when onToggleSelected is not provided', () => {
-    const { container } = render(
-      <FindingCard finding={makeFinding()} auditId="audit-1" />,
-    );
+    const { container } = render(<FindingCard finding={makeFinding()} auditId="audit-1" />);
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
   });
 });
@@ -130,17 +118,13 @@ describe('FindingCard — copy + badges', () => {
     expect(withSavings.container.textContent).toContain('/ month');
 
     const noSavings = render(
-      <FindingCard
-        finding={makeFinding({ estimated_monthly_savings_cents: 0 })}
-      />,
+      <FindingCard finding={makeFinding({ estimated_monthly_savings_cents: 0 })} />,
     );
     expect(noSavings.container.textContent).not.toContain('Estimated savings');
   });
 
   it('pluralizes "line" / "account" counts correctly', () => {
-    const single = render(
-      <FindingCard finding={makeFinding({ affected_line_indexes: [0] })} />,
-    );
+    const single = render(<FindingCard finding={makeFinding({ affected_line_indexes: [0] })} />);
     expect(single.container.textContent).toContain('Affects 1 line');
     expect(single.container.textContent).not.toContain('Affects 1 lines');
 
@@ -151,9 +135,7 @@ describe('FindingCard — copy + badges', () => {
   });
 
   it('defaults status to "new" when finding.status is unset', () => {
-    const { container } = render(
-      <FindingCard finding={makeFinding({ status: undefined })} />,
-    );
+    const { container } = render(<FindingCard finding={makeFinding({ status: undefined })} />);
     // FINDING_STATUS_LABEL.new = "New" — check the badge appears.
     expect(container.textContent).toContain('New');
   });
@@ -162,12 +144,7 @@ describe('FindingCard — copy + badges', () => {
 describe('FindingCard — selection visual state', () => {
   it('applies the "selected" ring class when selected=true', () => {
     const { container } = render(
-      <FindingCard
-        finding={makeFinding()}
-        auditId="audit-1"
-        selected
-        onToggleSelected={vi.fn()}
-      />,
+      <FindingCard finding={makeFinding()} auditId="audit-1" selected onToggleSelected={vi.fn()} />,
     );
     const article = container.querySelector('article');
     expect(article?.className).toContain('ring-1');
@@ -176,11 +153,7 @@ describe('FindingCard — selection visual state', () => {
 
   it('does NOT apply the ring class when selected=false', () => {
     const { container } = render(
-      <FindingCard
-        finding={makeFinding()}
-        auditId="audit-1"
-        onToggleSelected={vi.fn()}
-      />,
+      <FindingCard finding={makeFinding()} auditId="audit-1" onToggleSelected={vi.fn()} />,
     );
     const article = container.querySelector('article');
     expect(article?.className).not.toContain('ring-1');

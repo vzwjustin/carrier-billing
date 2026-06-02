@@ -155,10 +155,7 @@ describe('aggregateInventory', () => {
   });
 
   it('separates rows by MDN when account matches but MDN differs', () => {
-    const rows = aggregateInventory([
-      line({ mdn_masked: '1111' }),
-      line({ mdn_masked: '2222' }),
-    ]);
+    const rows = aggregateInventory([line({ mdn_masked: '1111' }), line({ mdn_masked: '2222' })]);
     expect(rows).toHaveLength(2);
   });
 

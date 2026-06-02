@@ -15,10 +15,7 @@
  *    authored by us and already PII-free.
  */
 
-import {
-  formatIsoDatePeriod,
-  formatUtcYyyyMmDd,
-} from '@/lib/dates';
+import { formatIsoDatePeriod, formatUtcYyyyMmDd } from '@/lib/dates';
 
 const CARRIER_DISPLAY_NAMES: Record<string, string> = {
   verizon: 'Verizon',

@@ -41,9 +41,7 @@ export async function loadParsedContractsForUser(
     }>;
     return rows.map<ContractWithTerms>((r) => {
       const termsField = r.contract_terms;
-      const terms = Array.isArray(termsField)
-        ? (termsField[0] ?? null)
-        : (termsField ?? null);
+      const terms = Array.isArray(termsField) ? (termsField[0] ?? null) : (termsField ?? null);
       return {
         id: r.id,
         carrier: r.carrier,
@@ -56,8 +54,7 @@ export async function loadParsedContractsForUser(
   } catch (loadErr) {
     logger?.warn('loadParsedContractsForUser threw (continuing without)', {
       userId,
-      message:
-        loadErr instanceof Error ? loadErr.message : 'unknown error',
+      message: loadErr instanceof Error ? loadErr.message : 'unknown error',
     });
     return [];
   }

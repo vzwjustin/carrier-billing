@@ -460,19 +460,12 @@ async function upsertAuditRow(args: {
 // Main
 // ──────────────────────────────────────────────────────────────────────────────
 
-async function resolveOwnerUserId(
-  admin: SupabaseClient,
-  email: string,
-): Promise<string> {
+async function resolveOwnerUserId(admin: SupabaseClient, email: string): Promise<string> {
   const list = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
   if (list.error) throw new Error(`listUsers failed: ${list.error.message}`);
-  const found = list.data.users.find(
-    (u) => (u.email ?? '').toLowerCase() === email.toLowerCase(),
-  );
+  const found = list.data.users.find((u) => (u.email ?? '').toLowerCase() === email.toLowerCase());
   if (!found) {
-    throw new Error(
-      `Owner user ${email} not found. Run scripts/create-test-user.ts first.`,
-    );
+    throw new Error(`Owner user ${email} not found. Run scripts/create-test-user.ts first.`);
   }
   return found.id;
 }
@@ -480,15 +473,12 @@ async function resolveOwnerUserId(
 async function main(): Promise<void> {
   const env = loadDotEnvLocal();
   const url = env['NEXT_PUBLIC_SUPABASE_URL'] ?? process.env['NEXT_PUBLIC_SUPABASE_URL'];
-  const serviceKey =
-    env['SUPABASE_SERVICE_ROLE_KEY'] ?? process.env['SUPABASE_SERVICE_ROLE_KEY'];
+  const serviceKey = env['SUPABASE_SERVICE_ROLE_KEY'] ?? process.env['SUPABASE_SERVICE_ROLE_KEY'];
   const appUrl =
     env['NEXT_PUBLIC_APP_URL'] ?? process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
 
   if (!url || !serviceKey) {
-    throw new Error(
-      'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local',
-    );
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local');
   }
 
   const { ownerEmail } = parseArgs(process.argv.slice(2));
@@ -517,14 +507,10 @@ async function main(): Promise<void> {
     }
 
     // 2. Translate per-account line indexes → flat indexes.
-    const translated = translateLineIndexes(
-      ruleResult.findings,
-      bill,
-      {
-        auditId: spec.auditId,
-        warn: (msg, ctx) => console.warn(`    [translate] ${msg}`, ctx ?? {}),
-      },
-    );
+    const translated = translateLineIndexes(ruleResult.findings, bill, {
+      auditId: spec.auditId,
+      warn: (msg, ctx) => console.warn(`    [translate] ${msg}`, ctx ?? {}),
+    });
 
     // 3. Upsert the audit row FIRST so child-table FK references resolve.
     //    Children (bill_accounts, bill_lines, …) reference audits.id.

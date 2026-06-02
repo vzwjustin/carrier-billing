@@ -21,15 +21,9 @@ import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
 
 import { compareBills } from '@/autopsy/compare';
-import {
-  ComparisonAlreadyRunningError,
-  persistComparison,
-} from '@/autopsy/persist';
+import { ComparisonAlreadyRunningError, persistComparison } from '@/autopsy/persist';
 import { reconstructExtractedBill } from '@/autopsy/reconstruct';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -45,10 +39,7 @@ interface AuditOwnershipRow {
   status: string;
 }
 
-async function loadAuditOwned(
-  auditId: string,
-  userId: string,
-): Promise<AuditOwnershipRow | null> {
+async function loadAuditOwned(auditId: string, userId: string): Promise<AuditOwnershipRow | null> {
   const admin = getAdminClient();
   const { data, error } = await admin
     .from('audits')
@@ -79,10 +70,7 @@ export async function POST(
   }
   const bodyParsed = BodySchema.safeParse(body);
   if (!bodyParsed.success) {
-    return NextResponse.json(
-      { error: 'previousAuditId required (uuid).' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'previousAuditId required (uuid).' }, { status: 400 });
   }
   const previousAuditId = bodyParsed.data.previousAuditId;
 
@@ -163,10 +151,7 @@ export async function POST(
       return NextResponse.json({ error: err.message }, { status: 409 });
     }
     Sentry.captureException(err, { tags: { surface: 'autopsy.persist' } });
-    return NextResponse.json(
-      { error: 'Failed to persist comparison.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to persist comparison.' }, { status: 500 });
   }
 }
 
@@ -237,10 +222,7 @@ export async function GET(
     .limit(1)
     .maybeSingle<ComparisonRow>();
   if (cmpErr) {
-    return NextResponse.json(
-      { error: 'Failed to load comparison.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load comparison.' }, { status: 500 });
   }
   if (!comparison) {
     return NextResponse.json({ error: 'No comparison found.' }, { status: 404 });
@@ -253,17 +235,13 @@ export async function GET(
     )
     .eq('bill_comparison_id', comparison.id);
   if (driversErr) {
-    return NextResponse.json(
-      { error: 'Failed to load change drivers.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load change drivers.' }, { status: 500 });
   }
   // Sort by absolute impact desc, mirroring the engine's output ordering.
   const sortedDrivers = (drivers ?? [])
     .slice()
     .sort(
-      (a: DriverRow, b: DriverRow) =>
-        Math.abs(b.difference_cents) - Math.abs(a.difference_cents),
+      (a: DriverRow, b: DriverRow) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents),
     );
 
   return NextResponse.json({ comparison, drivers: sortedDrivers }, { status: 200 });

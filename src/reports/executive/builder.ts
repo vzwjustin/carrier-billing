@@ -16,10 +16,7 @@ import {
   type CostCenterLineInput,
   type CostCenterRollupRow,
 } from '@/lib/cost-centers/aggregate';
-import type {
-  ReportAuditRow,
-  ReportFindingRow,
-} from '@/reports/types';
+import type { ReportAuditRow, ReportFindingRow } from '@/reports/types';
 import type { FindingStatus, Severity } from '@/rules/types';
 
 /**
@@ -27,11 +24,7 @@ import type { FindingStatus, Severity } from '@/rules/types';
  * intentionally exclude rejected/disputed/resolved because those have been
  * worked already; surfacing them to the CFO would be noise.
  */
-const ACTIONABLE_STATUSES: readonly FindingStatus[] = [
-  'new',
-  'in_review',
-  'approved',
-];
+const ACTIONABLE_STATUSES: readonly FindingStatus[] = ['new', 'in_review', 'approved'];
 
 /**
  * Rule-id prefix → human-readable category label. The prefix is the longest
@@ -230,10 +223,7 @@ export interface ExecutiveReportData {
 const SEVERITIES: readonly Severity[] = ['high', 'medium', 'low', 'info'];
 
 function isSeverity(value: unknown): value is Severity {
-  return (
-    typeof value === 'string' &&
-    (SEVERITIES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (SEVERITIES as readonly string[]).includes(value);
 }
 
 function isActionableStatus(value: unknown): boolean {
@@ -241,10 +231,7 @@ function isActionableStatus(value: unknown): boolean {
     // DB default is 'new'; treat absent as actionable.
     return true;
   }
-  return (
-    typeof value === 'string' &&
-    (ACTIONABLE_STATUSES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (ACTIONABLE_STATUSES as readonly string[]).includes(value);
 }
 
 function emptySeverityCounts(): Record<Severity, number> {
@@ -254,9 +241,7 @@ function emptySeverityCounts(): Record<Severity, number> {
 /**
  * Build the executive report data from raw rows. Deterministic given input.
  */
-export function buildExecutiveReport(
-  input: BuildExecutiveReportInput,
-): ExecutiveReportData {
+export function buildExecutiveReport(input: BuildExecutiveReportInput): ExecutiveReportData {
   const { audits, findings, comparisons, drivers, billLines } = input;
 
   // ── 1. Per-audit summaries (caller-provided order; newest first) ──────
@@ -264,17 +249,11 @@ export function buildExecutiveReport(
   const findingsCountByAudit = new Map<string, number>();
   for (const f of findings) {
     if (!f.audit_id) continue;
-    findingsCountByAudit.set(
-      f.audit_id,
-      (findingsCountByAudit.get(f.audit_id) ?? 0) + 1,
-    );
+    findingsCountByAudit.set(f.audit_id, (findingsCountByAudit.get(f.audit_id) ?? 0) + 1);
   }
   const linesCountByAudit = new Map<string, number>();
   for (const line of billLines) {
-    linesCountByAudit.set(
-      line.audit_id,
-      (linesCountByAudit.get(line.audit_id) ?? 0) + 1,
-    );
+    linesCountByAudit.set(line.audit_id, (linesCountByAudit.get(line.audit_id) ?? 0) + 1);
   }
 
   const auditSummaries: ExecutiveAuditSummary[] = audits.map((a) => ({
@@ -289,10 +268,7 @@ export function buildExecutiveReport(
 
   // ── 2. Lifetime aggregates ────────────────────────────────────────────
   const lifetime: ExecutiveLifetimeSummary = {
-    total_spend_cents: audits.reduce(
-      (acc, a) => acc + (a.total_charges_cents ?? 0),
-      0,
-    ),
+    total_spend_cents: audits.reduce((acc, a) => acc + (a.total_charges_cents ?? 0), 0),
     monthly_savings_cents: audits.reduce(
       (acc, a) => acc + (a.estimated_monthly_savings_cents ?? 0),
       0,
@@ -344,13 +320,8 @@ export function buildExecutiveReport(
     });
   }
   topFindingsAll.sort((a, b) => {
-    if (
-      b.estimated_monthly_savings_cents !==
-      a.estimated_monthly_savings_cents
-    ) {
-      return (
-        b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents
-      );
+    if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
+      return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
     }
     return a.title.localeCompare(b.title);
   });
@@ -360,11 +331,7 @@ export function buildExecutiveReport(
   //      whose endpoints are within the input audit set ────────────────
   const comparison_ids = new Set(
     comparisons
-      .filter(
-        (c) =>
-          audit_ids.has(c.previous_audit_id) &&
-          audit_ids.has(c.current_audit_id),
-      )
+      .filter((c) => audit_ids.has(c.previous_audit_id) && audit_ids.has(c.current_audit_id))
       .map((c) => c.id),
   );
   const topDriversAll: ExecutiveTopDriver[] = drivers
@@ -395,8 +362,7 @@ export function buildExecutiveReport(
     const bucket = categoryBuckets.get(label);
     if (bucket) {
       bucket.finding_count += 1;
-      bucket.estimated_monthly_savings_cents +=
-        f.estimated_monthly_savings_cents;
+      bucket.estimated_monthly_savings_cents += f.estimated_monthly_savings_cents;
     } else {
       categoryBuckets.set(label, {
         finding_count: 1,
@@ -404,31 +370,21 @@ export function buildExecutiveReport(
       });
     }
   }
-  const byCategory: ExecutiveCategoryRow[] = Array.from(
-    categoryBuckets.entries(),
-  )
+  const byCategory: ExecutiveCategoryRow[] = Array.from(categoryBuckets.entries())
     .map(([category_label, b]) => ({
       category_label,
       finding_count: b.finding_count,
       estimated_monthly_savings_cents: b.estimated_monthly_savings_cents,
     }))
     .sort((a, b) => {
-      if (
-        b.estimated_monthly_savings_cents !==
-        a.estimated_monthly_savings_cents
-      ) {
-        return (
-          b.estimated_monthly_savings_cents -
-          a.estimated_monthly_savings_cents
-        );
+      if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
+        return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
       }
       return a.category_label.localeCompare(b.category_label);
     });
 
   // ── 7. By cost-center (NULL when no tagged lines exist anywhere) ─────
-  const anyTagged = billLines.some(
-    (l) => l.cost_center !== null && l.cost_center.trim() !== '',
-  );
+  const anyTagged = billLines.some((l) => l.cost_center !== null && l.cost_center.trim() !== '');
   let byCostCenter: CostCenterRollupRow[] | null = null;
   if (anyTagged) {
     const ccInput: CostCenterLineInput[] = billLines.map((l) => ({

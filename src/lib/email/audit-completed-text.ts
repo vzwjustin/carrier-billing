@@ -7,9 +7,7 @@ import type { AuditCompletedEmailProps } from './audit-completed';
  * HTML/React body via Resend's `text:` field for clients that don't render
  * HTML and for accessibility.
  */
-export function renderAuditCompletedText(
-  props: AuditCompletedEmailProps,
-): string {
+export function renderAuditCompletedText(props: AuditCompletedEmailProps): string {
   const {
     carrierLabel,
     billingPeriod,

@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { redundantHotspotAddonRule } from '@/rules/definitions/redundant-hotspot-addon';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);
@@ -22,9 +16,7 @@ describe('redundant_hotspot_addon rule', () => {
           lines: [
             makeLine({
               plan_name: 'Business Unlimited Plus 2.0',
-              features: [
-                makeFeature({ name: 'Mobile Hotspot 30GB', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot 30GB', monthly_cents: 2000 })],
             }),
           ],
         }),
@@ -69,9 +61,7 @@ describe('redundant_hotspot_addon rule', () => {
           lines: [
             makeLine({
               plan_name: 'Business Unlimited Premium',
-              features: [
-                makeFeature({ name: 'Mobile Hotspot 100GB', monthly_cents: 0 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot 100GB', monthly_cents: 0 })],
             }),
           ],
         }),
@@ -88,9 +78,7 @@ describe('redundant_hotspot_addon rule', () => {
           lines: [
             makeLine({
               plan_name: 'Business Unlimited Start 2.0',
-              features: [
-                makeFeature({ name: 'Mobile Hotspot 15GB', monthly_cents: 1500 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot 15GB', monthly_cents: 1500 })],
             }),
           ],
         }),
@@ -108,9 +96,7 @@ describe('redundant_hotspot_addon rule', () => {
             makeLine({
               device: 'Verizon Jetpack MiFi 8800L',
               plan_name: 'Business Unlimited Plus',
-              features: [
-                makeFeature({ name: 'Mobile Hotspot', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot', monthly_cents: 2000 })],
             }),
           ],
         }),
@@ -127,9 +113,7 @@ describe('redundant_hotspot_addon rule', () => {
           lines: [
             makeLine({
               plan_name: null,
-              features: [
-                makeFeature({ name: 'Mobile Hotspot', monthly_cents: 2000 }),
-              ],
+              features: [makeFeature({ name: 'Mobile Hotspot', monthly_cents: 2000 })],
             }),
           ],
         }),

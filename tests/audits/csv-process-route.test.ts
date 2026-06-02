@@ -158,8 +158,7 @@ vi.mock('@/lib/audits/load-parsed-contracts', () => ({
 }));
 
 vi.mock('@/lib/audits/completed-side-effects', () => ({
-  dispatchAuditCompletedSideEffects: (...args: unknown[]) =>
-    dispatchCompletedMock(...args),
+  dispatchAuditCompletedSideEffects: (...args: unknown[]) => dispatchCompletedMock(...args),
 }));
 
 vi.mock('@/lib/audit-trail/log', () => ({

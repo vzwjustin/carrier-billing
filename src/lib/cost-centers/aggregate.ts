@@ -40,10 +40,7 @@ export interface CostCenterRollupRow {
 export function aggregateCostCenters(
   lines: ReadonlyArray<CostCenterLineInput>,
 ): CostCenterRollupRow[] {
-  const buckets = new Map<
-    string,
-    { line_count: number; monthly_total_cents: number }
-  >();
+  const buckets = new Map<string, { line_count: number; monthly_total_cents: number }>();
 
   for (const line of lines) {
     const label =
@@ -60,19 +57,14 @@ export function aggregateCostCenters(
     }
   }
 
-  const total = Array.from(buckets.values()).reduce(
-    (acc, b) => acc + b.monthly_total_cents,
-    0,
-  );
+  const total = Array.from(buckets.values()).reduce((acc, b) => acc + b.monthly_total_cents, 0);
 
-  const rows: CostCenterRollupRow[] = Array.from(buckets.entries()).map(
-    ([cost_center, b]) => ({
-      cost_center,
-      line_count: b.line_count,
-      monthly_total_cents: b.monthly_total_cents,
-      share: total > 0 ? b.monthly_total_cents / total : 0,
-    }),
-  );
+  const rows: CostCenterRollupRow[] = Array.from(buckets.entries()).map(([cost_center, b]) => ({
+    cost_center,
+    line_count: b.line_count,
+    monthly_total_cents: b.monthly_total_cents,
+    share: total > 0 ? b.monthly_total_cents / total : 0,
+  }));
 
   rows.sort((a, b) => {
     if (b.monthly_total_cents !== a.monthly_total_cents) {

@@ -50,10 +50,7 @@ function StatusBadge({ status }: { status: string }): React.JSX.Element {
   const label = STATUS_LABELS[status] ?? status;
   return (
     <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        cls,
-      )}
+      className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', cls)}
     >
       {label}
     </span>
@@ -77,12 +74,10 @@ export default async function ContractsPage(): Promise<React.JSX.Element> {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            Contracts
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Contracts</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Upload carrier contracts, quotes, or promo sheets. Extracted terms
-            drive contract-vs-bill audit findings.
+            Upload carrier contracts, quotes, or promo sheets. Extracted terms drive
+            contract-vs-bill audit findings.
           </p>
         </div>
         <Link href="/contracts/new">
@@ -110,7 +105,7 @@ export default async function ContractsPage(): Promise<React.JSX.Element> {
       ) : (
         <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-3">File</th>
                 <th className="px-4 py-3">Carrier</th>
@@ -125,16 +120,12 @@ export default async function ContractsPage(): Promise<React.JSX.Element> {
               {rows.map((row) => (
                 <tr key={row.id} className="hover:bg-neutral-50">
                   <td className="px-4 py-3 text-neutral-900">
-                    <span className="block max-w-xs truncate">
-                      {row.original_filename}
-                    </span>
+                    <span className="block max-w-xs truncate">{row.original_filename}</span>
                   </td>
                   <td className="px-4 py-3 text-neutral-700">
-                    {row.carrier
-                      ? (CARRIER_LABELS[row.carrier] ?? row.carrier)
-                      : '—'}
+                    {row.carrier ? (CARRIER_LABELS[row.carrier] ?? row.carrier) : '—'}
                   </td>
-                  <td className="px-4 py-3 text-neutral-700 font-mono">
+                  <td className="px-4 py-3 font-mono text-neutral-700">
                     {row.ban_last4 ? `…${row.ban_last4}` : '—'}
                   </td>
                   <td className="px-4 py-3 text-neutral-700">

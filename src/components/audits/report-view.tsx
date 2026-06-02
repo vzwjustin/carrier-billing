@@ -26,15 +26,9 @@ export function ReportView({
 }: ReportViewProps): React.JSX.Element {
   return (
     <div className="space-y-6">
-      <ExtractionConfidenceBanner
-        confidence={report.audit.extraction_confidence}
-      />
+      <ExtractionConfidenceBanner confidence={report.audit.extraction_confidence} />
       <SavingsHero audit={report.audit} />
-      <ReportActions
-        auditId={report.audit.id}
-        isPublic={isPublic}
-        shareToken={shareToken}
-      />
+      <ReportActions auditId={report.audit.id} isPublic={isPublic} shareToken={shareToken} />
       <BillSummary audit={report.audit} />
       <FindingsList
         findingsBySeverity={report.findingsBySeverity}

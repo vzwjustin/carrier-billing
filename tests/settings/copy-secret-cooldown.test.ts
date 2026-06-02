@@ -40,10 +40,7 @@ const adminFromMock = vi.fn(() => ({
                 outbound_webhook_secret: storedSecret,
                 last_secret_reveal_at: lastRevealAt,
               },
-        error:
-          columns === 'outbound_webhook_secret'
-            ? existingSecretReadError
-            : null,
+        error: columns === 'outbound_webhook_secret' ? existingSecretReadError : null,
       }),
     }),
   }),
@@ -73,7 +70,10 @@ const adminFromMock = vi.fn(() => ({
       eq: (_col: string, _val: string) => builder,
       select: (_cols: string) => run(),
       then: (
-        resolve: (value: { data: Array<{ id: string }> | null; error: { message: string } | null }) => unknown,
+        resolve: (value: {
+          data: Array<{ id: string }> | null;
+          error: { message: string } | null;
+        }) => unknown,
         reject?: (reason: unknown) => unknown,
       ) => run().then(resolve, reject),
     };

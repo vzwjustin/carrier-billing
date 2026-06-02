@@ -36,8 +36,7 @@ vi.mock('@supabase/ssr', () => ({
 // response without tripping the runtime check. Redirects still use the real
 // NextResponse.redirect (which doesn't do the headers check).
 vi.mock('next/server', async () => {
-  const actual =
-    await vi.importActual<typeof import('next/server')>('next/server');
+  const actual = await vi.importActual<typeof import('next/server')>('next/server');
   return {
     ...actual,
     NextResponse: Object.assign(

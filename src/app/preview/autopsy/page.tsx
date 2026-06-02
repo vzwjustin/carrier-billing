@@ -63,8 +63,7 @@ We found $274.50 that appears potentially disputable.`,
       id: 'd1',
       category: 'device_installments_added',
       title: 'New device installments on 8 lines (+$312.00/mo)',
-      summary:
-        '8 lines started a new device payment agreement this cycle, adding $312.00/mo.',
+      summary: '8 lines started a new device payment agreement this cycle, adding $312.00/mo.',
       previous_cents: 0,
       current_cents: 31200,
       difference_cents: 31200,
@@ -119,8 +118,7 @@ We found $274.50 that appears potentially disputable.`,
       id: 'd3',
       category: 'international_charges',
       title: 'International features changed on 3 lines (+$146.00/mo)',
-      summary:
-        '3 lines had international add-ons added, removed, or repriced (+$146.00/mo).',
+      summary: '3 lines had international add-ons added, removed, or repriced (+$146.00/mo).',
       previous_cents: 0,
       current_cents: 14600,
       difference_cents: 14600,
@@ -133,9 +131,33 @@ We found $274.50 that appears potentially disputable.`,
         'If a TravelPass / international plan was added without a corresponding trip, ask the carrier to remove and back-credit.',
       evidence: {
         lines: [
-          { account_last4: '7281', mdn_last4: '4012', user_label: null, previous_cents: 0, current_cents: 7000, difference_cents: 7000, note: 'New feature "International Travel Pass"' },
-          { account_last4: '7281', mdn_last4: '4188', user_label: null, previous_cents: 0, current_cents: 5000, difference_cents: 5000, note: 'New feature "Global Choice Mexico/Canada"' },
-          { account_last4: '4419', mdn_last4: '5512', user_label: null, previous_cents: 0, current_cents: 2600, difference_cents: 2600, note: 'New feature "International Long Distance"' },
+          {
+            account_last4: '7281',
+            mdn_last4: '4012',
+            user_label: null,
+            previous_cents: 0,
+            current_cents: 7000,
+            difference_cents: 7000,
+            note: 'New feature "International Travel Pass"',
+          },
+          {
+            account_last4: '7281',
+            mdn_last4: '4188',
+            user_label: null,
+            previous_cents: 0,
+            current_cents: 5000,
+            difference_cents: 5000,
+            note: 'New feature "Global Choice Mexico/Canada"',
+          },
+          {
+            account_last4: '4419',
+            mdn_last4: '5512',
+            user_label: null,
+            previous_cents: 0,
+            current_cents: 2600,
+            difference_cents: 2600,
+            note: 'New feature "International Long Distance"',
+          },
         ],
       },
     },
@@ -143,8 +165,7 @@ We found $274.50 that appears potentially disputable.`,
       id: 'd4',
       category: 'new_lines',
       title: '2 new lines added',
-      summary:
-        '2 new wireless lines on the current bill added $98.00/mo.',
+      summary: '2 new wireless lines on the current bill added $98.00/mo.',
       previous_cents: 0,
       current_cents: 9800,
       difference_cents: 9800,
@@ -157,8 +178,24 @@ We found $274.50 that appears potentially disputable.`,
         "Confirm each new line was approved by an authorized requester. If any weren't, ask the carrier to deactivate and credit back.",
       evidence: {
         lines: [
-          { account_last4: '7281', mdn_last4: '8841', user_label: null, previous_cents: 0, current_cents: 5500, difference_cents: 5500, note: 'New line *8841 appeared' },
-          { account_last4: '7281', mdn_last4: '8842', user_label: null, previous_cents: 0, current_cents: 4300, difference_cents: 4300, note: 'New line *8842 appeared' },
+          {
+            account_last4: '7281',
+            mdn_last4: '8841',
+            user_label: null,
+            previous_cents: 0,
+            current_cents: 5500,
+            difference_cents: 5500,
+            note: 'New line *8841 appeared',
+          },
+          {
+            account_last4: '7281',
+            mdn_last4: '8842',
+            user_label: null,
+            previous_cents: 0,
+            current_cents: 4300,
+            difference_cents: 4300,
+            note: 'New line *8842 appeared',
+          },
         ],
       },
     },
@@ -166,8 +203,7 @@ We found $274.50 that appears potentially disputable.`,
       id: 'd5',
       category: 'taxes_fees_change',
       title: 'Taxes, surcharges, and admin fees changed (+$67.21)',
-      summary:
-        'Taxes, surcharges, and regulatory/admin fees rose by $67.21 this cycle.',
+      summary: 'Taxes, surcharges, and regulatory/admin fees rose by $67.21 this cycle.',
       previous_cents: 162400,
       current_cents: 169121,
       difference_cents: 6721,
@@ -180,8 +216,18 @@ We found $274.50 that appears potentially disputable.`,
         'Tax/fee shifts are usually driven by underlying charges. If the change is disproportionate to the base bill change, escalate to your carrier rep.',
       evidence: {
         accounts: [
-          { account_last4: '7281', previous_cents: 121000, current_cents: 126500, difference_cents: 5500 },
-          { account_last4: '4419', previous_cents: 41400, current_cents: 42621, difference_cents: 1221 },
+          {
+            account_last4: '7281',
+            previous_cents: 121000,
+            current_cents: 126500,
+            difference_cents: 5500,
+          },
+          {
+            account_last4: '4419',
+            previous_cents: 41400,
+            current_cents: 42621,
+            difference_cents: 1221,
+          },
         ],
       },
     },
@@ -219,8 +265,7 @@ We found $274.50 that appears potentially disputable.`,
       id: 'd7',
       category: 'unexplained',
       title: 'Unexplained change (+$42.21)',
-      summary:
-        '$42.21 of the bill change could not be categorized confidently.',
+      summary: '$42.21 of the bill change could not be categorized confidently.',
       previous_cents: 0,
       current_cents: 0,
       difference_cents: 4221,
@@ -240,11 +285,6 @@ We found $274.50 that appears potentially disputable.`,
   ];
 
   return (
-    <AutopsyClient
-      audit={audit}
-      candidates={candidates}
-      existing={existing}
-      drivers={drivers}
-    />
+    <AutopsyClient audit={audit} candidates={candidates} existing={existing} drivers={drivers} />
   );
 }

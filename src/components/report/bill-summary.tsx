@@ -21,25 +21,18 @@ export function BillSummary({ audit }: BillSummaryProps): React.JSX.Element {
 
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-600">
+      <h2 className="text-sm font-medium tracking-wider text-neutral-600 uppercase">
         Bill summary
       </h2>
       <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <SummaryItem label="Carrier" value={carrierLabel} />
         <SummaryItem
           label="Billing period"
-          value={formatIsoDatePeriod(
-            audit.billing_period_start,
-            audit.billing_period_end,
-          )}
+          value={formatIsoDatePeriod(audit.billing_period_start, audit.billing_period_end)}
         />
         <SummaryItem
           label="Total charges"
-          value={
-            audit.total_charges_cents !== null
-              ? formatCents(audit.total_charges_cents)
-              : '—'
-          }
+          value={audit.total_charges_cents !== null ? formatCents(audit.total_charges_cents) : '—'}
         />
         <SummaryItem label="Accounts" value={String(audit.account_count)} />
         <SummaryItem label="Lines" value={String(audit.line_count)} />
@@ -48,18 +41,10 @@ export function BillSummary({ audit }: BillSummaryProps): React.JSX.Element {
   );
 }
 
-function SummaryItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
+function SummaryItem({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wider text-neutral-500">
-        {label}
-      </dt>
+      <dt className="text-xs font-medium tracking-wider text-neutral-500 uppercase">{label}</dt>
       <dd className="mt-1 text-base font-medium text-neutral-900">{value}</dd>
     </div>
   );

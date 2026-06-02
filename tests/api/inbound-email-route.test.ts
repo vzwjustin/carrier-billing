@@ -118,8 +118,7 @@ function signedReq(
   const sig =
     options.signature === null
       ? null
-      : options.signature ??
-        createHmac('sha256', secret).update(rawBody).digest('hex');
+      : (options.signature ?? createHmac('sha256', secret).update(rawBody).digest('hex'));
   const headers = new Headers({ 'Content-Type': 'application/json' });
   if (sig) headers.set('X-Inbound-Signature', sig);
   if (options.contentLength !== null) {
@@ -176,53 +175,43 @@ function validBody() {
 
 describe('POST /api/inbound/email — Content-Length + size cap', () => {
   it('returns 411 when Content-Length header is missing', async () => {
-    const res = await POST(
-      signedReq(validBody(), { contentLength: null }),
-    );
+    const res = await POST(signedReq(validBody(), { contentLength: null }));
     expect(res.status).toBe(411);
   });
 
   it('returns 413 when Content-Length is non-numeric', async () => {
-    const res = await POST(
-      signedReq(validBody(), { contentLength: 'abc' }),
-    );
+    const res = await POST(signedReq(validBody(), { contentLength: 'abc' }));
     expect(res.status).toBe(413);
   });
 
   it('returns 413 when Content-Length exceeds the 40 MB request cap', async () => {
     const tooBig = String(41 * 1024 * 1024);
-    const res = await POST(
-      signedReq(validBody(), { contentLength: tooBig }),
-    );
+    const res = await POST(signedReq(validBody(), { contentLength: tooBig }));
     expect(res.status).toBe(413);
   });
 
   it('returns 413 when Content-Length is 0 or negative', async () => {
-    const res = await POST(
-      signedReq(validBody(), { contentLength: '0' }),
-    );
+    const res = await POST(signedReq(validBody(), { contentLength: '0' }));
     expect(res.status).toBe(413);
   });
 });
 
 describe('POST /api/inbound/email — signature', () => {
   it('returns 401 when X-Inbound-Signature header is missing', async () => {
-    const res = await POST(
-      signedReq(validBody(), { signature: null }),
-    );
+    const res = await POST(signedReq(validBody(), { signature: null }));
     expect(res.status).toBe(401);
   });
 
   it('returns 401 when signature is the wrong shape (not 64 hex)', async () => {
-    const res = await POST(
-      signedReq(validBody(), { signature: 'too-short' }),
-    );
+    const res = await POST(signedReq(validBody(), { signature: 'too-short' }));
     expect(res.status).toBe(401);
   });
 
   it('returns 401 when signature does not verify (wrong secret)', async () => {
     const res = await POST(
-      signedReq(validBody(), { signature: createHmac('sha256', 'WRONG').update('{}').digest('hex') }),
+      signedReq(validBody(), {
+        signature: createHmac('sha256', 'WRONG').update('{}').digest('hex'),
+      }),
     );
     expect(res.status).toBe(401);
   });
@@ -257,9 +246,7 @@ describe('POST /api/inbound/email — body validation', () => {
   });
 
   it('returns 400 when `to` is missing', async () => {
-    const res = await POST(
-      signedReq({ attachments: [] }),
-    );
+    const res = await POST(signedReq({ attachments: [] }));
     expect(res.status).toBe(400);
   });
 
@@ -281,9 +268,7 @@ describe('POST /api/inbound/email — body validation', () => {
 
 describe('POST /api/inbound/email — recipient parsing', () => {
   it('returns 200 + skipped:bad_recipient when the to: address is unparseable', async () => {
-    const res = await POST(
-      signedReq({ ...validBody(), to: 'plain-user@example.com' }),
-    );
+    const res = await POST(signedReq({ ...validBody(), to: 'plain-user@example.com' }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; skipped?: string };
     expect(body.ok).toBe(true);

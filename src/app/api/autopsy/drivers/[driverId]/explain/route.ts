@@ -47,10 +47,7 @@ export async function POST(
   }
   const bodyParsed = BodySchema.safeParse(body);
   if (!bodyParsed.success) {
-    return NextResponse.json(
-      { error: 'Body must be { explained: boolean }' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Body must be { explained: boolean }' }, { status: 400 });
   }
 
   const supabase = await createClient();
@@ -96,13 +93,17 @@ export async function POST(
     Sentry.captureException(updateErr, {
       tags: { surface: 'autopsy.driver.explain' },
     });
-    return NextResponse.json(
-      { error: 'Failed to update driver.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to update driver.' }, { status: 500 });
   }
 
-  await logTrailEvent({ userId: user.id, eventType: 'driver_marked_explained', entityType: 'driver', entityId: driverId, metadata: { comparison_id: ownership.bill_comparison_id, explained: bodyParsed.data.explained }, actorEmail: user.email ?? null });
+  await logTrailEvent({
+    userId: user.id,
+    eventType: 'driver_marked_explained',
+    entityType: 'driver',
+    entityId: driverId,
+    metadata: { comparison_id: ownership.bill_comparison_id, explained: bodyParsed.data.explained },
+    actorEmail: user.email ?? null,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -31,9 +31,7 @@ export const unusedMifiLineRule: Rule = {
         // "suspend or cancel this line" findings on freshly-deployed devices
         // burn auditor credibility.
         const severity: Severity = 'low';
-        const threshold = isZeroUse
-          ? ZERO_USE_THRESHOLD_GB
-          : LIGHT_USE_THRESHOLD_GB;
+        const threshold = isZeroUse ? ZERO_USE_THRESHOLD_GB : LIGHT_USE_THRESHOLD_GB;
 
         const title = isZeroUse
           ? `Hotspot device "${line.device}" used effectively no data`

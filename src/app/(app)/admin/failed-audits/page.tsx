@@ -33,9 +33,9 @@ function parsePage(raw: string | undefined): number {
   return Math.min(n, 10_000);
 }
 
-export default async function AdminFailedAuditsPage(
-  { searchParams }: PageProps,
-): Promise<React.JSX.Element> {
+export default async function AdminFailedAuditsPage({
+  searchParams,
+}: PageProps): Promise<React.JSX.Element> {
   await requireAdmin();
   const admin = getAdminClient();
 
@@ -65,9 +65,7 @@ export default async function AdminFailedAuditsPage(
       .from('profiles')
       .select('id, email')
       .in('id', userIds);
-    const profiles = (Array.isArray(profileData)
-      ? profileData
-      : []) as ProfileLookup[];
+    const profiles = (Array.isArray(profileData) ? profileData : []) as ProfileLookup[];
     emailById = new Map(profiles.map((p) => [p.id, p.email ?? null]));
   }
 
@@ -83,7 +81,7 @@ export default async function AdminFailedAuditsPage(
       </div>
       <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+          <thead className="bg-neutral-50 text-left text-xs tracking-wide text-neutral-500 uppercase dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
               <th className="px-4 py-2 font-medium">Created</th>
               <th className="px-4 py-2 font-medium">User</th>
@@ -104,13 +102,11 @@ export default async function AdminFailedAuditsPage(
                 <td className="px-4 py-2 whitespace-nowrap text-neutral-700 dark:text-neutral-300">
                   {maskEmail(emailById.get(r.user_id) ?? null) ?? '—'}
                 </td>
-                <td className="px-4 py-2 max-w-[20ch] truncate" title={r.original_filename ?? ''}>
+                <td className="max-w-[20ch] truncate px-4 py-2" title={r.original_filename ?? ''}>
                   {r.original_filename ?? '—'}
                 </td>
                 <td className="px-4 py-2 text-xs text-red-700 dark:text-red-400">
-                  <span className="whitespace-pre-wrap break-words">
-                    {r.failure_reason ?? '—'}
-                  </span>
+                  <span className="break-words whitespace-pre-wrap">{r.failure_reason ?? '—'}</span>
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap">
                   <RetryButton auditId={r.id} />
@@ -155,7 +151,7 @@ function Pager({
         className={
           canPrev
             ? 'rounded-md border border-neutral-300 px-3 py-1.5 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800'
-            : 'rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600 pointer-events-none'
+            : 'pointer-events-none rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600'
         }
       >
         Previous
@@ -166,7 +162,7 @@ function Pager({
         className={
           canNext
             ? 'rounded-md border border-neutral-300 px-3 py-1.5 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800'
-            : 'rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600 pointer-events-none'
+            : 'pointer-events-none rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600'
         }
       >
         Next

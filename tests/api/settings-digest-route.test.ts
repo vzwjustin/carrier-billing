@@ -13,11 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 
-const {
-  getUserMock,
-  updateMock,
-  consumeRateLimitMock,
-} = vi.hoisted(() => ({
+const { getUserMock, updateMock, consumeRateLimitMock } = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   updateMock: vi.fn(),
   consumeRateLimitMock: vi.fn(),

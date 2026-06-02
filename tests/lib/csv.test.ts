@@ -61,10 +61,13 @@ describe('csv helpers', () => {
 
   describe('toCsv', () => {
     it('emits header + rows joined by CRLF', () => {
-      const out = toCsv(['name', 'qty'], [
-        ['apple', 3],
-        ['pear', 1],
-      ]);
+      const out = toCsv(
+        ['name', 'qty'],
+        [
+          ['apple', 3],
+          ['pear', 1],
+        ],
+      );
       expect(out).toBe('name,qty\r\napple,3\r\npear,1');
     });
 

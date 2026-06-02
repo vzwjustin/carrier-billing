@@ -48,11 +48,7 @@ let nextMarkInFlightError: { message: string } | null = null;
 
 function applyPatch(row: BillingEventRow, patch: Record<string, unknown>): void {
   if ('processed_status' in patch) {
-    row.processed_status = patch['processed_status'] as
-      | 'success'
-      | 'failed'
-      | 'in_flight'
-      | null;
+    row.processed_status = patch['processed_status'] as 'success' | 'failed' | 'in_flight' | null;
   }
   if ('processed_at' in patch) {
     row.processed_at = patch['processed_at'] as string | null;
@@ -128,9 +124,7 @@ const fromMock = vi.fn(() => ({
         nextMarkSuccessZeroRows = false;
         return { matched: [], error: null };
       }
-      const matched = billingEvents.filter((r) =>
-        filters.every((f) => f(r)),
-      );
+      const matched = billingEvents.filter((r) => filters.every((f) => f(r)));
       for (const row of matched) applyPatch(row, patch);
       return { matched, error: null };
     };
@@ -163,12 +157,10 @@ const fromMock = vi.fn(() => ({
           if (!m) return () => false;
           const [, col, op, val] = m;
           if (op === 'is' && val === 'null') {
-            return (r: BillingEventRow) =>
-              (r as Record<string, unknown>)[col!] === null;
+            return (r: BillingEventRow) => (r as Record<string, unknown>)[col!] === null;
           }
           if (op === 'eq') {
-            return (r: BillingEventRow) =>
-              String((r as Record<string, unknown>)[col!]) === val;
+            return (r: BillingEventRow) => String((r as Record<string, unknown>)[col!]) === val;
           }
           return () => false;
         });
@@ -196,13 +188,14 @@ vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({ from: fromMock }),
 }));
 
-const handleStripeEventMock = vi.fn<
-  (
-    event: Stripe.Event,
-    supabase: unknown,
-    ctx?: { previousStatus: 'success' | 'failed' | null },
-  ) => Promise<void>
->();
+const handleStripeEventMock =
+  vi.fn<
+    (
+      event: Stripe.Event,
+      supabase: unknown,
+      ctx?: { previousStatus: 'success' | 'failed' | null },
+    ) => Promise<void>
+  >();
 
 vi.mock('@/lib/stripe/handlers', () => ({
   handleStripeEvent: (
@@ -279,9 +272,7 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
   it('handler failure ⇒ 5xx, processed_status=failed, last_error populated (Stripe will retry)', async () => {
     const event = makeCheckoutEvent('evt_h8_fail');
     constructEventMock.mockReturnValue(event);
-    handleStripeEventMock.mockRejectedValueOnce(
-      new Error('downstream RPC blew up'),
-    );
+    handleStripeEventMock.mockRejectedValueOnce(new Error('downstream RPC blew up'));
 
     const res = await POST(makeRequest('{}'));
     expect(res.status).toBe(500);
@@ -306,15 +297,11 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
   });
 
   it('handler failure: last_error is truncated and PII-scrubbed', async () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const event = makeCheckoutEvent('evt_h8_pii');
     constructEventMock.mockReturnValue(event);
     handleStripeEventMock.mockRejectedValueOnce(
-      new Error(
-        'lookup failed for user@example.com (acct 1234567890123): ' + 'x'.repeat(800),
-      ),
+      new Error('lookup failed for user@example.com (acct 1234567890123): ' + 'x'.repeat(800)),
     );
 
     try {
@@ -382,9 +369,7 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     expect(handleStripeEventMock).not.toHaveBeenCalled();
 
     // The row should remain in_flight — the other worker still owns it.
-    const row = billingEvents.find(
-      (r) => r.stripe_event_id === 'evt_dup_in_flight',
-    );
+    const row = billingEvents.find((r) => r.stripe_event_id === 'evt_dup_in_flight');
     expect(row?.processed_status).toBe('in_flight');
   });
 
@@ -435,9 +420,7 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     // to 'in_flight'. The failing markSuccess never flipped it to 'success', so
     // the row sits in 'in_flight' until Stripe's retry (or the cron's stuck-claim
     // recovery query at REPLAY_COOLDOWN_SECONDS+) picks it back up.
-    const row = billingEvents.find(
-      (r) => r.stripe_event_id === 'evt_marksuccess_fail',
-    );
+    const row = billingEvents.find((r) => r.stripe_event_id === 'evt_marksuccess_fail');
     expect(row?.processed_status).toBe('in_flight');
   });
 
@@ -450,9 +433,7 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     expect(res.status).toBe(500);
 
     expect(handleStripeEventMock).toHaveBeenCalledTimes(1);
-    const row = billingEvents.find(
-      (r) => r.stripe_event_id === 'evt_marksuccess_zero',
-    );
+    const row = billingEvents.find((r) => r.stripe_event_id === 'evt_marksuccess_zero');
     expect(row?.processed_status).toBe('in_flight');
   });
 

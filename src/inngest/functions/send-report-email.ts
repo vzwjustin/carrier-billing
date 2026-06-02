@@ -3,10 +3,7 @@ import * as React from 'react';
 import { inngest } from '../client';
 import { AuditCompletedDataSchema, parseEventData } from '../events';
 import { env } from '@/env';
-import {
-  AuditCompletedEmail,
-  type AuditCompletedEmailProps,
-} from '@/lib/email/audit-completed';
+import { AuditCompletedEmail, type AuditCompletedEmailProps } from '@/lib/email/audit-completed';
 import { renderAuditCompletedText } from '@/lib/email/audit-completed-text';
 import { getResend } from '@/lib/resend/client';
 import { FROM_ADDRESS } from '@/lib/resend/from';
@@ -73,10 +70,7 @@ function carrierLabelFor(carrier: string | null | undefined): string {
   return CARRIER_LABELS[carrier] ?? CARRIER_LABELS.unknown ?? 'wireless';
 }
 
-function billingPeriodLabel(
-  start: string | null,
-  end: string | null,
-): string {
+function billingPeriodLabel(start: string | null, end: string | null): string {
   if (start && end) return `${start} – ${end}`;
   if (start) return start;
   if (end) return end;
@@ -124,8 +118,7 @@ export const sendReportEmailFn = inngest.createFunction(
       }
 
       // Fetch the owning user's email via the admin auth API.
-      const { data: userResp, error: userErr } =
-        await supabase.auth.admin.getUserById(row.user_id);
+      const { data: userResp, error: userErr } = await supabase.auth.admin.getUserById(row.user_id);
       if (userErr) {
         throw new Error(`auth.admin.getUserById failed: ${userErr.message}`);
       }
@@ -147,10 +140,7 @@ export const sendReportEmailFn = inngest.createFunction(
         email,
         auditId: row.id,
         carrierLabel: carrierLabelFor(row.carrier),
-        billingPeriod: billingPeriodLabel(
-          row.billing_period_start,
-          row.billing_period_end,
-        ),
+        billingPeriod: billingPeriodLabel(row.billing_period_start, row.billing_period_end),
         monthlySavingsCents: row.estimated_monthly_savings_cents ?? 0,
         annualSavingsCents: row.estimated_annual_savings_cents ?? 0,
         findingCount: row.finding_count ?? 0,
@@ -207,9 +197,7 @@ export const sendReportEmailFn = inngest.createFunction(
         throw new Error(`resend send failed: ${code}`);
       }
       const messageId =
-        response.data && typeof response.data.id === 'string'
-          ? response.data.id
-          : null;
+        response.data && typeof response.data.id === 'string' ? response.data.id : null;
       return { messageId };
     })) as { messageId: string | null };
 

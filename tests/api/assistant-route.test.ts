@@ -22,11 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 
-const {
-  getUserMock,
-  consumeRateLimitMock,
-  anthropicCreateMock,
-} = vi.hoisted(() => ({
+const { getUserMock, consumeRateLimitMock, anthropicCreateMock } = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   consumeRateLimitMock: vi.fn(),
   anthropicCreateMock: vi.fn(),
@@ -106,16 +102,12 @@ describe('POST /api/assistant — body validation', () => {
 
   it('returns 400 when messages array exceeds 20 turns', async () => {
     const turn = { role: 'user', content: 'hi' };
-    const res = await POST(
-      makeReq({ messages: Array(21).fill(turn) }),
-    );
+    const res = await POST(makeReq({ messages: Array(21).fill(turn) }));
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when role is not user|assistant', async () => {
-    const res = await POST(
-      makeReq({ messages: [{ role: 'system', content: 'hi' }] }),
-    );
+    const res = await POST(makeReq({ messages: [{ role: 'system', content: 'hi' }] }));
     expect(res.status).toBe(400);
   });
 
@@ -129,9 +121,7 @@ describe('POST /api/assistant — body validation', () => {
   });
 
   it('returns 400 when content is an empty string', async () => {
-    const res = await POST(
-      makeReq({ messages: [{ role: 'user', content: '' }] }),
-    );
+    const res = await POST(makeReq({ messages: [{ role: 'user', content: '' }] }));
     expect(res.status).toBe(400);
   });
 });
@@ -139,9 +129,7 @@ describe('POST /api/assistant — body validation', () => {
 describe('POST /api/assistant — auth + rate limit', () => {
   it('returns 401 when no session (no public surface)', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
-    const res = await POST(
-      makeReq({ messages: [{ role: 'user', content: 'hi' }] }),
-    );
+    const res = await POST(makeReq({ messages: [{ role: 'user', content: 'hi' }] }));
     expect(res.status).toBe(401);
     expect(anthropicCreateMock).not.toHaveBeenCalled();
   });
@@ -163,9 +151,7 @@ describe('POST /api/assistant — auth + rate limit', () => {
       ok: false,
       resetAt: new Date().toISOString(),
     });
-    const res = await POST(
-      makeReq({ messages: [{ role: 'user', content: 'hi' }] }),
-    );
+    const res = await POST(makeReq({ messages: [{ role: 'user', content: 'hi' }] }));
     expect(res.status).toBe(429);
     expect(anthropicCreateMock).not.toHaveBeenCalled();
   });
@@ -173,9 +159,7 @@ describe('POST /api/assistant — auth + rate limit', () => {
 
 describe('POST /api/assistant — happy path', () => {
   it('opens an SSE stream (text/event-stream) when all preconditions pass', async () => {
-    const res = await POST(
-      makeReq({ messages: [{ role: 'user', content: 'hello' }] }),
-    );
+    const res = await POST(makeReq({ messages: [{ role: 'user', content: 'hello' }] }));
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/event-stream');
     // No buffering on the proxy edge.

@@ -130,9 +130,7 @@ describe('postPinnedHttps — TLS pinning wiring', () => {
     });
 
     expect(capturedOptions!.port).toBe(8443);
-    expect((capturedOptions!.headers as Record<string, string>).Host).toBe(
-      'hook.example.com',
-    );
+    expect((capturedOptions!.headers as Record<string, string>).Host).toBe('hook.example.com');
     expect(capturedReq!.endBody).toBe('{"hello":"world"}');
   });
 });

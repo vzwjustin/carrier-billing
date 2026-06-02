@@ -175,10 +175,7 @@ export function generateUnsubToken(): string {
  * concurrent caller can't clobber a freshly-set value. Returns the persisted
  * token in all cases.
  */
-export async function ensureUnsubToken(
-  admin: SupabaseClient,
-  userId: string,
-): Promise<string> {
+export async function ensureUnsubToken(admin: SupabaseClient, userId: string): Promise<string> {
   const { data, error } = await admin
     .from('profiles')
     .select('digest_unsub_token')
@@ -264,10 +261,7 @@ export async function aggregateDigestContext(
   const audits = (auditsData ?? []) as AuditAggregateRow[];
   const auditIds = audits.map((a) => a.id);
 
-  const totalSpendCents = audits.reduce(
-    (acc, a) => acc + (a.total_charges_cents ?? 0),
-    0,
-  );
+  const totalSpendCents = audits.reduce((acc, a) => acc + (a.total_charges_cents ?? 0), 0);
 
   // ── latest autopsy across those audits ──────────────────────────────────
   let autopsy: DigestAutopsy | null = null;
@@ -304,9 +298,7 @@ export async function aggregateDigestContext(
   if (auditIds.length > 0) {
     const { data: findingsData, error: findingsErr } = await admin
       .from('findings')
-      .select(
-        'id, severity, status, rule_id, estimated_monthly_savings_cents, affected_line_ids',
-      )
+      .select('id, severity, status, rule_id, estimated_monthly_savings_cents, affected_line_ids')
       .in('audit_id', auditIds)
       .in('status', OPEN_FINDING_STATUSES as unknown as string[]);
     if (findingsErr) {
@@ -332,9 +324,7 @@ export async function aggregateDigestContext(
       const ids = Array.isArray(f.affected_line_ids) ? f.affected_line_ids : [];
       if (ids.length === 0) continue;
       // Split the finding's monthly savings evenly across its affected lines.
-      const perLineCents = Math.round(
-        (f.estimated_monthly_savings_cents ?? 0) / ids.length,
-      );
+      const perLineCents = Math.round((f.estimated_monthly_savings_cents ?? 0) / ids.length);
       for (const lineId of ids) {
         const prior = lineSavingsCents.get(lineId);
         if (!prior || perLineCents > prior.cents) {
@@ -365,10 +355,7 @@ export async function aggregateDigestContext(
             estimatedMonthlySavingsCents: cents,
           } satisfies DigestTopLine;
         })
-        .sort(
-          (a, b) =>
-            b.estimatedMonthlySavingsCents - a.estimatedMonthlySavingsCents,
-        )
+        .sort((a, b) => b.estimatedMonthlySavingsCents - a.estimatedMonthlySavingsCents)
         .slice(0, 3);
     }
   }
@@ -485,9 +472,7 @@ export const sendMonthlyDigestFn = inngest.createFunction(
           }
 
           const messageId =
-            response.data && typeof response.data.id === 'string'
-              ? response.data.id
-              : null;
+            response.data && typeof response.data.id === 'string' ? response.data.id : null;
 
           // Stamp last-sent BEFORE returning so a retry sees the latest
           // timestamp and short-circuits at the gate above.
@@ -511,9 +496,7 @@ export const sendMonthlyDigestFn = inngest.createFunction(
           }
 
           return { status: 'sent' as const, messageId };
-        })) as
-          | { status: 'sent'; messageId: string | null }
-          | { status: 'skipped'; reason: string };
+        })) as { status: 'sent'; messageId: string | null } | { status: 'skipped'; reason: string };
 
         if (result.status === 'sent') {
           sent += 1;

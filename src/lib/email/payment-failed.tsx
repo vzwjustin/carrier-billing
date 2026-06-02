@@ -37,9 +37,7 @@ function invoiceTail(invoiceId: string | null): string | null {
   return invoiceId.slice(-6);
 }
 
-export function PaymentFailedEmail(
-  props: PaymentFailedEmailProps,
-): React.ReactElement {
+export function PaymentFailedEmail(props: PaymentFailedEmailProps): React.ReactElement {
   const { recoveryUrl, amountDueCents, invoiceId } = props;
   const tail = invoiceTail(invoiceId);
 
@@ -114,14 +112,12 @@ export function PaymentFailedEmail(
         <h1 style={headingStyle}>Your CarrierAudit payment failed</h1>
 
         <div style={calloutStyle}>
-          We weren&apos;t able to charge your card. Your subscription is now
-          past due.
+          We weren&apos;t able to charge your card. Your subscription is now past due.
         </div>
 
         <p style={bodyStyle}>
-          To keep running audits, please update your payment method. Once a
-          successful charge is processed your subscription will reactivate
-          automatically.
+          To keep running audits, please update your payment method. Once a successful charge is
+          processed your subscription will reactivate automatically.
         </p>
 
         <ul style={detailListStyle}>

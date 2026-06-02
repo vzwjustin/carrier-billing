@@ -167,9 +167,7 @@ describe('POST /api/audits', () => {
   });
 
   it('scrubs provider error details before logging signed URL failures', async () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     createSignedUploadUrlMock.mockResolvedValueOnce({
       data: null,
       error: {

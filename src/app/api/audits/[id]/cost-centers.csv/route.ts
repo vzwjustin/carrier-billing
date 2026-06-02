@@ -13,15 +13,9 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
-import {
-  aggregateCostCenters,
-  type CostCenterLineInput,
-} from '@/lib/cost-centers/aggregate';
+import { aggregateCostCenters, type CostCenterLineInput } from '@/lib/cost-centers/aggregate';
 import { toCsv } from '@/lib/csv';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -31,8 +25,7 @@ export const dynamic = 'force-dynamic';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
-const AUDIT_COLUMNS =
-  'id,user_id,status,share_token,share_token_expires_at';
+const AUDIT_COLUMNS = 'id,user_id,status,share_token,share_token_expires_at';
 
 interface AuditAuthRow {
   id: string;
@@ -82,8 +75,7 @@ export async function GET(
 
   const url = new URL(request.url);
   const rawToken = url.searchParams.get('token');
-  const token =
-    rawToken && /^[A-Za-z0-9_-]{32}$/.test(rawToken) ? rawToken : null;
+  const token = rawToken && /^[A-Za-z0-9_-]{32}$/.test(rawToken) ? rawToken : null;
 
   if (rawToken && !token) {
     return new NextResponse('Not found.', { status: 404 });
@@ -136,10 +128,7 @@ export async function GET(
       .eq('id', auditId)
       .maybeSingle<AuditAuthRow>();
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!data || data.user_id !== user.id) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -148,10 +137,7 @@ export async function GET(
   }
 
   if (audit.status !== 'completed') {
-    return NextResponse.json(
-      { error: 'audit_not_completed' },
-      { status: 409 },
-    );
+    return NextResponse.json({ error: 'audit_not_completed' }, { status: 409 });
   }
 
   const admin = getAdminClient();
@@ -165,15 +151,10 @@ export async function GET(
       tags: { surface: 'cost-centers.csv' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Failed to load bill lines.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load bill lines.' }, { status: 500 });
   }
 
-  const rollup = aggregateCostCenters(
-    (lines ?? []) as CostCenterLineInput[],
-  );
+  const rollup = aggregateCostCenters((lines ?? []) as CostCenterLineInput[]);
 
   const body = rollup.map((row) => [
     row.cost_center,

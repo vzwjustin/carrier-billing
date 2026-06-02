@@ -18,9 +18,8 @@ export default async function CarrierBillsPage(): Promise<React.JSX.Element> {
           Bill editor
         </h1>
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Manually build or adjust a carrier bill, model an optimized plan
-          line-by-line, and compare current vs. optimized. Export to CSV when
-          you&apos;re done.
+          Manually build or adjust a carrier bill, model an optimized plan line-by-line, and compare
+          current vs. optimized. Export to CSV when you&apos;re done.
         </p>
       </header>
       <BillEditor initial={bills} />

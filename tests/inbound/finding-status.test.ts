@@ -24,8 +24,7 @@ const {
 } = vi.hoisted(() => ({
   profileSelectMock: vi.fn<() => Promise<DbResp<ProfileRow>>>(),
   findingSelectMock: vi.fn<() => Promise<DbResp<FindingRow>>>(),
-  findingUpdateMock:
-    vi.fn<() => Promise<{ error: null | { message: string } }>>(),
+  findingUpdateMock: vi.fn<() => Promise<{ error: null | { message: string } }>>(),
   inngestSendMock: vi.fn(async (_event: unknown) => undefined),
   consumeRateLimitMock: vi.fn(),
 }));
@@ -107,8 +106,7 @@ function makeReq(opts: {
   contentLength?: string;
   forwardedFor?: string;
 }): Request {
-  const rawBody =
-    opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body));
+  const rawBody = opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body));
   const headers = new Headers({ 'Content-Type': 'application/json' });
   if (opts.token !== null && opts.token !== undefined) {
     headers.set('X-CarrierAudit-Token', opts.token);
@@ -159,13 +157,11 @@ beforeEach(() => {
 
 describe('POST /api/inbound/finding-status hardening', () => {
   it('rate-limits a shape-valid unknown token before profile lookup', async () => {
-    consumeRateLimitMock
-      .mockResolvedValueOnce(allowRateLimit())
-      .mockResolvedValueOnce({
-        ok: false,
-        remaining: 0,
-        resetAt: '2026-06-02T12:00:00.000Z',
-      });
+    consumeRateLimitMock.mockResolvedValueOnce(allowRateLimit()).mockResolvedValueOnce({
+      ok: false,
+      remaining: 0,
+      resetAt: '2026-06-02T12:00:00.000Z',
+    });
 
     const res = await POST(
       makeReq({

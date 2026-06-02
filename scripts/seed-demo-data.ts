@@ -452,11 +452,7 @@ function buildMarchAccount(plan: AccountPlan): PeriodAccountBuild {
     // Demo "1 device with completed DPP (remaining=0)" — attach a completed
     // DPP on a smartphone (different per account, but only ONE TOTAL across
     // all accounts). We put it on HQ Operations index 20.
-    if (
-      plan.last4 === '7281' &&
-      seed.kind === 'smartphone' &&
-      seed.index === 20
-    ) {
+    if (plan.last4 === '7281' && seed.kind === 'smartphone' && seed.index === 20) {
       existingDpp = {
         device: seed.device,
         monthly_cents: 3_333,
@@ -468,8 +464,7 @@ function buildMarchAccount(plan: AccountPlan): PeriodAccountBuild {
     // Multiple smartphones get carrier insurance on corporate-owned devices.
     // "Insurance on corporate-owned devices" is exactly the orphan-insurance
     // rule's territory.
-    const insurance =
-      seed.kind === 'smartphone' && seed.index >= 21 && seed.index < 25;
+    const insurance = seed.kind === 'smartphone' && seed.index >= 21 && seed.index < 25;
 
     // Tablets: two of them get zero usage to trigger the tablet rule.
     let override: Partial<ExtractedLine> | undefined;
@@ -507,9 +502,7 @@ function buildAprilAccount(plan: AccountPlan): PeriodAccountBuild {
 
     // 1) Promo drop (recurring credit goes away).
     if (plan.promoDropIndexes.includes(idx)) {
-      cloned.credits = cloned.credits.filter(
-        (c) => c.name !== 'Smartphone Promo Credit',
-      );
+      cloned.credits = cloned.credits.filter((c) => c.name !== 'Smartphone Promo Credit');
     }
 
     // 2) New DPP installment in April.
@@ -661,12 +654,9 @@ function buildAdminClient(): SupabaseClient {
 
 async function ensureDemoUser(admin: SupabaseClient): Promise<void> {
   // 1) Is there already an auth user at the demo UUID?
-  const { data: byId, error: byIdErr } =
-    await admin.auth.admin.getUserById(DEMO_USER_ID);
+  const { data: byId, error: byIdErr } = await admin.auth.admin.getUserById(DEMO_USER_ID);
   if (byIdErr && byIdErr.status !== 404) {
-    throw new Error(
-      `auth.admin.getUserById failed: ${byIdErr.message} (status ${byIdErr.status})`,
-    );
+    throw new Error(`auth.admin.getUserById failed: ${byIdErr.message} (status ${byIdErr.status})`);
   }
 
   // 2) If absent at the UUID, is there a stale user at the demo email under a
@@ -676,8 +666,10 @@ async function ensureDemoUser(admin: SupabaseClient): Promise<void> {
     let page = 1;
     let foundStale = false;
     while (!foundStale && page <= 5) {
-      const { data: list, error: listErr } =
-        await admin.auth.admin.listUsers({ page, perPage: 200 });
+      const { data: list, error: listErr } = await admin.auth.admin.listUsers({
+        page,
+        perPage: 200,
+      });
       if (listErr) {
         throw new Error(`auth.admin.listUsers failed: ${listErr.message}`);
       }
@@ -685,9 +677,7 @@ async function ensureDemoUser(admin: SupabaseClient): Promise<void> {
         if (u.email === DEMO_USER_EMAIL && u.id !== DEMO_USER_ID) {
           const { error: delErr } = await admin.auth.admin.deleteUser(u.id);
           if (delErr) {
-            throw new Error(
-              `auth.admin.deleteUser failed for stale demo user: ${delErr.message}`,
-            );
+            throw new Error(`auth.admin.deleteUser failed for stale demo user: ${delErr.message}`);
           }
           foundStale = true;
           break;
@@ -710,8 +700,7 @@ async function ensureDemoUser(admin: SupabaseClient): Promise<void> {
       user_metadata: { full_name: DEMO_USER_FULL_NAME },
       id: DEMO_USER_ID,
     };
-    const { data: created, error: createErr } =
-      await admin.auth.admin.createUser(attrs);
+    const { data: created, error: createErr } = await admin.auth.admin.createUser(attrs);
     if (createErr) {
       throw new Error(
         `auth.admin.createUser failed: ${createErr.message} (status ${createErr.status})`,
@@ -768,18 +757,11 @@ async function deletePriorDemoData(admin: SupabaseClient): Promise<void> {
     const { error: cmpErr } = await admin
       .from('bill_comparisons')
       .delete()
-      .or(
-        ids
-          .map((id) => `previous_audit_id.eq.${id},current_audit_id.eq.${id}`)
-          .join(','),
-      );
+      .or(ids.map((id) => `previous_audit_id.eq.${id},current_audit_id.eq.${id}`).join(','));
     if (cmpErr) {
       throw new Error(`delete bill_comparisons failed: ${cmpErr.message}`);
     }
-    const { error: delErr } = await admin
-      .from('audits')
-      .delete()
-      .in('id', ids);
+    const { error: delErr } = await admin.from('audits').delete().in('id', ids);
     if (delErr) {
       throw new Error(`delete audits failed: ${delErr.message}`);
     }
@@ -838,9 +820,7 @@ async function insertAuditAndBill(
     taxes_fees_cents: a.taxes_fees_cents,
     raw: a as unknown as Record<string, unknown>,
   }));
-  const { error: accErr } = await admin
-    .from('bill_accounts')
-    .insert(accountInsertRows);
+  const { error: accErr } = await admin.from('bill_accounts').insert(accountInsertRows);
   if (accErr) {
     throw new Error(`insert bill_accounts failed: ${accErr.message}`);
   }
@@ -1001,8 +981,7 @@ async function insertAuditAndBill(
   }
   if (dppRows.length > 0) {
     const { error } = await admin.from('bill_dpp_installments').insert(dppRows);
-    if (error)
-      throw new Error(`insert bill_dpp_installments failed: ${error.message}`);
+    if (error) throw new Error(`insert bill_dpp_installments failed: ${error.message}`);
   }
 
   return { auditId, accountIds, lineIds, bill };
@@ -1014,10 +993,7 @@ async function insertAuditAndBill(
 // Inngest worker module into this script.
 // ---------------------------------------------------------------------------
 
-function translateFindingLineIndexes(
-  findings: Finding[],
-  bill: ExtractedBill,
-): Finding[] {
+function translateFindingLineIndexes(findings: Finding[], bill: ExtractedBill): Finding[] {
   const lineCounts = bill.accounts.map((a) => a.lines.length);
   const offsets: number[] = [];
   let running = 0;
@@ -1091,10 +1067,7 @@ async function updateAuditSavingsRollup(
   auditId: string,
   findings: Finding[],
 ): Promise<void> {
-  const monthly = findings.reduce(
-    (s, f) => s + f.estimated_monthly_savings_cents,
-    0,
-  );
+  const monthly = findings.reduce((s, f) => s + f.estimated_monthly_savings_cents, 0);
   const high = findings.filter((f) => f.severity === 'high').length;
   const { error } = await admin
     .from('audits')
@@ -1169,23 +1142,13 @@ async function main(): Promise<void> {
     carrier: aprilBill.carrier,
   });
   if (marchErrors.length > 0 || aprilErrors.length > 0) {
-    console.warn(
-      `[seed] rule errors: march=${marchErrors.length}, april=${aprilErrors.length}`,
-    );
+    console.warn(`[seed] rule errors: march=${marchErrors.length}, april=${aprilErrors.length}`);
   }
   const marchFindings = translateFindingLineIndexes(marchFindingsRaw, marchBill);
   const aprilFindings = translateFindingLineIndexes(aprilFindingsRaw, aprilBill);
 
-  const marchInserted = await persistFindingsForAudit(
-    admin,
-    marchPersisted,
-    marchFindings,
-  );
-  const aprilInserted = await persistFindingsForAudit(
-    admin,
-    aprilPersisted,
-    aprilFindings,
-  );
+  const marchInserted = await persistFindingsForAudit(admin, marchPersisted, marchFindings);
+  const aprilInserted = await persistFindingsForAudit(admin, aprilPersisted, aprilFindings);
   await updateAuditSavingsRollup(admin, marchPersisted.auditId, marchFindings);
   await updateAuditSavingsRollup(admin, aprilPersisted.auditId, aprilFindings);
 
@@ -1198,10 +1161,7 @@ async function main(): Promise<void> {
     result: autopsy,
   });
 
-  const totalLines = marchBill.accounts.reduce(
-    (s, a) => s + a.lines.length,
-    0,
-  );
+  const totalLines = marchBill.accounts.reduce((s, a) => s + a.lines.length, 0);
   const totalFindings = marchInserted + aprilInserted;
   const deltaDollars = (autopsy.net_change_cents / 100).toFixed(2);
   console.log(

@@ -12,11 +12,7 @@ export interface RoleToggleProps {
   self: boolean;
 }
 
-export function RoleToggle({
-  userId,
-  role,
-  self,
-}: RoleToggleProps): React.JSX.Element {
+export function RoleToggle({ userId, role, self }: RoleToggleProps): React.JSX.Element {
   const [current, setCurrent] = useState<'user' | 'admin'>(role);
   const [pending, startTransition] = useTransition();
 
@@ -51,11 +47,7 @@ export function RoleToggle({
         size="sm"
         disabled={pending || (self && current === 'admin')}
         onClick={onToggle}
-        title={
-          self && current === 'admin'
-            ? 'You cannot remove your own admin role'
-            : undefined
-        }
+        title={self && current === 'admin' ? 'You cannot remove your own admin role' : undefined}
       >
         {pending ? '…' : `Make ${next}`}
       </Button>

@@ -24,9 +24,7 @@ vi.mock('@/lib/security/ssrf-guard', () => ({
   SsrfBlockedError: class extends Error {},
 }));
 
-const postPinnedHttpsMock = vi.hoisted(() =>
-  vi.fn(async (_req: unknown) => ({ status: 200 })),
-);
+const postPinnedHttpsMock = vi.hoisted(() => vi.fn(async (_req: unknown) => ({ status: 200 })));
 vi.mock('@/lib/security/pinned-https', () => ({
   postPinnedHttps: postPinnedHttpsMock,
 }));
@@ -137,12 +135,8 @@ describe('dispatchOutboundWebhookFn — registration', () => {
   });
 
   it('appears in the exported functions registry', () => {
-    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) =>
-      fn.id(),
-    );
-    expect(ids.some((id) => id.includes('dispatch-outbound-webhook'))).toBe(
-      true,
-    );
+    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) => fn.id());
+    expect(ids.some((id) => id.includes('dispatch-outbound-webhook'))).toBe(true);
   });
 });
 
@@ -165,16 +159,12 @@ describe('postOutboundWebhook — v2 HMAC signature', () => {
     const timestamp = match![1]!;
     const v1 = match![2]!;
 
-    const expected = createHmac('sha256', SECRET)
-      .update(`${timestamp}.${body}`)
-      .digest('hex');
+    const expected = createHmac('sha256', SECRET).update(`${timestamp}.${body}`).digest('hex');
     expect(v1).toBe(expected);
 
     expect(headers['X-CarrierAudit-Timestamp']).toBe(timestamp);
     expect(headers['X-CarrierAudit-Event']).toBe('audit.completed');
-    expect(headers['X-CarrierAudit-Audit-Id']).toBe(
-      '22222222-2222-4222-8222-222222222222',
-    );
+    expect(headers['X-CarrierAudit-Audit-Id']).toBe('22222222-2222-4222-8222-222222222222');
   });
 
   it('uses a different signature when secret rotates', async () => {

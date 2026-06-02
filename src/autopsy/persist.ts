@@ -97,9 +97,7 @@ export async function persistComparison(
       recommended_action: d.recommended_action,
       evidence: d.evidence,
     }));
-    const { error: driversErr } = await admin
-      .from('bill_change_drivers')
-      .insert(driverRows);
+    const { error: driversErr } = await admin.from('bill_change_drivers').insert(driverRows);
     if (driversErr) {
       // Roll back the parent comparison so we don't leave an orphan with
       // no drivers.

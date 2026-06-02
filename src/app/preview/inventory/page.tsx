@@ -26,16 +26,126 @@ interface InventoryFixtureRow {
 }
 
 const FIXTURE_ROWS: InventoryFixtureRow[] = [
-  { account_last4: '7281', mdn_last4: '2100', device: 'iPhone 16 Pro', plan_name: 'Business Unlimited Plus 2.0', device_type: 'phone', audits_count: 3, last_seen: 'Apr 30, 2026', plan_base_cents: 6500, is_suspended: false, line_key: '7281/2100' },
-  { account_last4: '7281', mdn_last4: '2101', device: 'iPhone 15', plan_name: 'Business Unlimited Pro 2.0', device_type: 'phone', audits_count: 3, last_seen: 'Apr 30, 2026', plan_base_cents: 5500, is_suspended: false, line_key: '7281/2101' },
-  { account_last4: '7281', mdn_last4: '2102', device: 'Samsung Galaxy S25', plan_name: 'Business Unlimited Plus 2.0', device_type: 'phone', audits_count: 3, last_seen: 'Apr 30, 2026', plan_base_cents: 6500, is_suspended: false, line_key: '7281/2102' },
-  { account_last4: '7281', mdn_last4: '4012', device: 'iPad Pro', plan_name: 'Business Unlimited Tablet', device_type: 'tablet', audits_count: 2, last_seen: 'Apr 30, 2026', plan_base_cents: 2000, is_suspended: false, line_key: '7281/4012' },
-  { account_last4: '7281', mdn_last4: '4188', device: 'iPad Air', plan_name: 'Business Unlimited Tablet', device_type: 'tablet', audits_count: 2, last_seen: 'Apr 30, 2026', plan_base_cents: 2000, is_suspended: false, line_key: '7281/4188' },
-  { account_last4: '7281', mdn_last4: '5012', device: 'Apple Watch Series 10', plan_name: 'Business Smartwatch Plan', device_type: 'watch', audits_count: 2, last_seen: 'Apr 30, 2026', plan_base_cents: 1000, is_suspended: false, line_key: '7281/5012' },
-  { account_last4: '7281', mdn_last4: '6677', device: 'iPhone 14', plan_name: 'Business Unlimited Plus 2.0', device_type: 'phone', audits_count: 3, last_seen: 'Apr 30, 2026', plan_base_cents: 4500, is_suspended: true, line_key: '7281/6677' },
-  { account_last4: '4419', mdn_last4: '5512', device: 'Pixel 8', plan_name: 'Business Unlimited Performance', device_type: 'phone', audits_count: 3, last_seen: 'Apr 30, 2026', plan_base_cents: 5200, is_suspended: false, line_key: '4419/5512' },
-  { account_last4: '4419', mdn_last4: '5513', device: 'Verizon Jetpack MiFi 8800L', plan_name: 'Business Hotspot 50GB', device_type: 'hotspot', audits_count: 2, last_seen: 'Apr 30, 2026', plan_base_cents: 4000, is_suspended: false, line_key: '4419/5513' },
-  { account_last4: '9930', mdn_last4: '7720', device: 'Cradlepoint IBR900', plan_name: 'Fleet Connect Pro', device_type: 'router', audits_count: 2, last_seen: 'Apr 30, 2026', plan_base_cents: 8500, is_suspended: false, line_key: '9930/7720' },
+  {
+    account_last4: '7281',
+    mdn_last4: '2100',
+    device: 'iPhone 16 Pro',
+    plan_name: 'Business Unlimited Plus 2.0',
+    device_type: 'phone',
+    audits_count: 3,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 6500,
+    is_suspended: false,
+    line_key: '7281/2100',
+  },
+  {
+    account_last4: '7281',
+    mdn_last4: '2101',
+    device: 'iPhone 15',
+    plan_name: 'Business Unlimited Pro 2.0',
+    device_type: 'phone',
+    audits_count: 3,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 5500,
+    is_suspended: false,
+    line_key: '7281/2101',
+  },
+  {
+    account_last4: '7281',
+    mdn_last4: '2102',
+    device: 'Samsung Galaxy S25',
+    plan_name: 'Business Unlimited Plus 2.0',
+    device_type: 'phone',
+    audits_count: 3,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 6500,
+    is_suspended: false,
+    line_key: '7281/2102',
+  },
+  {
+    account_last4: '7281',
+    mdn_last4: '4012',
+    device: 'iPad Pro',
+    plan_name: 'Business Unlimited Tablet',
+    device_type: 'tablet',
+    audits_count: 2,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 2000,
+    is_suspended: false,
+    line_key: '7281/4012',
+  },
+  {
+    account_last4: '7281',
+    mdn_last4: '4188',
+    device: 'iPad Air',
+    plan_name: 'Business Unlimited Tablet',
+    device_type: 'tablet',
+    audits_count: 2,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 2000,
+    is_suspended: false,
+    line_key: '7281/4188',
+  },
+  {
+    account_last4: '7281',
+    mdn_last4: '5012',
+    device: 'Apple Watch Series 10',
+    plan_name: 'Business Smartwatch Plan',
+    device_type: 'watch',
+    audits_count: 2,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 1000,
+    is_suspended: false,
+    line_key: '7281/5012',
+  },
+  {
+    account_last4: '7281',
+    mdn_last4: '6677',
+    device: 'iPhone 14',
+    plan_name: 'Business Unlimited Plus 2.0',
+    device_type: 'phone',
+    audits_count: 3,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 4500,
+    is_suspended: true,
+    line_key: '7281/6677',
+  },
+  {
+    account_last4: '4419',
+    mdn_last4: '5512',
+    device: 'Pixel 8',
+    plan_name: 'Business Unlimited Performance',
+    device_type: 'phone',
+    audits_count: 3,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 5200,
+    is_suspended: false,
+    line_key: '4419/5512',
+  },
+  {
+    account_last4: '4419',
+    mdn_last4: '5513',
+    device: 'Verizon Jetpack MiFi 8800L',
+    plan_name: 'Business Hotspot 50GB',
+    device_type: 'hotspot',
+    audits_count: 2,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 4000,
+    is_suspended: false,
+    line_key: '4419/5513',
+  },
+  {
+    account_last4: '9930',
+    mdn_last4: '7720',
+    device: 'Cradlepoint IBR900',
+    plan_name: 'Fleet Connect Pro',
+    device_type: 'router',
+    audits_count: 2,
+    last_seen: 'Apr 30, 2026',
+    plan_base_cents: 8500,
+    is_suspended: false,
+    line_key: '9930/7720',
+  },
 ];
 
 const STATS = {
@@ -49,18 +159,12 @@ export default function PreviewInventoryPage(): React.JSX.Element {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-neutral-900">
-          Wireless inventory
-        </h1>
+        <h1 className="text-2xl font-semibold text-neutral-900">Wireless inventory</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Every line across every completed audit. Drill in to see a line&apos;s
-          plan history.
+          Every line across every completed audit. Drill in to see a line&apos;s plan history.
         </p>
       </div>
-      <section
-        aria-label="Inventory summary"
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-      >
+      <section aria-label="Inventory summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Total lines" value={STATS.total.toLocaleString()} />
         <StatTile label="Active" value={STATS.active.toLocaleString()} />
         <StatTile label="Suspended" value={STATS.suspended.toLocaleString()} />
@@ -73,7 +177,7 @@ export default function PreviewInventoryPage(): React.JSX.Element {
       />
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <thead className="bg-neutral-50 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
             <tr>
               <th className="px-3 py-2.5">Account</th>
               <th className="px-3 py-2.5">Line</th>
@@ -92,9 +196,7 @@ export default function PreviewInventoryPage(): React.JSX.Element {
                 <td className="px-3 py-2 font-mono text-neutral-700">
                   …{row.account_last4 ?? '----'}
                 </td>
-                <td className="px-3 py-2 font-mono text-neutral-700">
-                  *{row.mdn_last4 ?? '----'}
-                </td>
+                <td className="px-3 py-2 font-mono text-neutral-700">*{row.mdn_last4 ?? '----'}</td>
                 <td className="px-3 py-2 text-neutral-900">{row.device ?? '—'}</td>
                 <td className="px-3 py-2 text-neutral-700">{row.device_type}</td>
                 <td className="px-3 py-2 text-neutral-700">{row.plan_name ?? '—'}</td>
@@ -110,7 +212,7 @@ export default function PreviewInventoryPage(): React.JSX.Element {
                   )}
                 </td>
                 <td className="px-3 py-2 text-neutral-700">{row.audits_count}</td>
-                <td className="px-3 py-2 tabular-nums text-neutral-900">
+                <td className="px-3 py-2 text-neutral-900 tabular-nums">
                   {formatCents(row.plan_base_cents)}
                 </td>
                 <td className="px-3 py-2 text-neutral-700">{row.last_seen}</td>
@@ -129,21 +231,11 @@ export default function PreviewInventoryPage(): React.JSX.Element {
   );
 }
 
-function StatTile({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
+function StatTile({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
-        {value}
-      </p>
+      <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-neutral-900 tabular-nums">{value}</p>
     </div>
   );
 }

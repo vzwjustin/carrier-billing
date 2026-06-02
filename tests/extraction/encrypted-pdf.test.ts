@@ -25,8 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const pdfParseMock = vi.fn();
 vi.mock('pdf-parse', () => ({
-  default: (...args: unknown[]) =>
-    pdfParseMock(...(args as [Buffer, { max?: number }])),
+  default: (...args: unknown[]) => pdfParseMock(...(args as [Buffer, { max?: number }])),
 }));
 
 // Import AFTER the mock is registered.
@@ -53,9 +52,7 @@ describe('extractText — encrypted PDF rejection', () => {
       'binary',
     );
 
-    await expect(extractText(dummyBuffer)).rejects.toBeInstanceOf(
-      PdfParseError,
-    );
+    await expect(extractText(dummyBuffer)).rejects.toBeInstanceOf(PdfParseError);
 
     // Re-run the same call to capture the thrown error and inspect it.
     pdfParseMock.mockRejectedValueOnce(passwordExc);
@@ -110,10 +107,9 @@ describe('extractText — encrypted PDF rejection', () => {
     passwordExc.name = 'PasswordException';
     pdfParseMock.mockRejectedValueOnce(passwordExc);
 
-    await expect(extractText(Buffer.from('%PDF-1.4', 'binary'))).rejects
-      .toMatchObject({
-        name: 'PdfParseError',
-      });
+    await expect(extractText(Buffer.from('%PDF-1.4', 'binary'))).rejects.toMatchObject({
+      name: 'PdfParseError',
+    });
   });
 
   // Document-only: generating a real encrypted PDF inline requires running

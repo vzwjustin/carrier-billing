@@ -5,16 +5,21 @@ import { createHmac } from 'node:crypto';
 
 type MutationResult = { data: null; error: { message: string } | null };
 
-const inboundEventsInsertMock = vi.fn<(row: unknown) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>>();
+const inboundEventsInsertMock =
+  vi.fn<
+    (row: unknown) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>
+  >();
 const inboundEventsUpdateEqMock = vi.fn(async () => ({ data: null, error: null }));
-const inboundEventsDeleteEqMock = vi.fn<() => Promise<MutationResult>>(
-  async () => ({ data: null, error: null }),
-);
+const inboundEventsDeleteEqMock = vi.fn<() => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const profilesSelectMock = vi.fn();
 const auditsInsertMock = vi.fn(async (_row: unknown) => ({ data: null, error: null }));
-const auditsDeleteEqMock = vi.fn<() => Promise<MutationResult>>(
-  async () => ({ data: null, error: null }),
-);
+const auditsDeleteEqMock = vi.fn<() => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const storageUploadMock = vi.fn<
   (
     path: string,
@@ -25,9 +30,10 @@ const storageUploadMock = vi.fn<
   data: null,
   error: null,
 }));
-const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<MutationResult>>(
-  async () => ({ data: null, error: null }),
-);
+const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const inngestSendMock = vi.fn(async (..._args: unknown[]) => ({}));
 const decrementMock = vi.fn(async (_uid: string, _auditId: string) => ({
   remaining: 0,
@@ -35,10 +41,9 @@ const decrementMock = vi.fn(async (_uid: string, _auditId: string) => ({
 }));
 const rpcMock = vi.fn(async (_fn: string, _args: unknown) => ({ data: null, error: null }));
 const gateMock = vi.fn<
-  (uid: string) => Promise<
-    | { ok: true; reason: 'subscription' | 'credit' }
-    | { ok: false; reason: string }
-  >
+  (
+    uid: string,
+  ) => Promise<{ ok: true; reason: 'subscription' | 'credit' } | { ok: false; reason: string }>
 >(async () => ({ ok: true, reason: 'subscription' }));
 
 const fromMock = vi.fn((table: string) => {
@@ -74,8 +79,7 @@ const fromMock = vi.fn((table: string) => {
 });
 
 const storageFromMock = vi.fn((_bucket: string) => ({
-  upload: (path: string, body: Buffer, opts: unknown) =>
-    storageUploadMock(path, body, opts),
+  upload: (path: string, body: Buffer, opts: unknown) => storageUploadMock(path, body, opts),
   remove: (paths: string[]) => storageRemoveMock(paths),
 }));
 
@@ -96,8 +100,7 @@ vi.mock('@/lib/access/gate', () => ({
 }));
 
 vi.mock('@/lib/access/decrement', () => ({
-  consumeAuditCreditForAudit: (uid: string, auditId: string) =>
-    decrementMock(uid, auditId),
+  consumeAuditCreditForAudit: (uid: string, auditId: string) => decrementMock(uid, auditId),
 }));
 
 vi.mock('@/env', () => ({
@@ -234,9 +237,8 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(body1.ok).toBe(true);
     expect(body1.auditId).toBeTruthy();
     expect(inboundEventsInsertMock).toHaveBeenCalledTimes(1);
-    const firstHash = (
-      inboundEventsInsertMock.mock.calls[0]?.[0] as { event_hash: string }
-    ).event_hash;
+    const firstHash = (inboundEventsInsertMock.mock.calls[0]?.[0] as { event_hash: string })
+      .event_hash;
     expect(firstHash).toMatch(/^[0-9a-f]{64}$/);
 
     // Second request — same userId + same PDF + same filename, but the email
@@ -262,9 +264,8 @@ describe('POST /api/inbound/email — dedupe stability', () => {
 
     // The second insert was attempted with the SAME hash as the first.
     expect(inboundEventsInsertMock).toHaveBeenCalledTimes(2);
-    const secondHash = (
-      inboundEventsInsertMock.mock.calls[1]?.[0] as { event_hash: string }
-    ).event_hash;
+    const secondHash = (inboundEventsInsertMock.mock.calls[1]?.[0] as { event_hash: string })
+      .event_hash;
     expect(secondHash).toBe(firstHash);
 
     // And no second storage upload happened — dedupe fired before upload.
@@ -484,9 +485,7 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     });
     // Refund must run BEFORE the audit-row delete (the RPC has to match the
     // still-present pending row) — this is the crash-window leak fix.
-    const refundIdx = rpcMock.mock.calls.findIndex(
-      ([fn]) => fn === 'refund_orphan_audit',
-    );
+    const refundIdx = rpcMock.mock.calls.findIndex(([fn]) => fn === 'refund_orphan_audit');
     expect(refundIdx).toBeGreaterThanOrEqual(0);
     expect(rpcMock.mock.invocationCallOrder[refundIdx]!).toBeLessThan(
       auditsDeleteEqMock.mock.invocationCallOrder[0]!,

@@ -37,10 +37,7 @@ import {
   type CitationCollector,
   type ToolContext,
 } from '@/lib/assistant/tools';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -181,18 +178,13 @@ export async function POST(request: Request): Promise<Response> {
             controller.enqueue(sseEvent({ type: 'text_delta', text }));
           },
         });
-        controller.enqueue(
-          sseEvent({ type: 'done', citations: freezeCitations(citations) }),
-        );
+        controller.enqueue(sseEvent({ type: 'done', citations: freezeCitations(citations) }));
       } catch (err) {
         Sentry.captureException(err, {
           tags: { surface: 'assistant' },
         });
-        const message =
-          err instanceof Error ? err.message : 'Assistant failed.';
-        controller.enqueue(
-          sseEvent({ type: 'error', message: sanitizeErrorMessage(message) }),
-        );
+        const message = err instanceof Error ? err.message : 'Assistant failed.';
+        controller.enqueue(sseEvent({ type: 'error', message: sanitizeErrorMessage(message) }));
       } finally {
         controller.close();
       }
@@ -221,9 +213,7 @@ export async function POST(request: Request): Promise<Response> {
 function sanitizeErrorMessage(message: string): string {
   // Drop digit runs of 4+ (last-4 already in tool outputs is fine, but raw
   // phone numbers / account numbers must not bleed through error text).
-  return message
-    .replace(/\d{4,}/g, '[REDACTED]')
-    .slice(0, 400);
+  return message.replace(/\d{4,}/g, '[REDACTED]').slice(0, 400);
 }
 
 interface RunAssistantArgs {
@@ -282,9 +272,7 @@ async function runAssistantLoop(args: RunAssistantArgs): Promise<void> {
       messages,
     } as unknown as Parameters<typeof client.messages.create>[0];
 
-    const response = (await client.messages.create(
-      createParams,
-    )) as unknown as AnthropicResponse;
+    const response = (await client.messages.create(createParams)) as unknown as AnthropicResponse;
 
     // Emit any text the model produced this round before deciding the next
     // step. If the model is about to call tools, this text is its "thinking
@@ -302,15 +290,11 @@ async function runAssistantLoop(args: RunAssistantArgs): Promise<void> {
     if (response.stop_reason !== 'tool_use') {
       // max_tokens / stop_sequence / null — surface as a soft warning. We
       // don't throw; the caller will see whatever partial text streamed.
-      onTextDelta(
-        '\n\n_The response was cut short. Try asking a more focused question._',
-      );
+      onTextDelta('\n\n_The response was cut short. Try asking a more focused question._');
       return;
     }
 
-    const toolUses = response.content.filter(
-      (b): b is ToolUseBlock => b.type === 'tool_use',
-    );
+    const toolUses = response.content.filter((b): b is ToolUseBlock => b.type === 'tool_use');
     if (toolUses.length === 0) {
       // Defensive: stop_reason said tool_use but no tool blocks present.
       return;
@@ -328,12 +312,7 @@ async function runAssistantLoop(args: RunAssistantArgs): Promise<void> {
     const toolResults: ToolResultBlock[] = [];
     for (const toolUse of toolUses) {
       try {
-        const result = await executeAssistantTool(
-          toolUse.name,
-          toolUse.input,
-          ctx,
-          citations,
-        );
+        const result = await executeAssistantTool(toolUse.name, toolUse.input, ctx, citations);
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolUse.id,
@@ -343,8 +322,7 @@ async function runAssistantLoop(args: RunAssistantArgs): Promise<void> {
         // Per the tool-use docs: on tool failure, return the error TO the
         // model via tool_result with is_error=true so it can adapt — don't
         // throw and break the loop.
-        const message =
-          err instanceof Error ? err.message : 'Tool execution failed.';
+        const message = err instanceof Error ? err.message : 'Tool execution failed.';
         Sentry.captureException(err, {
           tags: { surface: 'assistant', tool: toolUse.name },
         });

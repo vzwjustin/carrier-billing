@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { lineWithOnlyCreditsRule } from '@/rules/definitions/line-with-only-credits';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeCredit,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeCredit, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);
@@ -52,9 +45,7 @@ describe('line_with_only_credits rule', () => {
           lines: [
             makeLine({
               plan_base_cents: 3000,
-              features: [
-                makeFeature({ name: 'Extra', category: 'other', monthly_cents: 500 }),
-              ],
+              features: [makeFeature({ name: 'Extra', category: 'other', monthly_cents: 500 })],
               credits: [makeCredit({ monthly_cents: -5000 })],
             }),
           ],

@@ -19,10 +19,7 @@ type ErrorPageProps = {
  * during render. Captures to Sentry and surfaces the digest so support
  * tickets can be tied back to a specific exception.
  */
-export default function RouteError({
-  error,
-  reset,
-}: ErrorPageProps): React.ReactElement {
+export default function RouteError({ error, reset }: ErrorPageProps): React.ReactElement {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
@@ -39,8 +36,8 @@ export default function RouteError({
             Something went wrong
           </h1>
           <p className="mt-3 max-w-md text-sm text-neutral-600 sm:text-base">
-            We hit an unexpected error and have been notified. Try the page
-            again, or head back to the dashboard.
+            We hit an unexpected error and have been notified. Try the page again, or head back to
+            the dashboard.
           </p>
           {error.digest ? (
             <p className="mt-2 text-xs text-neutral-400">

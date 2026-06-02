@@ -31,20 +31,14 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
 
-import {
-  buildBulkDisputeLetter,
-  type BulkDisputeFindingInput,
-} from '@/disputes/bulk-builder';
+import { buildBulkDisputeLetter, type BulkDisputeFindingInput } from '@/disputes/bulk-builder';
 import type {
   DisputeAccountInput,
   DisputeFindingInput,
   DisputeLineInput,
 } from '@/disputes/builder';
 import { logTrailEvent } from '@/lib/audit-trail/log';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -107,8 +101,7 @@ const AccountRowSchema = z.object({
   account_label: z.string().nullable(),
 });
 
-const AUDIT_COLUMNS =
-  'id,user_id,status,carrier,billing_period_start,billing_period_end';
+const AUDIT_COLUMNS = 'id,user_id,status,carrier,billing_period_start,billing_period_end';
 const FINDING_COLUMNS =
   'id,audit_id,rule_id,severity,status,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids';
 const LINE_COLUMNS = 'id,mdn_masked,plan_name';
@@ -167,10 +160,7 @@ export async function GET(
   const url = new URL(request.url);
   const idsResult = parseFindingIdsParam(url.searchParams.get('finding_ids'));
   if (!idsResult.ok) {
-    return NextResponse.json(
-      { error: idsResult.error },
-      { status: idsResult.status },
-    );
+    return NextResponse.json({ error: idsResult.error }, { status: idsResult.status });
   }
   const findingIds = idsResult.ids;
 
@@ -199,10 +189,7 @@ export async function GET(
     .eq('id', auditId)
     .maybeSingle();
   if (auditErr) {
-    return NextResponse.json(
-      { error: 'Failed to look up audit.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
   }
   if (!auditRaw) {
     return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -233,10 +220,7 @@ export async function GET(
       tags: { surface: 'dispute_letter.findings_lookup' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Failed to load findings.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load findings.' }, { status: 500 });
   }
 
   const validatedFindings: z.infer<typeof FindingRowSchema>[] = [];
@@ -254,8 +238,7 @@ export async function GET(
     return NextResponse.json(
       {
         error: 'unknown_finding_ids',
-        message:
-          'One or more finding_ids do not belong to this audit or do not exist.',
+        message: 'One or more finding_ids do not belong to this audit or do not exist.',
         finding_ids: missing,
       },
       { status: 400 },
@@ -267,8 +250,7 @@ export async function GET(
     return NextResponse.json(
       {
         error: 'findings_not_approved',
-        message:
-          'Every finding in a bulk dispute letter must be in status=approved.',
+        message: 'Every finding in a bulk dispute letter must be in status=approved.',
         finding_ids: notApproved.map((f) => f.id),
       },
       { status: 400 },
@@ -312,10 +294,7 @@ export async function GET(
       tags: { surface: 'dispute_letter.children_lookup' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Failed to load finding details.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load finding details.' }, { status: 500 });
   }
 
   const linesById = new Map<string, DisputeLineInput>();
@@ -339,33 +318,31 @@ export async function GET(
     .maybeSingle();
   const operatorName =
     typeof (profileRow as { full_name?: unknown } | null)?.full_name === 'string'
-      ? ((profileRow as { full_name: string }).full_name)
+      ? (profileRow as { full_name: string }).full_name
       : null;
 
   // ---- Shape + render ---------------------------------------------------
-  const findingsForBuilder: BulkDisputeFindingInput[] = orderedFindings.map(
-    (f) => {
-      const findingInput: DisputeFindingInput = {
-        id: f.id,
-        rule_id: f.rule_id,
-        severity: f.severity,
-        title: f.title,
-        description: f.description,
-        recommended_action: f.recommended_action,
-        estimated_monthly_savings_cents: f.estimated_monthly_savings_cents,
-        confidence: f.confidence,
-        affected_line_ids: f.affected_line_ids,
-        affected_account_ids: f.affected_account_ids,
-      };
-      const lines: DisputeLineInput[] = (f.affected_line_ids ?? [])
-        .map((id) => linesById.get(id))
-        .filter((l): l is DisputeLineInput => l !== undefined);
-      const accounts: DisputeAccountInput[] = (f.affected_account_ids ?? [])
-        .map((id) => accountsById.get(id))
-        .filter((a): a is DisputeAccountInput => a !== undefined);
-      return { finding: findingInput, lines, accounts };
-    },
-  );
+  const findingsForBuilder: BulkDisputeFindingInput[] = orderedFindings.map((f) => {
+    const findingInput: DisputeFindingInput = {
+      id: f.id,
+      rule_id: f.rule_id,
+      severity: f.severity,
+      title: f.title,
+      description: f.description,
+      recommended_action: f.recommended_action,
+      estimated_monthly_savings_cents: f.estimated_monthly_savings_cents,
+      confidence: f.confidence,
+      affected_line_ids: f.affected_line_ids,
+      affected_account_ids: f.affected_account_ids,
+    };
+    const lines: DisputeLineInput[] = (f.affected_line_ids ?? [])
+      .map((id) => linesById.get(id))
+      .filter((l): l is DisputeLineInput => l !== undefined);
+    const accounts: DisputeAccountInput[] = (f.affected_account_ids ?? [])
+      .map((id) => accountsById.get(id))
+      .filter((a): a is DisputeAccountInput => a !== undefined);
+    return { finding: findingInput, lines, accounts };
+  });
 
   const letter = buildBulkDisputeLetter({
     audit: {
@@ -383,11 +360,7 @@ export async function GET(
   // path until a letter is actually requested.
   const { renderBulkDisputePdf } = await import('@/disputes/pdf/bulk-render');
   const pdfBuffer = await renderBulkDisputePdf(letter);
-  const pdfBytes = new Uint8Array(
-    pdfBuffer.buffer,
-    pdfBuffer.byteOffset,
-    pdfBuffer.byteLength,
-  );
+  const pdfBytes = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
   const body = pdfBytes.buffer.slice(
     pdfBytes.byteOffset,
     pdfBytes.byteOffset + pdfBytes.byteLength,

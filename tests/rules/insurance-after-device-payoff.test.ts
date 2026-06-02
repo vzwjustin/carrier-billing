@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { insuranceAfterDevicePayoffRule } from '@/rules/definitions/insurance-after-device-payoff';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeDpp,
-  makeFeature,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeDpp, makeFeature, makeLine, TEST_TODAY } from './fixtures';
 
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
@@ -34,9 +27,7 @@ describe('insurance_after_device_payoff rule', () => {
                   monthly_cents: 1500,
                 }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 0 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 0 })],
             }),
           ],
         }),
@@ -62,11 +53,13 @@ describe('insurance_after_device_payoff rule', () => {
             makeLine({
               features: [
                 makeFeature({ name: 'Mobile Protect', category: 'insurance', monthly_cents: 1500 }),
-                makeFeature({ name: 'Asurion Extended', category: 'insurance', monthly_cents: 700 }),
+                makeFeature({
+                  name: 'Asurion Extended',
+                  category: 'insurance',
+                  monthly_cents: 700,
+                }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 0 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 0 })],
             }),
           ],
         }),
@@ -87,9 +80,7 @@ describe('insurance_after_device_payoff rule', () => {
               features: [
                 makeFeature({ name: 'Mobile Protect', category: 'insurance', monthly_cents: 1500 }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 0 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 0 })],
             }),
           ],
         }),
@@ -108,9 +99,7 @@ describe('insurance_after_device_payoff rule', () => {
               features: [
                 makeFeature({ name: 'Mobile Protect', category: 'insurance', monthly_cents: 1500 }),
               ],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 12 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 12 })],
             }),
           ],
         }),
@@ -127,9 +116,7 @@ describe('insurance_after_device_payoff rule', () => {
           lines: [
             makeLine({
               features: [makeFeature({ name: 'Hotspot 50GB', category: 'hotspot' })],
-              dpp_installments: [
-                makeDpp({ total_payments: 36, remaining_payments: 0 }),
-              ],
+              dpp_installments: [makeDpp({ total_payments: 36, remaining_payments: 0 })],
             }),
           ],
         }),

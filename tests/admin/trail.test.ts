@@ -154,9 +154,9 @@ function asAdmin(): void {
 describe('GET /admin/trail', () => {
   it('role gate: anonymous caller is redirected to /dashboard', async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
-    await expect(
-      AdminTrailPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrowError(NextRedirectError);
+    await expect(AdminTrailPage({ searchParams: Promise.resolve({}) })).rejects.toThrowError(
+      NextRedirectError,
+    );
   });
 
   it('role gate: non-admin profile is redirected to /dashboard', async () => {
@@ -168,9 +168,9 @@ describe('GET /admin/trail', () => {
       data: { role: 'user', email: 'u@example.com' },
       error: null,
     });
-    await expect(
-      AdminTrailPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrowError(NextRedirectError);
+    await expect(AdminTrailPage({ searchParams: Promise.resolve({}) })).rejects.toThrowError(
+      NextRedirectError,
+    );
   });
 
   it('default window is 7d (gte filter applied) and page-size is 50', async () => {
@@ -181,7 +181,7 @@ describe('GET /admin/trail', () => {
     expect(chainCalls.range).toEqual([{ from: 0, to: 49 }]);
   });
 
-  it("window=all omits the gte filter", async () => {
+  it('window=all omits the gte filter', async () => {
     asAdmin();
     await AdminTrailPage({ searchParams: Promise.resolve({ window: 'all' }) });
     expect(chainCalls.gte).toHaveLength(0);
@@ -196,10 +196,7 @@ describe('GET /admin/trail', () => {
     });
     expect(chainCalls.in).toHaveLength(1);
     expect(chainCalls.in[0]?.col).toBe('event_type');
-    expect(chainCalls.in[0]?.values).toEqual([
-      'audit_uploaded',
-      'report_downloaded',
-    ]);
+    expect(chainCalls.in[0]?.values).toEqual(['audit_uploaded', 'report_downloaded']);
   });
 
   it('event_type as repeated params is also accepted', async () => {
@@ -209,10 +206,7 @@ describe('GET /admin/trail', () => {
         event_type: ['audit_uploaded', 'csv_exported'],
       }),
     });
-    expect(chainCalls.in[0]?.values).toEqual([
-      'audit_uploaded',
-      'csv_exported',
-    ]);
+    expect(chainCalls.in[0]?.values).toEqual(['audit_uploaded', 'csv_exported']);
   });
 
   it('user search builds an ILIKE pattern on actor_email', async () => {

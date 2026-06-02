@@ -1,15 +1,11 @@
 import Link from 'next/link';
 
-export default function ShareLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function ShareLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:outline-none"
       >
         Skip to main content
       </a>
@@ -18,17 +14,15 @@ export default function ShareLayout({
           <Link
             href="/"
             aria-label="CarrierAudit home"
-            className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             CarrierAudit
           </Link>
           <div className="flex items-center gap-4 text-xs">
-            <span className="hidden text-neutral-500 sm:inline">
-              Shared report
-            </span>
+            <span className="hidden text-neutral-500 sm:inline">Shared report</span>
             <Link
               href="/signup"
-              className="inline-flex items-center rounded-full bg-emerald-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+              className="inline-flex items-center rounded-full bg-emerald-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none"
             >
               Audit your bill
             </Link>
@@ -46,13 +40,13 @@ export default function ShareLayout({
               Want a report like this for your bill?
             </h2>
             <p className="text-sm text-neutral-600">
-              Upload your most recent statement. Findings in under 5 minutes.
-              Money-back guarantee if we don&apos;t find savings.
+              Upload your most recent statement. Findings in under 5 minutes. Money-back guarantee
+              if we don&apos;t find savings.
             </p>
           </div>
           <Link
             href="/signup"
-            className="inline-flex items-center rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            className="inline-flex items-center rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             Audit my bill →
           </Link>

@@ -22,9 +22,7 @@ vi.mock('@/lib/security/ssrf-guard', () => ({
   SsrfBlockedError: class extends Error {},
 }));
 
-const postPinnedHttpsMock = vi.hoisted(() =>
-  vi.fn(async (_req: unknown) => ({ status: 200 })),
-);
+const postPinnedHttpsMock = vi.hoisted(() => vi.fn(async (_req: unknown) => ({ status: 200 })));
 vi.mock('@/lib/security/pinned-https', () => ({
   postPinnedHttps: postPinnedHttpsMock,
 }));
@@ -97,12 +95,8 @@ afterEach(() => {
 
 describe('dispatchFindingWebhookFn registration', () => {
   it('is registered in the functions registry', () => {
-    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) =>
-      fn.id(),
-    );
-    expect(ids.some((id) => id.includes('dispatch-finding-webhook'))).toBe(
-      true,
-    );
+    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) => fn.id());
+    expect(ids.some((id) => id.includes('dispatch-finding-webhook'))).toBe(true);
   });
 
   it('has the expected function id', () => {
@@ -133,19 +127,13 @@ describe('postFindingWebhook — HMAC signature', () => {
     const timestamp = match![1]!;
     const v1 = match![2]!;
 
-    const expected = createHmac('sha256', SECRET)
-      .update(`${timestamp}.${body}`)
-      .digest('hex');
+    const expected = createHmac('sha256', SECRET).update(`${timestamp}.${body}`).digest('hex');
     expect(v1).toBe(expected);
 
     expect(headers['X-CarrierAudit-Timestamp']).toBe(timestamp);
     expect(headers['X-CarrierAudit-Event']).toBe('finding.status_changed');
-    expect(headers['X-CarrierAudit-Audit-Id']).toBe(
-      '22222222-2222-4222-8222-222222222222',
-    );
-    expect(headers['X-CarrierAudit-Finding-Id']).toBe(
-      '11111111-1111-4111-8111-111111111111',
-    );
+    expect(headers['X-CarrierAudit-Audit-Id']).toBe('22222222-2222-4222-8222-222222222222');
+    expect(headers['X-CarrierAudit-Finding-Id']).toBe('11111111-1111-4111-8111-111111111111');
   });
 
   it('includes only PII-safe finding fields in the payload', async () => {

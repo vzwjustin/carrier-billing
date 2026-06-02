@@ -119,10 +119,7 @@ export async function POST(
 
     // Reuse existing, non-expired token; refresh the expiry on share clicks
     // so an active sharer gets a sliding 30-day window.
-    if (
-      existing.share_token &&
-      !isShareTokenExpired(existing.share_token_expires_at)
-    ) {
+    if (existing.share_token && !isShareTokenExpired(existing.share_token_expires_at)) {
       const { data: refreshedRows, error: refreshError } = await admin
         .from('audits')
         .update({ share_token_expires_at: newExpiry })

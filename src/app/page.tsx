@@ -1,12 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import {
-  Upload,
-  FileSearch,
-  Sparkles,
-  TrendingUp,
-  MessageSquare,
-} from 'lucide-react';
+import { Upload, FileSearch, Sparkles, TrendingUp, MessageSquare } from 'lucide-react';
 
 import { SiteNav } from '@/components/marketing/site-nav';
 import { SiteFooter } from '@/components/marketing/site-footer';
@@ -43,9 +37,8 @@ function Hero(): React.ReactElement {
             Stop overpaying on your business wireless bill.
           </h1>
           <p className="max-w-xl text-base text-neutral-600 sm:text-lg">
-            Upload your Verizon, AT&amp;T, or T-Mobile bill &mdash; get a
-            professional audit with quantified monthly and annual savings in
-            under 5 minutes.
+            Upload your Verizon, AT&amp;T, or T-Mobile bill &mdash; get a professional audit with
+            quantified monthly and annual savings in under 5 minutes.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
@@ -74,7 +67,7 @@ function HeroVisual(): React.ReactElement {
   return (
     <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6 shadow-sm">
       <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+        <span className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
           Audit summary
         </span>
         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
@@ -82,33 +75,23 @@ function HeroVisual(): React.ReactElement {
         </span>
       </div>
       <div className="mt-4 flex flex-col gap-1">
-        <span className="text-sm text-neutral-500">
-          Estimated monthly savings
-        </span>
-        <span className="text-4xl font-semibold tracking-tight text-neutral-900">
-          $1,847
-        </span>
+        <span className="text-sm text-neutral-500">Estimated monthly savings</span>
+        <span className="text-4xl font-semibold tracking-tight text-neutral-900">$1,847</span>
         <span className="text-sm text-neutral-500">
           $22,164 / year &middot; 80 lines &middot; Verizon Business
         </span>
       </div>
       <div className="mt-6 flex flex-col gap-2 text-sm">
         <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2">
-          <span className="text-neutral-700">
-            Expired promotional credits
-          </span>
+          <span className="text-neutral-700">Expired promotional credits</span>
           <span className="font-medium text-neutral-900">$420/mo</span>
         </div>
         <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2">
-          <span className="text-neutral-700">
-            Completed device payments
-          </span>
+          <span className="text-neutral-700">Completed device payments</span>
           <span className="font-medium text-neutral-900">$612/mo</span>
         </div>
         <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2">
-          <span className="text-neutral-700">
-            Insurance on suspended lines
-          </span>
+          <span className="text-neutral-700">Insurance on suspended lines</span>
           <span className="font-medium text-neutral-900">$240/mo</span>
         </div>
       </div>
@@ -121,8 +104,7 @@ function TrustBar(): React.ReactElement {
   return (
     <section className="border-b border-neutral-200 bg-neutral-50">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 text-center text-sm text-neutral-600">
-        Built by telecom auditors with 15+ years auditing carrier spend for
-        US businesses.
+        Built by telecom auditors with 15+ years auditing carrier spend for US businesses.
       </div>
     </section>
   );
@@ -133,20 +115,17 @@ function HowItWorks(): React.ReactElement {
     {
       icon: Upload,
       title: 'Upload a PDF — or CSV / XLSX export',
-      body:
-        'Drag and drop your most recent Verizon, AT&T, or T-Mobile business wireless bill. Already have a line-item export from the carrier portal? Skip the PDF.',
+      body: 'Drag and drop your most recent Verizon, AT&T, or T-Mobile business wireless bill. Already have a line-item export from the carrier portal? Skip the PDF.',
     },
     {
       icon: FileSearch,
       title: 'AI extracts every line',
-      body:
-        'We normalize accounts, lines, plans, features, credits, and device installments.',
+      body: 'We normalize accounts, lines, plans, features, credits, and device installments.',
     },
     {
       icon: Sparkles,
       title: '30 audit rules surface waste',
-      body:
-        'A rules engine quantifies expired credits, unused features, contract-rate drift, and wrong plans — with recommended actions.',
+      body: 'A rules engine quantifies expired credits, unused features, contract-rate drift, and wrong plans — with recommended actions.',
     },
   ] as const;
 
@@ -173,13 +152,9 @@ function HowItWorks(): React.ReactElement {
                   <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-neutral-900 text-neutral-50">
                     <Icon className="h-4 w-4" aria-hidden />
                   </div>
-                  <span className="text-xs font-medium text-neutral-400">
-                    Step {index + 1}
-                  </span>
+                  <span className="text-xs font-medium text-neutral-400">Step {index + 1}</span>
                 </div>
-                <h3 className="text-base font-semibold text-neutral-900">
-                  {step.title}
-                </h3>
+                <h3 className="text-base font-semibold text-neutral-900">{step.title}</h3>
                 <p className="text-sm text-neutral-600">{step.body}</p>
               </li>
             );
@@ -194,48 +169,39 @@ function WhatWeFind(): React.ReactElement {
   const findings = [
     {
       title: 'Missing or expired promotional credits',
-      body:
-        'Promos that quietly rolled off, plus promised credits the carrier never applied — both raise your monthly without a plan change.',
+      body: 'Promos that quietly rolled off, plus promised credits the carrier never applied — both raise your monthly without a plan change.',
     },
     {
       title: 'Completed device payments still being billed',
-      body:
-        'Equipment installments that finished but the line item never came off.',
+      body: 'Equipment installments that finished but the line item never came off.',
     },
     {
       title: 'Suspended-but-billed lines',
-      body:
-        'Lines flagged suspended by the carrier yet still accruing plan, feature, or insurance charges.',
+      body: 'Lines flagged suspended by the carrier yet still accruing plan, feature, or insurance charges.',
     },
     {
       title: 'Zero-usage lines',
-      body:
-        'Phones, tablets, watches, and MiFi/jetpacks with effectively no data, calls, or texts — usually candidates to cancel.',
+      body: 'Phones, tablets, watches, and MiFi/jetpacks with effectively no data, calls, or texts — usually candidates to cancel.',
     },
     {
       title: 'Contract rate mismatch',
-      body:
-        'Billed plan and feature rates that drifted above what your signed carrier contract entitles you to.',
+      body: 'Billed plan and feature rates that drifted above what your signed carrier contract entitles you to.',
     },
     {
       title: 'Redundant hotspot add-ons',
-      body:
-        'Hotspot add-ons billed alongside plans that already include unlimited hotspot data.',
+      body: 'Hotspot add-ons billed alongside plans that already include unlimited hotspot data.',
     },
     {
       title: 'Insurance on suspended or paid-off devices',
-      body:
-        'Asurion, Mobile Protect, and AppleCare charges on devices that no longer need protection.',
+      body: 'Asurion, Mobile Protect, and AppleCare charges on devices that no longer need protection.',
     },
     {
       title: 'Stale international plans',
-      body:
-        'TravelPass and global add-ons still billing months after the trip ended.',
+      body: 'TravelPass and global add-ons still billing months after the trip ended.',
     },
     {
       title: 'Plans on legacy unlimited tiers',
-      body:
-        'Lines on deprecated plans that cost more than the current equivalent.',
+      body: 'Lines on deprecated plans that cost more than the current equivalent.',
     },
   ] as const;
 
@@ -247,8 +213,8 @@ function WhatWeFind(): React.ReactElement {
             What we find
           </h2>
           <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
-            30 rules cover the most common waste patterns on US business
-            wireless bills. A few of the highest-impact ones:
+            30 rules cover the most common waste patterns on US business wireless bills. A few of
+            the highest-impact ones:
           </p>
         </div>
         <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -257,9 +223,7 @@ function WhatWeFind(): React.ReactElement {
               key={f.title}
               className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-5"
             >
-              <h3 className="text-sm font-semibold text-neutral-900">
-                {f.title}
-              </h3>
+              <h3 className="text-sm font-semibold text-neutral-900">{f.title}</h3>
               <p className="text-sm text-neutral-600">{f.body}</p>
             </div>
           ))}
@@ -278,8 +242,7 @@ function FeatureCallouts(): React.ReactElement {
             More than a one-time audit
           </h2>
           <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
-            Once your bill is in, two power tools help you stay on top of
-            it month after month.
+            Once your bill is in, two power tools help you stay on top of it month after month.
           </p>
         </div>
         <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -287,14 +250,11 @@ function FeatureCallouts(): React.ReactElement {
             <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-neutral-900 text-neutral-50">
               <TrendingUp className="h-4 w-4" aria-hidden />
             </div>
-            <h3 className="text-base font-semibold text-neutral-900">
-              Bill Increase Autopsy
-            </h3>
+            <h3 className="text-base font-semibold text-neutral-900">Bill Increase Autopsy</h3>
             <p className="text-sm text-neutral-600">
-              Upload two bill periods and we&apos;ll explain every dollar of
-              change — line by line. New charges, dropped credits, plan
-              changes, and rate hikes are bucketed into &quot;potentially
-              disputable&quot; and &quot;unexplained&quot; so you know exactly
+              Upload two bill periods and we&apos;ll explain every dollar of change — line by line.
+              New charges, dropped credits, plan changes, and rate hikes are bucketed into
+              &quot;potentially disputable&quot; and &quot;unexplained&quot; so you know exactly
               what to take to your carrier rep.
             </p>
           </div>
@@ -302,15 +262,11 @@ function FeatureCallouts(): React.ReactElement {
             <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-neutral-900 text-neutral-50">
               <MessageSquare className="h-4 w-4" aria-hidden />
             </div>
-            <h3 className="text-base font-semibold text-neutral-900">
-              AI assistant
-            </h3>
+            <h3 className="text-base font-semibold text-neutral-900">AI assistant</h3>
             <p className="text-sm text-neutral-600">
-              Ask plain-English questions about your bill — &quot;which lines
-              haven&apos;t been used in 90 days?&quot; or &quot;which
-              departments spend the most on hotspots?&quot; — and get answers
-              that cite the underlying line items so every dollar is
-              traceable.
+              Ask plain-English questions about your bill — &quot;which lines haven&apos;t been used
+              in 90 days?&quot; or &quot;which departments spend the most on hotspots?&quot; — and
+              get answers that cite the underlying line items so every dollar is traceable.
             </p>
           </div>
         </div>
@@ -344,23 +300,22 @@ function SampleReport(): React.ReactElement {
           ) : (
             <div className="flex aspect-[16/9] w-full items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100 px-8">
               <div className="flex flex-col items-center gap-3 text-center">
-                <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-medium uppercase tracking-wide text-neutral-50">
+                <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-medium tracking-wide text-neutral-50 uppercase">
                   Preview
                 </span>
                 <p className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl">
                   Sample report — coming soon
                 </p>
                 <p className="max-w-md text-sm text-neutral-600">
-                  A full anonymized example will appear here at launch. In the
-                  meantime, run a free preview to see the real report on your
-                  own bill.
+                  A full anonymized example will appear here at launch. In the meantime, run a free
+                  preview to see the real report on your own bill.
                 </p>
               </div>
             </div>
           )}
           <div className="border-t border-neutral-200 px-6 py-4 text-sm text-neutral-600">
-            $1,847/mo in waste found on a typical 80-line Verizon Business
-            account &mdash; anonymized.
+            $1,847/mo in waste found on a typical 80-line Verizon Business account &mdash;
+            anonymized.
           </div>
         </div>
       </div>
@@ -382,27 +337,17 @@ function PricingTeaser(): React.ReactElement {
         </div>
         <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-6">
-            <h3 className="text-sm font-medium text-neutral-500">
-              One-time audit
-            </h3>
+            <h3 className="text-sm font-medium text-neutral-500">One-time audit</h3>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-semibold tracking-tight text-neutral-900">
-                $149
-              </span>
+              <span className="text-3xl font-semibold tracking-tight text-neutral-900">$149</span>
               <span className="text-sm text-neutral-500">per bill</span>
             </div>
-            <p className="text-sm text-neutral-600">
-              Run a single audit on one wireless bill.
-            </p>
+            <p className="text-sm text-neutral-600">Run a single audit on one wireless bill.</p>
           </div>
           <div className="flex flex-col gap-3 rounded-xl border border-neutral-900 bg-white p-6">
-            <h3 className="text-sm font-medium text-neutral-500">
-              Unlimited subscription
-            </h3>
+            <h3 className="text-sm font-medium text-neutral-500">Unlimited subscription</h3>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-semibold tracking-tight text-neutral-900">
-                $99
-              </span>
+              <span className="text-3xl font-semibold tracking-tight text-neutral-900">$99</span>
               <span className="text-sm text-neutral-500">per month</span>
             </div>
             <p className="text-sm text-neutral-600">
@@ -457,10 +402,7 @@ function Faq(): React.ReactElement {
         </div>
         <div className="mt-8 flex flex-col divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
           {items.map((item) => (
-            <details
-              key={item.q}
-              className="group p-5 [&_summary::-webkit-details-marker]:hidden"
-            >
+            <details key={item.q} className="group p-5 [&_summary::-webkit-details-marker]:hidden">
               <summary className="flex cursor-pointer items-center justify-between text-sm font-medium text-neutral-900">
                 {item.q}
                 <span

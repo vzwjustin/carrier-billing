@@ -57,9 +57,7 @@ export async function findReplayCandidates(
   const lookbackCutoff = new Date(
     now.getTime() - REPLAY_LOOKBACK_HOURS * 60 * 60 * 1000,
   ).toISOString();
-  const cooldownCutoff = new Date(
-    now.getTime() - REPLAY_COOLDOWN_SECONDS * 1000,
-  ).toISOString();
+  const cooldownCutoff = new Date(now.getTime() - REPLAY_COOLDOWN_SECONDS * 1000).toISOString();
 
   // The replay-eligible set covers three cases:
   //   1. processed_status is null (handler never recorded a result — probably
@@ -86,9 +84,7 @@ export async function findReplayCandidates(
     .limit(REPLAY_BATCH_LIMIT);
 
   if (nullStatusQuery.error) {
-    throw new Error(
-      `replay candidate select (null) failed: ${nullStatusQuery.error.message}`,
-    );
+    throw new Error(`replay candidate select (null) failed: ${nullStatusQuery.error.message}`);
   }
 
   const failedNoAttemptQuery = await supabase

@@ -150,6 +150,11 @@ describe('disproportionate_taxes_fees rule', () => {
     });
     const findings = await disproportionateTaxesFeesRule.evaluate(c);
     expect(findings).toHaveLength(2);
-    expect(findings.map((f) => f.affected_account_indexes).flat().sort()).toEqual([0, 1]);
+    expect(
+      findings
+        .map((f) => f.affected_account_indexes)
+        .flat()
+        .sort(),
+    ).toEqual([0, 1]);
   });
 });

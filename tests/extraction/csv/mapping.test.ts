@@ -98,12 +98,7 @@ describe('autoMap heuristics', () => {
 
   it('returns empty mappings when no headers match', () => {
     const mapping = autoMap(['Color', 'Notes', 'Owner', 'Tag']);
-    const fields: CanonicalField[] = [
-      'mdn_last4',
-      'plan_name',
-      'plan_base_cents',
-      'data_used_gb',
-    ];
+    const fields: CanonicalField[] = ['mdn_last4', 'plan_name', 'plan_base_cents', 'data_used_gb'];
     for (const f of fields) {
       expect(mapping[f] ?? null).toBeNull();
     }

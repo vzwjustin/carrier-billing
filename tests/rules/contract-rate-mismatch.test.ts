@@ -60,9 +60,7 @@ describe('contract_rate_mismatch rule', () => {
   it('fires high severity when the billed plan_base exceeds the contracted rate by >10%', async () => {
     // Contract: $40/mo. Bill: $50/mo → 25% over → fires.
     const c = ctx({
-      lines: [
-        makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 }),
-      ],
+      lines: [makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 })],
       contracts: [makeContract()],
     });
 
@@ -83,9 +81,7 @@ describe('contract_rate_mismatch rule', () => {
   // ── Negative #1: no contracts loaded ──────────────────────────────────
   it('does NOT fire when ctx.contracts is undefined (rule remains a no-op)', async () => {
     const c = ctx({
-      lines: [
-        makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 }),
-      ],
+      lines: [makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 })],
       contracts: undefined,
     });
     const findings = await contractRateMismatchRule.evaluate(c);
@@ -96,9 +92,7 @@ describe('contract_rate_mismatch rule', () => {
   it('does NOT fire when the overage is under the 10% threshold', async () => {
     // Contract: $40/mo. Bill: $43/mo → 7.5% over → below threshold.
     const c = ctx({
-      lines: [
-        makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 4300 }),
-      ],
+      lines: [makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 4300 })],
       contracts: [makeContract()],
     });
     const findings = await contractRateMismatchRule.evaluate(c);
@@ -124,9 +118,7 @@ describe('contract_rate_mismatch rule', () => {
   it('does NOT fire when the contract is for a different carrier than the bill', async () => {
     const c = ctx({
       carrier: 'att',
-      lines: [
-        makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 }),
-      ],
+      lines: [makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 })],
       contracts: [makeContract({ carrier: 'verizon' })],
     });
     const findings = await contractRateMismatchRule.evaluate(c);
@@ -136,9 +128,7 @@ describe('contract_rate_mismatch rule', () => {
   // ── Negative #5: contract with null terms or null rate ────────────────
   it('does NOT fire when the contract has no terms row or no contracted rate', async () => {
     const c = ctx({
-      lines: [
-        makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 }),
-      ],
+      lines: [makeLine({ plan_name: 'Business Unlimited Pro 2.0', plan_base_cents: 5000 })],
       contracts: [
         makeContract({ terms: null }),
         makeContract({

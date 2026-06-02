@@ -36,9 +36,7 @@ describe('detectCarrier', () => {
   });
 
   it('detects T-Mobile from spaced "T Mobile" variant', () => {
-    expect(detectCarrier('Welcome to T Mobile, your business account.')).toBe(
-      'tmobile',
-    );
+    expect(detectCarrier('Welcome to T Mobile, your business account.')).toBe('tmobile');
   });
 
   it('returns "unknown" for unrelated text', () => {
@@ -86,9 +84,7 @@ describe('detectCarrier', () => {
   it('detects Spectrum from the secondary "Charter Communications" brand', () => {
     // Older Charter corporate-billing letterheads omit "Spectrum Mobile" and
     // print only the parent-company name. The secondary signal catches that.
-    expect(detectCarrier('Charter Communications — Mobile Services')).toBe(
-      'spectrum',
-    );
+    expect(detectCarrier('Charter Communications — Mobile Services')).toBe('spectrum');
   });
 
   it('detects Xfinity Mobile from an "Xfinity Mobile" header', () => {
@@ -96,9 +92,7 @@ describe('detectCarrier', () => {
   });
 
   it('detects Xfinity from the parent "Comcast" brand', () => {
-    expect(detectCarrier('Comcast Corporation — Wireless Services')).toBe(
-      'xfinity',
-    );
+    expect(detectCarrier('Comcast Corporation — Wireless Services')).toBe('xfinity');
   });
 
   it('detects Cricket Wireless from a "Cricket Wireless" header', () => {

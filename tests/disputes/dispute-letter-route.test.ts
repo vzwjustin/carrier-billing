@@ -81,12 +81,7 @@ function makeFindingsChain() {
       findingsInCalls.push(values);
       return chain;
     },
-    then<T>(
-      resolve: (v: {
-        data: FindingRow[];
-        error: null | { message: string };
-      }) => T,
-    ) {
+    then<T>(resolve: (v: { data: FindingRow[]; error: null | { message: string } }) => T) {
       return findingsResolveMock().then(resolve);
     },
   };
@@ -99,12 +94,7 @@ function makeLinesChain() {
       linesInCalls.push(values);
       return chain;
     },
-    then<T>(
-      resolve: (v: {
-        data: LineRow[];
-        error: null | { message: string };
-      }) => T,
-    ) {
+    then<T>(resolve: (v: { data: LineRow[]; error: null | { message: string } }) => T) {
       return linesResolveMock().then(resolve);
     },
   };
@@ -117,12 +107,7 @@ function makeAccountsChain() {
       accountsInCalls.push(values);
       return chain;
     },
-    then<T>(
-      resolve: (v: {
-        data: AccountRow[];
-        error: null | { message: string };
-      }) => T,
-    ) {
+    then<T>(resolve: (v: { data: AccountRow[]; error: null | { message: string } }) => T) {
       return accountsResolveMock().then(resolve);
     },
   };
@@ -235,11 +220,7 @@ function defaultAudit(): AuditRow {
   };
 }
 
-function approvedFinding(
-  id: string,
-  rule_id: string,
-  cents: number,
-): FindingRow {
+function approvedFinding(id: string, rule_id: string, cents: number): FindingRow {
   return {
     id,
     audit_id: AUDIT_ID,
@@ -282,10 +263,7 @@ beforeEach(() => {
     error: null,
   });
   findingsResolveMock.mockResolvedValue({
-    data: [
-      approvedFinding(FINDING_A, 'rule_a', 1000),
-      approvedFinding(FINDING_B, 'rule_b', 2500),
-    ],
+    data: [approvedFinding(FINDING_A, 'rule_a', 1000), approvedFinding(FINDING_B, 'rule_b', 2500)],
     error: null,
   });
   linesResolveMock.mockResolvedValue({
@@ -310,10 +288,7 @@ beforeEach(() => {
 
 describe('GET /api/audits/[id]/dispute-letter.pdf', () => {
   it('returns 400 when audit id is not a uuid', async () => {
-    const res = await GET(
-      makeRequest(`finding_ids=${FINDING_A}`),
-      makeContext('not-a-uuid'),
-    );
+    const res = await GET(makeRequest(`finding_ids=${FINDING_A}`), makeContext('not-a-uuid'));
     expect(res.status).toBe(400);
   });
 
@@ -338,10 +313,7 @@ describe('GET /api/audits/[id]/dispute-letter.pdf', () => {
       const tail = i.toString(16).padStart(12, '0');
       return `00000000-0000-4000-8000-${tail}`;
     });
-    const res = await GET(
-      makeRequest(`finding_ids=${ids.join(',')}`),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest(`finding_ids=${ids.join(',')}`), makeContext(AUDIT_ID));
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/at most 50/);
@@ -349,10 +321,7 @@ describe('GET /api/audits/[id]/dispute-letter.pdf', () => {
 
   it('returns 401 when no auth user is present', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
-    const res = await GET(
-      makeRequest(`finding_ids=${FINDING_A}`),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest(`finding_ids=${FINDING_A}`), makeContext(AUDIT_ID));
     expect(res.status).toBe(401);
   });
 
@@ -361,10 +330,7 @@ describe('GET /api/audits/[id]/dispute-letter.pdf', () => {
       data: { ...defaultAudit(), user_id: 'someone-else' },
       error: null,
     });
-    const res = await GET(
-      makeRequest(`finding_ids=${FINDING_A}`),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest(`finding_ids=${FINDING_A}`), makeContext(AUDIT_ID));
     expect(res.status).toBe(404);
   });
 
@@ -373,10 +339,7 @@ describe('GET /api/audits/[id]/dispute-letter.pdf', () => {
       data: { ...defaultAudit(), status: 'pending' },
       error: null,
     });
-    const res = await GET(
-      makeRequest(`finding_ids=${FINDING_A}`),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest(`finding_ids=${FINDING_A}`), makeContext(AUDIT_ID));
     expect(res.status).toBe(409);
   });
 
@@ -429,9 +392,7 @@ describe('GET /api/audits/[id]/dispute-letter.pdf', () => {
     expect(res.headers.get('content-type')).toBe('application/pdf');
     const disposition = res.headers.get('content-disposition') ?? '';
     // Filename uses the audit short id (first 8 chars).
-    expect(disposition).toContain(
-      `carrieraudit-dispute-letter-${AUDIT_ID.slice(0, 8)}.pdf`,
-    );
+    expect(disposition).toContain(`carrieraudit-dispute-letter-${AUDIT_ID.slice(0, 8)}.pdf`);
     expect(res.headers.get('cache-control')).toContain('private');
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
     // We DB-filtered against the requested ids.

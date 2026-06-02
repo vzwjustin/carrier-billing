@@ -151,8 +151,7 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
   // F5: SPEC §11 case 5 — show a "this may be slow" notice once we know
   // the bill is large. page_count is persisted by the extract step, so the
   // notice appears from the analyzing phase onward.
-  const isLargeBill =
-    typeof data.page_count === 'number' && data.page_count > 100;
+  const isLargeBill = typeof data.page_count === 'number' && data.page_count > 100;
 
   return (
     <div className="space-y-6">
@@ -162,9 +161,8 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-medium">Large bill detected — {data.page_count} pages.</p>
           <p className="mt-1">
-            Processing a bill this size may take a few minutes longer than
-            usual. You can leave this tab open — we&apos;ll keep the report when
-            it&apos;s ready.
+            Processing a bill this size may take a few minutes longer than usual. You can leave this
+            tab open — we&apos;ll keep the report when it&apos;s ready.
           </p>
         </div>
       ) : null}
@@ -207,10 +205,7 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
           />
           <SummaryCard
             label="Billing period"
-            value={formatIsoDatePeriod(
-              data.billing_period_start,
-              data.billing_period_end,
-            )}
+            value={formatIsoDatePeriod(data.billing_period_start, data.billing_period_end)}
           />
           <SummaryCard
             label="Accounts"

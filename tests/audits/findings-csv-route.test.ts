@@ -252,10 +252,7 @@ describe('GET /api/audits/[id]/findings.csv', () => {
   });
 
   it('applies ?status=approved,disputed as an IN filter at the DB layer', async () => {
-    const res = await GET(
-      makeRequest('status=approved,disputed'),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest('status=approved,disputed'), makeContext(AUDIT_ID));
     expect(res.status).toBe(200);
     expect(inCalls).toContainEqual({
       column: 'status',
@@ -266,10 +263,7 @@ describe('GET /api/audits/[id]/findings.csv', () => {
   });
 
   it('applies ?severity=high,medium as an IN filter at the DB layer', async () => {
-    const res = await GET(
-      makeRequest('severity=high,medium'),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest('severity=high,medium'), makeContext(AUDIT_ID));
     expect(res.status).toBe(200);
     expect(inCalls).toContainEqual({
       column: 'severity',
@@ -278,29 +272,20 @@ describe('GET /api/audits/[id]/findings.csv', () => {
   });
 
   it('combines ?status and ?severity as two IN filters', async () => {
-    const res = await GET(
-      makeRequest('status=approved&severity=high'),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest('status=approved&severity=high'), makeContext(AUDIT_ID));
     expect(res.status).toBe(200);
     expect(inCalls.some((c) => c.column === 'status')).toBe(true);
     expect(inCalls.some((c) => c.column === 'severity')).toBe(true);
   });
 
   it('returns 400 when ?status contains an unknown value', async () => {
-    const res = await GET(
-      makeRequest('status=approved,frobnicated'),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest('status=approved,frobnicated'), makeContext(AUDIT_ID));
     expect(res.status).toBe(400);
     expect(inCalls).toHaveLength(0);
   });
 
   it('returns 400 when ?severity contains an unknown value', async () => {
-    const res = await GET(
-      makeRequest('severity=high,nuclear'),
-      makeContext(AUDIT_ID),
-    );
+    const res = await GET(makeRequest('severity=high,nuclear'), makeContext(AUDIT_ID));
     expect(res.status).toBe(400);
     expect(inCalls).toHaveLength(0);
   });

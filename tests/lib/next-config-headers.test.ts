@@ -68,9 +68,7 @@ describe('next.config headers matcher', () => {
   it('preserves the default Referrer-Policy: strict-origin-when-cross-origin for /:path*', () => {
     // Sanity check that the override blocks did not accidentally weaken the
     // default for every other route.
-    expect(lastReferrerPolicyForSource('/:path*')).toBe(
-      'strict-origin-when-cross-origin',
-    );
+    expect(lastReferrerPolicyForSource('/:path*')).toBe('strict-origin-when-cross-origin');
   });
 
   it('orders the overrides AFTER the default block (Next.js: last header wins)', () => {

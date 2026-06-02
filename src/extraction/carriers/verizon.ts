@@ -82,9 +82,7 @@ function normalizeFeature(feature: ExtractedFeature): ExtractedFeature {
 function normalizeCredit(credit: ExtractedCredit): ExtractedCredit {
   const trimmed = credit.name.trim();
   // Title-case "loyalty discount" variants regardless of how the LLM emitted it.
-  const name = /^loyalty\s+discount$/i.test(trimmed)
-    ? 'Loyalty Discount'
-    : trimmed;
+  const name = /^loyalty\s+discount$/i.test(trimmed) ? 'Loyalty Discount' : trimmed;
   if (name === credit.name) return credit;
   return { ...credit, name };
 }

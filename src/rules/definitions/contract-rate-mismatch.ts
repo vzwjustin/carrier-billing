@@ -31,10 +31,7 @@ function normalizePlanName(value: string | null | undefined): string {
  * contracts. False positives are bounded by the plan-name match which is
  * strict on both sides.
  */
-function contractCarrierMatches(
-  contract: ContractWithTerms,
-  billCarrier: string,
-): boolean {
+function contractCarrierMatches(contract: ContractWithTerms, billCarrier: string): boolean {
   if (contract.carrier === null) return true;
   if (contract.carrier === 'unknown') return true;
   return contract.carrier === billCarrier;

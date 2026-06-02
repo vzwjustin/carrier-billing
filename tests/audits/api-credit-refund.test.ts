@@ -28,8 +28,7 @@ const auditsDeleteEqMock = vi.fn<() => Promise<DeleteResult>>(async () => ({
   data: null,
   error: null,
 }));
-const createSignedUploadUrlMock =
-  vi.fn<(path: string) => Promise<SignedUrlResult>>();
+const createSignedUploadUrlMock = vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
 const auditsUpdateMock = vi.fn(async () => ({ data: [{ id: 'audit-1' }], error: null }));
 
@@ -62,19 +61,13 @@ vi.mock('@/lib/access/gate', () => ({
   assertCanRunAudit: () => gateMock(),
 }));
 
-const decrementMock = vi.fn<
-  (
-    userId: string,
-    auditId: string,
-  ) => Promise<{ remaining: number; idempotent: boolean }>
->();
+const decrementMock =
+  vi.fn<(userId: string, auditId: string) => Promise<{ remaining: number; idempotent: boolean }>>();
 vi.mock('@/lib/access/decrement', () => ({
-  consumeAuditCreditForAudit: (userId: string, auditId: string) =>
-    decrementMock(userId, auditId),
+  consumeAuditCreditForAudit: (userId: string, auditId: string) => decrementMock(userId, auditId),
 }));
 
-const adminRpcMock =
-  vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
+const adminRpcMock = vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     rpc: adminRpcMock,
@@ -137,9 +130,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     gateMock.mockResolvedValue({ ok: true, reason: 'credit', remaining: 3 });
     adminRpcMock.mockResolvedValue({ data: 1, error: null });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     expect(decrementMock).toHaveBeenCalledTimes(1);
@@ -164,9 +155,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
   it('does NOT refund when the user is on an active subscription', async () => {
     gateMock.mockResolvedValue({ ok: true, reason: 'subscription' });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     // Subscription users never consumed a credit, so neither path runs.
@@ -181,9 +170,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
       error: { message: 'delete denied' },
     });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     expect(sentryCaptureMock).toHaveBeenCalledTimes(1);
@@ -192,9 +179,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
       { tags?: Record<string, unknown>; extra?: Record<string, unknown> },
     ];
     expect(err.message).toBe('delete denied');
-    expect(ctx.tags?.['surface']).toBe(
-      'audits.create.rollback_signed_url_orphan',
-    );
+    expect(ctx.tags?.['surface']).toBe('audits.create.rollback_signed_url_orphan');
     expect(ctx.extra?.['userId']).toBe('user-uuid-1');
   });
 
@@ -205,9 +190,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
       error: { message: 'rpc unavailable' },
     });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     expect(adminRpcMock).toHaveBeenCalledTimes(1);

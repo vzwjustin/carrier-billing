@@ -22,10 +22,7 @@ import type {
   DisputeLineInput,
   DisputeSeverity,
 } from './builder';
-import {
-  formatIsoDatePeriod,
-  formatUtcYyyyMmDd,
-} from '@/lib/dates';
+import { formatIsoDatePeriod, formatUtcYyyyMmDd } from '@/lib/dates';
 
 const CARRIER_DISPLAY_NAMES: Record<string, string> = {
   verizon: 'Verizon',
@@ -230,9 +227,7 @@ function resolveOperatorName(raw: string | null): string {
  * Build the bulk dispute letter shape. Pure, deterministic — feed it rows +
  * a `Date` and you'll get the same letter every time.
  */
-export function buildBulkDisputeLetter(
-  input: BulkDisputeBuilderInput,
-): BulkDisputeLetter {
+export function buildBulkDisputeLetter(input: BulkDisputeBuilderInput): BulkDisputeLetter {
   const { audit, operatorName, findings, generatedAt } = input;
 
   const carrier = carrierDisplay(audit.carrier);
@@ -259,10 +254,7 @@ export function buildBulkDisputeLetter(
     };
   });
 
-  const totalCents = items.reduce(
-    (sum, item) => sum + item.requestedCreditCents,
-    0,
-  );
+  const totalCents = items.reduce((sum, item) => sum + item.requestedCreditCents, 0);
   const totalAnnualCents = totalCents * 12;
   const resolvedName = resolveOperatorName(operatorName);
 

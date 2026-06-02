@@ -5,11 +5,7 @@ import { AuditCompletedDataSchema, parseEventData } from '../events';
 import { postPinnedHttps } from '@/lib/security/pinned-https';
 import { assertPublicHttpsTarget } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
-import type {
-  AuditCarrier,
-  AuditStatus,
-  FindingSeverity,
-} from '@/types/db-enums';
+import type { AuditCarrier, AuditStatus, FindingSeverity } from '@/types/db-enums';
 
 /**
  * dispatch-outbound-webhook — POST a completed audit's report to the user's
@@ -178,9 +174,7 @@ interface PostOutboundWebhookInput {
   findings: FindingRow[];
 }
 
-async function postOutboundWebhook(
-  input: PostOutboundWebhookInput,
-): Promise<{ status: number }> {
+async function postOutboundWebhook(input: PostOutboundWebhookInput): Promise<{ status: number }> {
   const { url, secret, audit, findings } = input;
 
   const payload = {
@@ -193,10 +187,8 @@ async function postOutboundWebhook(
       carrier: audit.carrier,
       billing_period_start: audit.billing_period_start,
       billing_period_end: audit.billing_period_end,
-      estimated_monthly_savings_cents:
-        audit.estimated_monthly_savings_cents ?? 0,
-      estimated_annual_savings_cents:
-        audit.estimated_annual_savings_cents ?? 0,
+      estimated_monthly_savings_cents: audit.estimated_monthly_savings_cents ?? 0,
+      estimated_annual_savings_cents: audit.estimated_annual_savings_cents ?? 0,
       finding_count: audit.finding_count ?? 0,
       high_severity_count: audit.high_severity_count ?? 0,
       completed_at: audit.completed_at,
@@ -219,9 +211,7 @@ async function postOutboundWebhook(
   // can't be replayed indefinitely. Receivers should reject timestamps older
   // than 5 min.
   const signedPayload = `${timestamp}.${body}`;
-  const sigHex = createHmac('sha256', secret)
-    .update(signedPayload)
-    .digest('hex');
+  const sigHex = createHmac('sha256', secret).update(signedPayload).digest('hex');
   const signatureHeader = `t=${timestamp},v1=${sigHex}`;
 
   // Re-validate the URL at dispatch time — checking only at submit-time
@@ -233,9 +223,7 @@ async function postOutboundWebhook(
 
   const original = new URL(url);
   const host =
-    original.port.length > 0
-      ? `${original.hostname}:${original.port}`
-      : original.hostname;
+    original.port.length > 0 ? `${original.hostname}:${original.port}` : original.hostname;
 
   const { status } = await postPinnedHttps({
     url: original,

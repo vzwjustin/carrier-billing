@@ -32,9 +32,7 @@ const COLORS = {
   white: '#ffffff',
 } as const;
 
-export function AuditCompletedEmail(
-  props: AuditCompletedEmailProps,
-): React.ReactElement {
+export function AuditCompletedEmail(props: AuditCompletedEmailProps): React.ReactElement {
   const {
     carrierLabel,
     billingPeriod,
@@ -119,15 +117,13 @@ export function AuditCompletedEmail(
         <h1 style={headingStyle}>Your CarrierAudit report is ready</h1>
 
         <p style={heroStyle}>
-          We found{' '}
-          <span style={heroAmountStyle}>{formatCents(annualSavingsCents)}</span>{' '}
-          of potential annual savings on your {carrierLabel} bill.
+          We found <span style={heroAmountStyle}>{formatCents(annualSavingsCents)}</span> of
+          potential annual savings on your {carrierLabel} bill.
         </p>
 
         <p style={bodyStyle}>
-          Inside the report you&apos;ll find a prioritized list of findings,
-          recommended actions for each, and the evidence we used so you can
-          take them straight to your carrier rep.
+          Inside the report you&apos;ll find a prioritized list of findings, recommended actions for
+          each, and the evidence we used so you can take them straight to your carrier rep.
         </p>
 
         <ul style={statListStyle}>
@@ -135,16 +131,13 @@ export function AuditCompletedEmail(
             Billing period: <strong>{billingPeriod}</strong>
           </li>
           <li style={statItemStyle}>
-            Findings: <strong>{findingCount}</strong> ({highSeverityCount}{' '}
-            high-severity)
+            Findings: <strong>{findingCount}</strong> ({highSeverityCount} high-severity)
           </li>
           <li style={statItemStyle}>
-            Estimated monthly savings:{' '}
-            <strong>{formatCents(monthlySavingsCents)}/mo</strong>
+            Estimated monthly savings: <strong>{formatCents(monthlySavingsCents)}/mo</strong>
           </li>
           <li style={statItemStyle}>
-            Estimated annual savings:{' '}
-            <strong>{formatCents(annualSavingsCents)}/year</strong>
+            Estimated annual savings: <strong>{formatCents(annualSavingsCents)}/year</strong>
           </li>
         </ul>
 
@@ -158,10 +151,7 @@ export function AuditCompletedEmail(
           </p>
           <p style={{ margin: 0 }}>
             CarrierAudit ·{' '}
-            <a
-              href="mailto:hello@carrieraudit.com?subject=Unsubscribe"
-              style={footerLinkStyle}
-            >
+            <a href="mailto:hello@carrieraudit.com?subject=Unsubscribe" style={footerLinkStyle}>
               unsubscribe
             </a>
           </p>

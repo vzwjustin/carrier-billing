@@ -85,9 +85,7 @@ vi.mock('@/env', () => ({
 
 import { GET } from '@/app/api/audits/[id]/cost-centers.csv/route';
 
-function makeContext(
-  id: string = AUDIT_ID,
-): { params: Promise<{ id: string }> } {
+function makeContext(id: string = AUDIT_ID): { params: Promise<{ id: string }> } {
   return { params: Promise.resolve({ id }) };
 }
 
@@ -140,9 +138,7 @@ describe('GET cost-centers.csv — param + token validation', () => {
 
   it('returns 404 when token is provided in a malformed shape', async () => {
     const res = await GET(
-      new Request(
-        `http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=short`,
-      ),
+      new Request(`http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=short`),
       makeContext(),
     );
     expect(res.status).toBe(404);
@@ -227,9 +223,7 @@ describe('GET cost-centers.csv — public-token path', () => {
       error: null,
     });
     await GET(
-      new Request(
-        `http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=${VALID_TOKEN}`,
-      ),
+      new Request(`http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=${VALID_TOKEN}`),
       makeContext(),
     );
     const call = consumeRateLimitMock.mock.calls[0]?.[0] as {
@@ -248,9 +242,7 @@ describe('GET cost-centers.csv — public-token path', () => {
       error: null,
     });
     const res = await GET(
-      new Request(
-        `http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=${VALID_TOKEN}`,
-      ),
+      new Request(`http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=${VALID_TOKEN}`),
       makeContext(),
     );
     expect(res.status).toBe(404);
@@ -265,9 +257,7 @@ describe('GET cost-centers.csv — public-token path', () => {
       error: null,
     });
     const res = await GET(
-      new Request(
-        `http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=${VALID_TOKEN}`,
-      ),
+      new Request(`http://localhost/api/audits/${AUDIT_ID}/cost-centers.csv?token=${VALID_TOKEN}`),
       makeContext(),
     );
     expect(res.status).toBe(404);
@@ -302,9 +292,7 @@ describe('GET cost-centers.csv — happy path', () => {
     const lines = body.split(/\r?\n/).filter((l) => l.length > 0);
     const headerRow = lines[0];
     const dataRows = lines.slice(1);
-    expect(headerRow).toBe(
-      'cost_center,line_count,monthly_total_dollars,annual_total_dollars',
-    );
+    expect(headerRow).toBe('cost_center,line_count,monthly_total_dollars,annual_total_dollars');
     // 3 unique buckets: Engineering, Sales, (unassigned)
     expect(dataRows.length).toBe(3);
     // Engineering row: 2 lines × $65 = $130/mo, $1560/yr.

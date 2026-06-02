@@ -41,16 +41,11 @@ function toFormValue(initial: TermsEditorValue): FormValue {
         ? ''
         : (initial.discount_percentage_bps / 100).toString(),
     promo_credit_dollars:
-      initial.promo_credit_cents === null
-        ? ''
-        : (initial.promo_credit_cents / 100).toFixed(2),
+      initial.promo_credit_cents === null ? '' : (initial.promo_credit_cents / 100).toFixed(2),
     promo_duration_months:
-      initial.promo_duration_months === null
-        ? ''
-        : String(initial.promo_duration_months),
+      initial.promo_duration_months === null ? '' : String(initial.promo_duration_months),
     device_credit_terms: initial.device_credit_terms ?? '',
-    line_minimums:
-      initial.line_minimums === null ? '' : String(initial.line_minimums),
+    line_minimums: initial.line_minimums === null ? '' : String(initial.line_minimums),
     upgrade_fee_rules: initial.upgrade_fee_rules ?? '',
     activation_fee_rules: initial.activation_fee_rules ?? '',
     international_package_terms: initial.international_package_terms ?? '',
@@ -98,8 +93,8 @@ export function TermsEditor({
   const [saving, setSaving] = React.useState(false);
   const [reextracting, setReextracting] = React.useState(false);
 
-  const handleField = (key: keyof FormValue) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleField =
+    (key: keyof FormValue) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const value = e.target.value;
       setForm((prev) => ({ ...prev, [key]: value }));
     };
@@ -140,12 +135,8 @@ export function TermsEditor({
           line_minimums: lineMin,
           upgrade_fee_rules: nullableText(form.upgrade_fee_rules ?? ''),
           activation_fee_rules: nullableText(form.activation_fee_rules ?? ''),
-          international_package_terms: nullableText(
-            form.international_package_terms ?? '',
-          ),
-          early_termination_terms: nullableText(
-            form.early_termination_terms ?? '',
-          ),
+          international_package_terms: nullableText(form.international_package_terms ?? ''),
+          early_termination_terms: nullableText(form.early_termination_terms ?? ''),
           notes: nullableText(form.notes ?? ''),
         }),
       });
@@ -191,21 +182,17 @@ export function TermsEditor({
       toast.success('Re-extraction started.');
       router.refresh();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to re-extract.';
+      const message = err instanceof Error ? err.message : 'Failed to re-extract.';
       toast.error(message);
     } finally {
       setReextracting(false);
     }
   };
 
-  const Label = (props: {
-    children: React.ReactNode;
-    htmlFor: string;
-  }): React.JSX.Element => (
+  const Label = (props: { children: React.ReactNode; htmlFor: string }): React.JSX.Element => (
     <label
       htmlFor={props.htmlFor}
-      className="block text-xs font-medium uppercase tracking-wide text-neutral-500"
+      className="block text-xs font-medium tracking-wide text-neutral-500 uppercase"
     >
       {props.children}
     </label>
@@ -223,7 +210,7 @@ export function TermsEditor({
       value={form[props.name] ?? ''}
       onChange={handleField(props.name)}
       placeholder={props.placeholder}
-      className="mt-1 block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+      className="mt-1 block h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
     />
   );
 
@@ -239,7 +226,7 @@ export function TermsEditor({
       onChange={handleField(props.name)}
       placeholder={props.placeholder}
       rows={props.rows ?? 3}
-      className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+      className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
     />
   );
 
@@ -251,9 +238,7 @@ export function TermsEditor({
           <Input id="plan_name" name="plan_name" placeholder="Business Unlimited Pro 2.0" />
         </div>
         <div>
-          <Label htmlFor="contracted_monthly_rate_dollars">
-            Contracted monthly rate ($)
-          </Label>
+          <Label htmlFor="contracted_monthly_rate_dollars">Contracted monthly rate ($)</Label>
           <Input
             id="contracted_monthly_rate_dollars"
             name="contracted_monthly_rate_dollars"
@@ -262,11 +247,7 @@ export function TermsEditor({
         </div>
         <div>
           <Label htmlFor="discount_percentage">Discount (%)</Label>
-          <Input
-            id="discount_percentage"
-            name="discount_percentage"
-            placeholder="12.5"
-          />
+          <Input id="discount_percentage" name="discount_percentage" placeholder="12.5" />
         </div>
         <div>
           <Label htmlFor="line_minimums">Line minimums</Label>
@@ -295,9 +276,7 @@ export function TermsEditor({
         <Textarea id="activation_fee_rules" name="activation_fee_rules" />
       </div>
       <div>
-        <Label htmlFor="international_package_terms">
-          International package terms
-        </Label>
+        <Label htmlFor="international_package_terms">International package terms</Label>
         <Textarea id="international_package_terms" name="international_package_terms" />
       </div>
       <div>

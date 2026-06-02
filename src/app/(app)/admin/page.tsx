@@ -20,10 +20,7 @@ export default async function AdminOverviewPage(): Promise<React.JSX.Element> {
   const [usersRes, auditsRes, completedRes] = await Promise.all([
     admin.from('profiles').select('id', { count: 'exact', head: true }),
     admin.from('audits').select('id', { count: 'exact', head: true }),
-    admin
-      .from('audits')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'completed'),
+    admin.from('audits').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
   ]);
   const users = usersRes.count ?? 0;
   const audits = auditsRes.count ?? 0;
@@ -65,7 +62,7 @@ export default async function AdminOverviewPage(): Promise<React.JSX.Element> {
           Recent audit activity
         </h2>
         <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <thead className="text-left text-xs tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
             <tr>
               <th className="px-4 py-2 font-medium">Audit</th>
               <th className="px-4 py-2 font-medium">Carrier</th>
@@ -75,18 +72,11 @@ export default async function AdminOverviewPage(): Promise<React.JSX.Element> {
           </thead>
           <tbody>
             {recent.map((a) => (
-              <tr
-                key={a.id}
-                className="border-t border-neutral-200 dark:border-neutral-800"
-              >
-                <td className="px-4 py-2 font-mono text-xs">
-                  {a.id.slice(0, 8)}
-                </td>
+              <tr key={a.id} className="border-t border-neutral-200 dark:border-neutral-800">
+                <td className="px-4 py-2 font-mono text-xs">{a.id.slice(0, 8)}</td>
                 <td className="px-4 py-2">{a.carrier ?? '—'}</td>
                 <td className="px-4 py-2">{a.status}</td>
-                <td className="px-4 py-2">
-                  {new Date(a.created_at).toLocaleString('en-US')}
-                </td>
+                <td className="px-4 py-2">{new Date(a.created_at).toLocaleString('en-US')}</td>
               </tr>
             ))}
             {recent.length === 0 ? (
@@ -120,27 +110,17 @@ function ToolCard({
       href={href}
       className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800"
     >
-      <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-        {title}
-      </p>
-      <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
-        {description}
-      </p>
+      <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{title}</p>
+      <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{description}</p>
     </Link>
   );
 }
 
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}): React.JSX.Element {
+function Stat({ label, value }: { label: string; value: number }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <p className="text-xs text-neutral-500 dark:text-neutral-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">
+      <p className="mt-1 text-2xl font-semibold text-neutral-900 tabular-nums dark:text-neutral-100">
         {value}
       </p>
     </div>

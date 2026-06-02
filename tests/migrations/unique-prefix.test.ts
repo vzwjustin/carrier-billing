@@ -36,10 +36,7 @@ describe('supabase migration filenames', () => {
     }
 
     const offenders = [...byPrefix.entries()]
-      .filter(
-        ([prefix, list]) =>
-          list.length > 1 && !GRANDFATHERED_DUPLICATE_PREFIXES.has(prefix),
-      )
+      .filter(([prefix, list]) => list.length > 1 && !GRANDFATHERED_DUPLICATE_PREFIXES.has(prefix))
       .map(([prefix, list]) => `${prefix}: ${list.join(', ')}`);
 
     expect(

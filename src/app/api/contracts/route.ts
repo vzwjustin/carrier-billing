@@ -2,10 +2,7 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -50,19 +47,13 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = CreateContractSchema.safeParse(bodyJson);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: first?.message ?? 'Invalid request.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: first?.message ?? 'Invalid request.' }, { status: 400 });
   }
 
   const { filename, size_bytes } = parsed.data;
 
   if (!isAcceptedFilename(filename)) {
-    return NextResponse.json(
-      { error: 'Only PDF contracts are accepted.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Only PDF contracts are accepted.' }, { status: 400 });
   }
 
   try {
@@ -97,10 +88,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (insertError) {
-      return NextResponse.json(
-        { error: 'Failed to create contract.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create contract.' }, { status: 500 });
     }
 
     const SIGNED_UPLOAD_TTL_SECONDS = 60 * 15;
@@ -120,10 +108,7 @@ export async function POST(request: Request): Promise<Response> {
           extra: { contractId, userId: user.id },
         });
       }
-      return NextResponse.json(
-        { error: 'Failed to create upload URL.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create upload URL.' }, { status: 500 });
     }
 
     void size_bytes; // bound by schema; size enforced server-side via createSignedUploadUrl + PUT
@@ -136,9 +121,6 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (err) {
     Sentry.captureException(err, { tags: { surface: 'contracts.create' } });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

@@ -8,10 +8,7 @@ import { sendBillUploadRemindersFn } from './send-bill-upload-reminders';
 import { sendMonthlyDigestFn } from './send-monthly-digest';
 import { sendPaymentFailedEmailFn } from './send-payment-failed-email';
 import { sendReportEmailFn } from './send-report-email';
-import {
-  sendSlackAutopsyFn,
-  sendSlackHighFindingFn,
-} from './send-slack-notification';
+import { sendSlackAutopsyFn, sendSlackHighFindingFn } from './send-slack-notification';
 
 /**
  * Registry of all Inngest functions served by the app.

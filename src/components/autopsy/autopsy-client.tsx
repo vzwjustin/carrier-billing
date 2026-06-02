@@ -179,7 +179,7 @@ export function AutopsyClient({
       <header className="space-y-2">
         <Link
           href={`/audits/${audit.id}`}
-          className="text-xs font-medium uppercase tracking-wider text-neutral-500 hover:text-neutral-700"
+          className="text-xs font-medium tracking-wider text-neutral-500 uppercase hover:text-neutral-700"
         >
           ← Back to audit
         </Link>
@@ -189,20 +189,16 @@ export function AutopsyClient({
         <p className="text-sm text-neutral-600">
           Current bill: <strong>{audit.original_filename}</strong> ·{' '}
           {formatIsoDatePeriod(audit.billing_period_start, audit.billing_period_end)} ·{' '}
-          {audit.total_charges_cents !== null
-            ? formatCents(audit.total_charges_cents)
-            : '—'}
+          {audit.total_charges_cents !== null ? formatCents(audit.total_charges_cents) : '—'}
         </p>
       </header>
 
       <section className="rounded-lg border border-neutral-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-neutral-700">
-          Compare against
-        </h2>
+        <h2 className="text-sm font-semibold text-neutral-700">Compare against</h2>
         {candidates.length === 0 ? (
           <p className="mt-2 text-sm text-neutral-500">
-            You don&apos;t have another completed audit to compare against yet.
-            Upload a second bill and run an audit on it.
+            You don&apos;t have another completed audit to compare against yet. Upload a second bill
+            and run an audit on it.
           </p>
         ) : (
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -215,9 +211,7 @@ export function AutopsyClient({
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
                   {formatIsoDatePeriod(c.billing_period_start, c.billing_period_end)} ·{' '}
-                  {c.total_charges_cents !== null
-                    ? formatCents(c.total_charges_cents)
-                    : '—'}
+                  {c.total_charges_cents !== null ? formatCents(c.total_charges_cents) : '—'}
                   {' · '}
                   {c.original_filename}
                 </option>
@@ -229,11 +223,7 @@ export function AutopsyClient({
               }}
               disabled={isRunning || !selectedPrev}
             >
-              {isRunning
-                ? 'Running…'
-                : existing
-                  ? 'Re-run autopsy'
-                  : 'Run autopsy'}
+              {isRunning ? 'Running…' : existing ? 'Re-run autopsy' : 'Run autopsy'}
             </Button>
             {existing ? (
               <p className="text-xs text-neutral-500">
@@ -258,8 +248,8 @@ export function AutopsyClient({
       ) : (
         <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center">
           <p className="text-sm text-neutral-600">
-            No autopsy has been run for this bill yet. Pick a previous bill
-            above and click <strong>Run autopsy</strong>.
+            No autopsy has been run for this bill yet. Pick a previous bill above and click{' '}
+            <strong>Run autopsy</strong>.
           </p>
         </div>
       )}
@@ -267,18 +257,14 @@ export function AutopsyClient({
   );
 }
 
-function ExecutiveSummary({
-  comparison,
-}: {
-  comparison: ComparisonRow;
-}): React.JSX.Element {
+function ExecutiveSummary({ comparison }: { comparison: ComparisonRow }): React.JSX.Element {
   const net = comparison.net_change_cents;
   const direction = net === 0 ? 'unchanged' : net > 0 ? 'increased' : 'decreased';
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+          <p className="text-xs font-medium tracking-wider text-neutral-500 uppercase">
             Bill change
           </p>
           <p
@@ -295,8 +281,8 @@ function ExecutiveSummary({
             </span>
           </p>
           <p className="mt-2 text-sm text-neutral-600">
-            Previous total {formatCents(comparison.previous_total_cents)} →
-            Current total {formatCents(comparison.current_total_cents)}
+            Previous total {formatCents(comparison.previous_total_cents)} → Current total{' '}
+            {formatCents(comparison.current_total_cents)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -310,14 +296,10 @@ function ExecutiveSummary({
             cents={comparison.optimization_cents}
             tone="blue"
           />
-          <SummaryBadge
-            label="Unexplained"
-            cents={comparison.unexplained_cents}
-            tone="neutral"
-          />
+          <SummaryBadge label="Unexplained" cents={comparison.unexplained_cents} tone="neutral" />
         </div>
       </div>
-      <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-neutral-700">
+      <p className="mt-4 text-sm leading-relaxed whitespace-pre-line text-neutral-700">
         {comparison.executive_summary}
       </p>
     </section>
@@ -339,16 +321,9 @@ function SummaryBadge({
     neutral: 'border-neutral-300 bg-neutral-50 text-neutral-700',
   };
   return (
-    <div
-      className={cn(
-        'rounded-md border px-3 py-2 text-right shadow-sm',
-        toneClasses[tone],
-      )}
-    >
-      <p className="text-[10px] font-semibold uppercase tracking-wider">{label}</p>
-      <p className="mt-0.5 text-base font-semibold tabular-nums">
-        {formatCents(cents)}
-      </p>
+    <div className={cn('rounded-md border px-3 py-2 text-right shadow-sm', toneClasses[tone])}>
+      <p className="text-[10px] font-semibold tracking-wider uppercase">{label}</p>
+      <p className="mt-0.5 text-base font-semibold tabular-nums">{formatCents(cents)}</p>
     </div>
   );
 }
@@ -365,9 +340,7 @@ function DriversList({ drivers }: { drivers: DriverRow[] }): React.JSX.Element {
   }
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold tracking-tight text-neutral-900">
-        Change drivers
-      </h2>
+      <h2 className="text-lg font-semibold tracking-tight text-neutral-900">Change drivers</h2>
       <div className="space-y-2">
         {drivers.map((d) => (
           <DriverCard key={d.id} driver={d} />
@@ -383,9 +356,7 @@ function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
   // Local optimistic state so action buttons reflect changes immediately
   // without a page round-trip. The router.refresh() on success keeps the
   // SSR cache in sync.
-  const [isExplained, setIsExplained] = React.useState<boolean>(
-    Boolean(driver.is_explained),
-  );
+  const [isExplained, setIsExplained] = React.useState<boolean>(Boolean(driver.is_explained));
   const [escalatedFindingId, setEscalatedFindingId] = React.useState<string | null>(
     driver.escalated_finding_id ?? null,
   );
@@ -398,14 +369,11 @@ function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
       const previous = isExplained;
       setIsExplained(next); // optimistic
       try {
-        const res = await fetch(
-          `/api/autopsy/drivers/${driver.id}/explain`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ explained: next }),
-          },
-        );
+        const res = await fetch(`/api/autopsy/drivers/${driver.id}/explain`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ explained: next }),
+        });
         if (!res.ok) {
           setIsExplained(previous);
           toast.error(next ? 'Could not mark as explained.' : 'Could not undo.');
@@ -426,10 +394,7 @@ function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
   const handleEscalate = React.useCallback(async (): Promise<void> => {
     setIsWorking(true);
     try {
-      const res = await fetch(
-        `/api/autopsy/drivers/${driver.id}/escalate`,
-        { method: 'POST' },
-      );
+      const res = await fetch(`/api/autopsy/drivers/${driver.id}/escalate`, { method: 'POST' });
       if (!res.ok) {
         toast.error('Could not escalate to a finding.');
         return;
@@ -467,16 +432,14 @@ function DriverCard({ driver }: { driver: DriverRow }): React.JSX.Element {
           <CategoryBadge driver={driver} />
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-neutral-900">
-                {driver.title}
-              </p>
+              <p className="text-sm font-medium text-neutral-900">{driver.title}</p>
               {isExplained ? (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-800">
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-800 uppercase">
                   Explained
                 </span>
               ) : null}
               {escalatedFindingId ? (
-                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-800">
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-violet-800 uppercase">
                   Escalated
                 </span>
               ) : null}
@@ -527,7 +490,7 @@ function CategoryBadge({ driver }: { driver: DriverRow }): React.JSX.Element {
   return (
     <span
       className={cn(
-        'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider',
+        'rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase',
         tone,
       )}
     >
@@ -561,17 +524,15 @@ function DriverDetail({
       <p className="text-sm leading-relaxed text-neutral-700">{driver.summary}</p>
       {driver.recommended_action ? (
         <div className="mt-3 rounded-md bg-neutral-50 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+          <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
             Recommended action
           </p>
-          <p className="mt-1 text-sm text-neutral-800">
-            {driver.recommended_action}
-          </p>
+          <p className="mt-1 text-sm text-neutral-800">{driver.recommended_action}</p>
         </div>
       ) : null}
       {lines.length > 0 ? (
         <div className="mt-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+          <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
             Affected lines
           </p>
           <div className="mt-2 overflow-x-auto">
@@ -595,15 +556,13 @@ function DriverDetail({
                         {' / '}
                         {ln.mdn_last4 ? `*${ln.mdn_last4}` : '(no MDN)'}
                         {safeUserLabel ? (
-                          <span className="ml-1 text-neutral-500">
-                            ({safeUserLabel})
-                          </span>
+                          <span className="ml-1 text-neutral-500">({safeUserLabel})</span>
                         ) : null}
                       </td>
-                      <td className="py-1 pr-3 tabular-nums text-neutral-700">
+                      <td className="py-1 pr-3 text-neutral-700 tabular-nums">
                         {formatCents(ln.previous_cents)}
                       </td>
-                      <td className="py-1 pr-3 tabular-nums text-neutral-700">
+                      <td className="py-1 pr-3 text-neutral-700 tabular-nums">
                         {formatCents(ln.current_cents)}
                       </td>
                       <td className="py-1 pr-3 tabular-nums">
@@ -627,7 +586,7 @@ function DriverDetail({
       ) : null}
       {accounts.length > 0 ? (
         <div className="mt-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+          <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
             Affected accounts
           </p>
           <ul className="mt-2 space-y-1">

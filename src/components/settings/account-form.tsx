@@ -51,8 +51,7 @@ export function AccountForm({
           aria-describedby="email-hint"
         />
         <p id="email-hint" className="text-xs text-neutral-500">
-          Email is managed by your sign-in provider and can&apos;t be changed
-          here.
+          Email is managed by your sign-in provider and can&apos;t be changed here.
         </p>
       </div>
 

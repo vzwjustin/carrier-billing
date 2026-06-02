@@ -119,8 +119,7 @@ export function CsvImportWizard(): React.JSX.Element {
   const [mapping, setMapping] = React.useState<ColumnMapping>({});
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const busy =
-    phase !== 'idle' && phase !== 'awaitingMapping';
+  const busy = phase !== 'idle' && phase !== 'awaitingMapping';
 
   const handlePickFile = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const picked = event.target.files?.[0];
@@ -186,10 +185,7 @@ export function CsvImportWizard(): React.JSX.Element {
     }
   };
 
-  const handleMappingChange = (
-    field: CanonicalField,
-    value: string,
-  ): void => {
+  const handleMappingChange = (field: CanonicalField, value: string): void => {
     setMapping((prev) => ({
       ...prev,
       [field]: value === '' ? null : value,
@@ -225,9 +221,7 @@ export function CsvImportWizard(): React.JSX.Element {
     return (
       <div className="space-y-6">
         <div className="rounded-lg border-2 border-dashed border-neutral-300 bg-white p-12 text-center">
-          <p className="text-sm font-medium text-neutral-900">
-            Upload a carrier CSV export
-          </p>
+          <p className="text-sm font-medium text-neutral-900">Upload a carrier CSV export</p>
           <p className="mt-1 text-xs text-neutral-500">
             Verizon, AT&amp;T, or T-Mobile line-detail CSV, up to 5 MB.
           </p>
@@ -250,20 +244,13 @@ export function CsvImportWizard(): React.JSX.Element {
               Choose CSV
             </Button>
           </div>
-          {file ? (
-            <p className="mt-3 text-sm text-neutral-900">{file.name}</p>
-          ) : null}
+          {file ? <p className="mt-3 text-sm text-neutral-900">{file.name}</p> : null}
         </div>
         <div className="flex items-center justify-between">
           <p className="text-sm text-neutral-500" aria-live="polite">
             {phaseLabel(phase)}
           </p>
-          <Button
-            type="button"
-            size="lg"
-            disabled={!file || busy}
-            onClick={handleUpload}
-          >
+          <Button type="button" size="lg" disabled={!file || busy} onClick={handleUpload}>
             {busy ? 'Working…' : 'Upload + continue'}
           </Button>
         </div>
@@ -276,12 +263,9 @@ export function CsvImportWizard(): React.JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-neutral-900">
-          Map your columns
-        </h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Map your columns</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          We auto-detected the best column for each field. Override any
-          dropdown that looks wrong.
+          We auto-detected the best column for each field. Override any dropdown that looks wrong.
         </p>
       </div>
 
@@ -289,16 +273,10 @@ export function CsvImportWizard(): React.JSX.Element {
         <table className="w-full divide-y divide-neutral-200 text-sm">
           <thead className="bg-neutral-50">
             <tr>
-              <th
-                scope="col"
-                className="px-4 py-2 text-left font-medium text-neutral-700"
-              >
+              <th scope="col" className="px-4 py-2 text-left font-medium text-neutral-700">
                 Field
               </th>
-              <th
-                scope="col"
-                className="px-4 py-2 text-left font-medium text-neutral-700"
-              >
+              <th scope="col" className="px-4 py-2 text-left font-medium text-neutral-700">
                 CSV column
               </th>
             </tr>
@@ -314,9 +292,7 @@ export function CsvImportWizard(): React.JSX.Element {
                   <td className="px-4 py-2">
                     <select
                       value={current}
-                      onChange={(e) =>
-                        handleMappingChange(field, e.target.value)
-                      }
+                      onChange={(e) => handleMappingChange(field, e.target.value)}
                       className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
                       disabled={busy}
                     >
@@ -339,12 +315,7 @@ export function CsvImportWizard(): React.JSX.Element {
         <p className="text-sm text-neutral-500" aria-live="polite">
           {phaseLabel(phase)}
         </p>
-        <Button
-          type="button"
-          size="lg"
-          onClick={handleProcess}
-          disabled={busy}
-        >
+        <Button type="button" size="lg" onClick={handleProcess} disabled={busy}>
           {busy ? 'Working…' : 'Run audit'}
         </Button>
       </div>

@@ -12,10 +12,7 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -33,13 +30,11 @@ const ParamsSchema = z.object({
 // Trimming is applied as a transform so downstream code only sees the
 // normalised value.
 const BodySchema = z.object({
-  cost_center: z
-    .union([z.string().max(80), z.null()])
-    .transform((v) => {
-      if (v === null) return null;
-      const trimmed = v.trim();
-      return trimmed === '' ? null : trimmed;
-    }),
+  cost_center: z.union([z.string().max(80), z.null()]).transform((v) => {
+    if (v === null) return null;
+    const trimmed = v.trim();
+    return trimmed === '' ? null : trimmed;
+  }),
 });
 
 interface AuditOwnerRow {
@@ -59,10 +54,7 @@ export async function POST(
   const params = await context.params;
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) {
-    return NextResponse.json(
-      { error: 'Invalid audit or line id.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid audit or line id.' }, { status: 400 });
   }
   const { id: auditId, lineId } = parsedParams.data;
 
@@ -74,10 +66,7 @@ export async function POST(
   }
   const parsedBody = BodySchema.safeParse(rawBody);
   if (!parsedBody.success) {
-    return NextResponse.json(
-      { error: 'Invalid request body.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
   const { cost_center } = parsedBody.data;
 
@@ -111,10 +100,7 @@ export async function POST(
       .eq('id', auditId)
       .maybeSingle<AuditOwnerRow>();
     if (auditErr) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!audit || audit.user_id !== user.id) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -127,10 +113,7 @@ export async function POST(
       .eq('audit_id', auditId)
       .maybeSingle<LineOwnershipRow>();
     if (lineErr) {
-      return NextResponse.json(
-        { error: 'Failed to look up line.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up line.' }, { status: 500 });
     }
     if (!line) {
       return NextResponse.json({ error: 'Line not found.' }, { status: 404 });
@@ -151,10 +134,7 @@ export async function POST(
         tags: { surface: 'cost_center.update' },
         extra: { auditId, lineId },
       });
-      return NextResponse.json(
-        { error: 'Failed to update cost center.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to update cost center.' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
@@ -163,9 +143,6 @@ export async function POST(
       tags: { surface: 'cost_center.unknown' },
       extra: { auditId, lineId },
     });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

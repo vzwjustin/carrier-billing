@@ -48,9 +48,7 @@ function bound(value: string): string {
 // validation failure (which would fail the entire EDI bill).
 const FREE_TEXT_LONG_MAX = 120;
 function boundLong(value: string): string {
-  return value.length > FREE_TEXT_LONG_MAX
-    ? value.slice(0, FREE_TEXT_LONG_MAX)
-    : value;
+  return value.length > FREE_TEXT_LONG_MAX ? value.slice(0, FREE_TEXT_LONG_MAX) : value;
 }
 
 const NOTE_MAX = 500;
@@ -132,10 +130,7 @@ export function mapEdi811ToBill(
         const qualifier = el(seg, 1);
         const date = parseEdiDate(el(seg, 2));
         if (!date) break;
-        if (
-          qualifier === DTM_SERVICE_PERIOD_START ||
-          qualifier === DTM_SERVICE_PERIOD_START_ALT
-        ) {
+        if (qualifier === DTM_SERVICE_PERIOD_START || qualifier === DTM_SERVICE_PERIOD_START_ALT) {
           billingPeriodStart = date;
         } else if (
           qualifier === DTM_SERVICE_PERIOD_END ||
@@ -268,12 +263,8 @@ export function mapEdi811ToBill(
           currentAccount.currentLine.line.plan_base_cents = unitPriceCents;
         }
         // Promote any pending PID device description onto the line.
-        if (
-          currentAccount.currentLine.devicePending &&
-          !currentAccount.currentLine.line.device
-        ) {
-          currentAccount.currentLine.line.device =
-            currentAccount.currentLine.devicePending;
+        if (currentAccount.currentLine.devicePending && !currentAccount.currentLine.line.device) {
+          currentAccount.currentLine.line.device = currentAccount.currentLine.devicePending;
         }
         break;
       }
@@ -283,8 +274,7 @@ export function mapEdi811ToBill(
         const amountCents = parseSacAmount(el(seg, 5));
         // SAC15 is the canonical free-form description in 4010 wireless 811s,
         // but some carriers stuff it into SAC14 or SAC12 instead. Try in order.
-        const description =
-          elOrNull(seg, 15) ?? elOrNull(seg, 14) ?? elOrNull(seg, 12) ?? '';
+        const description = elOrNull(seg, 15) ?? elOrNull(seg, 14) ?? elOrNull(seg, 12) ?? '';
         if (amountCents === null) break;
 
         // Device installment (DPP). Always rolls up to the current line.
@@ -296,9 +286,7 @@ export function mapEdi811ToBill(
           if (currentAccount?.currentLine && amountCents >= 0) {
             const dpp: ExtractedDpp = {
               device: bound(
-                description ||
-                  currentAccount.currentLine.line.device ||
-                  'Device installment',
+                description || currentAccount.currentLine.line.device || 'Device installment',
               ),
               monthly_cents: amountCents,
               remaining_payments: parseIntOrNull(el(seg, 7)),
@@ -311,11 +299,7 @@ export function mapEdi811ToBill(
 
         // Plan base charge — populates plan_base_cents only if not already set
         // by an IT1 segment for the same line.
-        if (
-          serviceIdCode === SAC_PLAN &&
-          indicator === SAC_CHARGE &&
-          currentAccount?.currentLine
-        ) {
+        if (serviceIdCode === SAC_PLAN && indicator === SAC_CHARGE && currentAccount?.currentLine) {
           if (currentAccount.currentLine.line.plan_base_cents === null) {
             currentAccount.currentLine.line.plan_base_cents = amountCents;
           }
@@ -380,9 +364,7 @@ export function mapEdi811ToBill(
           // bytes mislabeled as GB) would fail the whole otherwise-good 811.
           // Clamp at the write site, mirroring the free-text bounding elsewhere.
           if (numeric > 10_000) {
-            console.warn(
-              `[edi811] data_used_gb ${numeric} exceeds cap; clamping to 10000`,
-            );
+            console.warn(`[edi811] data_used_gb ${numeric} exceeds cap; clamping to 10000`);
           }
           currentAccount.currentLine.line.data_used_gb = Math.min(numeric, 10_000);
         } else if (qualifier === QTY_VOICE_MIN) {
@@ -431,19 +413,14 @@ export function mapEdi811ToBill(
   // .parse() throw rejects the entire otherwise-good 811. Clamp here so it
   // neither un-clamps the account nor trips the schema.
   if (totalChargesCents !== null && totalChargesCents < 0) {
-    console.warn(
-      `[edi811] negative top-level TDS total ${totalChargesCents} cents; clamping to 0`,
-    );
+    console.warn(`[edi811] negative top-level TDS total ${totalChargesCents} cents; clamping to 0`);
     totalChargesCents = 0;
   }
   if (totalChargesCents !== null && accounts.length === 1 && accounts[0]) {
     accounts[0].account.total_charges_cents = totalChargesCents;
   }
   if (totalChargesCents === null) {
-    totalChargesCents = accounts.reduce(
-      (sum, a) => sum + a.account.total_charges_cents,
-      0,
-    );
+    totalChargesCents = accounts.reduce((sum, a) => sum + a.account.total_charges_cents, 0);
   }
 
   // (M-E2) Reconcile the billing period.

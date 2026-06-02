@@ -21,9 +21,8 @@ export default function PricingPage(): React.ReactElement {
               Simple, honest pricing
             </h1>
             <p className="max-w-2xl text-sm text-neutral-600 sm:text-base">
-              Audit any Verizon, AT&amp;T, or T-Mobile business wireless bill
-              in under five minutes. Pay per bill, or audit everything every
-              month.
+              Audit any Verizon, AT&amp;T, or T-Mobile business wireless bill in under five minutes.
+              Pay per bill, or audit everything every month.
             </p>
           </div>
           <PricingCards />

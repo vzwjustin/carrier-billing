@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildDisputePacket,
-  type DisputeBuilderInput,
-} from '@/disputes/builder';
+import { buildDisputePacket, type DisputeBuilderInput } from '@/disputes/builder';
 
-function baseInput(
-  overrides: Partial<DisputeBuilderInput> = {},
-): DisputeBuilderInput {
+function baseInput(overrides: Partial<DisputeBuilderInput> = {}): DisputeBuilderInput {
   return {
     audit: {
       id: '11111111-1111-4111-8111-111111111111',

@@ -137,7 +137,8 @@ describe('processBillFn — user-fault refund guard', () => {
 });
 
 describe('processBillFn — EDI811 routing sniff', () => {
-  const edi = 'ISA*00*          *00*          *ZZ*VZW            *ZZ*ACME           *260401*1200*U*00401*000000001*0*P*:~';
+  const edi =
+    'ISA*00*          *00*          *ZZ*VZW            *ZZ*ACME           *260401*1200*U*00401*000000001*0*P*:~';
 
   it('routes raw, BOM-prefixed, and whitespace-prefixed EDI buffers to EDI', () => {
     expect(__testables.isLikelyEdi811Buffer(Buffer.from(edi, 'utf8'))).toBe(true);
@@ -147,8 +148,12 @@ describe('processBillFn — EDI811 routing sniff', () => {
 
   it('does not route PDFs or non-EDI text to EDI', () => {
     expect(__testables.isLikelyEdi811Buffer(Buffer.from('%PDF-1.7\n', 'utf8'))).toBe(false);
-    expect(__testables.isLikelyEdi811Buffer(Buffer.from('ISAAC wrote a plain text upload', 'utf8'))).toBe(false);
-    expect(__testables.isLikelyEdi811Buffer(Buffer.from('not even close to EDI', 'utf8'))).toBe(false);
+    expect(
+      __testables.isLikelyEdi811Buffer(Buffer.from('ISAAC wrote a plain text upload', 'utf8')),
+    ).toBe(false);
+    expect(__testables.isLikelyEdi811Buffer(Buffer.from('not even close to EDI', 'utf8'))).toBe(
+      false,
+    );
   });
 });
 

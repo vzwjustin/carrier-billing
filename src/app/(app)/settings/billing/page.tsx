@@ -66,12 +66,9 @@ export default async function BillingSettingsPage(): Promise<React.ReactElement>
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Billing
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Billing</h1>
         <p className="text-sm text-neutral-600">
-          Manage your CarrierAudit plan and review your remaining audit
-          credits.
+          Manage your CarrierAudit plan and review your remaining audit credits.
         </p>
       </header>
 
@@ -107,12 +104,10 @@ function SubscribedState({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="text-sm font-medium text-green-700">
-          Unlimited subscription — {status}
-        </p>
+        <p className="text-sm font-medium text-green-700">Unlimited subscription — {status}</p>
         <p className="mt-1 text-sm text-neutral-600">
-          You have unlimited audits. Manage payment method, invoices, or
-          cancellation in the customer portal.
+          You have unlimited audits. Manage payment method, invoices, or cancellation in the
+          customer portal.
         </p>
       </div>
       {cancelAtPeriodEnd && (
@@ -120,9 +115,14 @@ function SubscribedState({
           <p className="font-medium">Cancellation scheduled</p>
           <p className="mt-1">
             Your subscription will end{' '}
-            {periodEnd ? <>on <strong>{periodEnd}</strong></> : 'at the end of the current billing period'}
-            . Until then you keep unlimited access. Re-activate any time in
-            the customer portal.
+            {periodEnd ? (
+              <>
+                on <strong>{periodEnd}</strong>
+              </>
+            ) : (
+              'at the end of the current billing period'
+            )}
+            . Until then you keep unlimited access. Re-activate any time in the customer portal.
           </p>
         </div>
       )}
@@ -135,12 +135,10 @@ function PastDueState(): React.ReactElement {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="text-sm font-medium text-amber-700">
-          Subscription past due
-        </p>
+        <p className="text-sm font-medium text-amber-700">Subscription past due</p>
         <p className="mt-1 text-sm text-neutral-600">
-          We could not collect your most recent payment. Update your payment
-          method in the customer portal to keep your subscription active.
+          We could not collect your most recent payment. Update your payment method in the customer
+          portal to keep your subscription active.
         </p>
       </div>
       <ManageSubscriptionButton />
@@ -156,8 +154,7 @@ function CreditsState({ credits }: { credits: number }): React.ReactElement {
           You have {credits} audit credit{credits === 1 ? '' : 's'}.
         </p>
         <p className="mt-1 text-sm text-neutral-600">
-          Want unlimited audits and monthly drift alerts? Upgrade to the
-          subscription plan.
+          Want unlimited audits and monthly drift alerts? Upgrade to the subscription plan.
         </p>
       </div>
       <Link href="/pricing">
@@ -173,8 +170,7 @@ function NoPlanState(): React.ReactElement {
       <div>
         <p className="text-sm font-medium text-neutral-900">No active plan</p>
         <p className="mt-1 text-sm text-neutral-600">
-          Buy a single audit for $149 or start an unlimited subscription at
-          $99/month.
+          Buy a single audit for $149 or start an unlimited subscription at $99/month.
         </p>
       </div>
       <Link href="/pricing">

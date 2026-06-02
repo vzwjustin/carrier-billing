@@ -74,14 +74,13 @@ describe('legacy_unlimited_plan rule — AT&T patterns', () => {
 });
 
 describe('legacy_unlimited_plan rule — T-Mobile patterns', () => {
-  it.each([
-    ['Simple Choice Unlimited'],
-    ['Magenta'],
-    ['T-Mobile ONE'],
-  ])('flags T-Mobile legacy plan: %s', async (plan) => {
-    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
-    expect(findings).toHaveLength(1);
-  });
+  it.each([['Simple Choice Unlimited'], ['Magenta'], ['T-Mobile ONE']])(
+    'flags T-Mobile legacy plan: %s',
+    async (plan) => {
+      const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
+      expect(findings).toHaveLength(1);
+    },
+  );
 
   it.each([
     ['Magenta Plus'],

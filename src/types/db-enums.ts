@@ -13,12 +13,7 @@
  * a typecheck failure rather than a silent rows-don't-match bug.
  */
 
-export type AuditStatus =
-  | 'pending'
-  | 'extracting'
-  | 'analyzing'
-  | 'completed'
-  | 'failed';
+export type AuditStatus = 'pending' | 'extracting' | 'analyzing' | 'completed' | 'failed';
 
 export const AUDIT_STATUSES: readonly AuditStatus[] = [
   'pending',
@@ -54,21 +49,14 @@ export type SubscriptionStatus =
   | 'paused';
 
 export function isAuditStatus(value: unknown): value is AuditStatus {
-  return (
-    typeof value === 'string' &&
-    (AUDIT_STATUSES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (AUDIT_STATUSES as readonly string[]).includes(value);
 }
 
 export function isFindingSeverity(value: unknown): value is FindingSeverity {
-  return (
-    value === 'high' || value === 'medium' || value === 'low' || value === 'info'
-  );
+  return value === 'high' || value === 'medium' || value === 'low' || value === 'info';
 }
 
-export function isSubscriptionStatus(
-  value: unknown,
-): value is SubscriptionStatus {
+export function isSubscriptionStatus(value: unknown): value is SubscriptionStatus {
   if (typeof value !== 'string') return false;
   switch (value) {
     case 'active':

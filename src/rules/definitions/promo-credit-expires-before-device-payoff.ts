@@ -59,8 +59,7 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
         // but still offsets 4 cycles (May, Jun, Jul, Aug) — so the cycles the
         // credit still covers is `monthsUntil(...) + 1`. Compare like-for-like
         // (cycles vs cycles) to avoid a one-month overestimate of the gap.
-        const creditCyclesLeft = (expiresOn: string): number =>
-          monthsUntil(expiresOn, today) + 1;
+        const creditCyclesLeft = (expiresOn: string): number => monthsUntil(expiresOn, today) + 1;
 
         const expiringCredits = line.credits.filter((c) => {
           if (!c.is_promo || c.expires_on === null || c.monthly_cents >= 0) {

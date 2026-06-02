@@ -17,10 +17,7 @@ export function ManageSubscriptionButton(): React.ReactElement {
         const res = await fetch('/api/stripe/portal', { method: 'POST' });
         const data = (await res.json().catch(() => ({}))) as PortalResponse;
         if (!res.ok || !data.url) {
-          setError(
-            data.error ??
-              'Could not open the billing portal. Please try again.',
-          );
+          setError(data.error ?? 'Could not open the billing portal. Please try again.');
           return;
         }
         window.location.href = data.url;

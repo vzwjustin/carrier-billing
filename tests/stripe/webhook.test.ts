@@ -32,9 +32,9 @@ type InsertResult = {
 
 const maybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
 const insertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
-const updateMock = vi.fn<(patch: unknown) => Promise<{ error: null }>>(
-  async () => ({ error: null }),
-);
+const updateMock = vi.fn<(patch: unknown) => Promise<{ error: null }>>(async () => ({
+  error: null,
+}));
 
 const fromMock = vi.fn((_table: string) => ({
   select: () => ({
@@ -76,8 +76,7 @@ const fromMock = vi.fn((_table: string) => ({
           ? { data: null, error: r.error }
           : { data: [{ id: 'be_mock' }], error: null };
       },
-      then: (onFulfilled, onRejected) =>
-        updateMock(patch).then(onFulfilled, onRejected),
+      then: (onFulfilled, onRejected) => updateMock(patch).then(onFulfilled, onRejected),
     };
     return chainable;
   },
@@ -260,12 +259,10 @@ describe('POST /api/stripe/webhook', () => {
 
     // First existence check: nothing.
     // Second (race fetch) check: a successfully-processed row.
-    maybeSingleMock
-      .mockResolvedValueOnce({ data: null, error: null })
-      .mockResolvedValueOnce({
-        data: { id: 'row_raced', processed_status: 'success' },
-        error: null,
-      });
+    maybeSingleMock.mockResolvedValueOnce({ data: null, error: null }).mockResolvedValueOnce({
+      data: { id: 'row_raced', processed_status: 'success' },
+      error: null,
+    });
     insertMock.mockResolvedValue({
       data: null,
       error: { code: '23505', message: 'duplicate' },

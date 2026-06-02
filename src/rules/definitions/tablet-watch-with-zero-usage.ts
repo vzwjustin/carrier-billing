@@ -60,7 +60,7 @@ export const tabletWatchWithZeroUsageRule: Rule = {
           title: `Connected device "${line.device}" used no data this cycle`,
           description: `This tablet/watch/wearable line recorded 0 GB of data and 0 voice minutes this period while still being charged ${formatCents(planBase)}/mo for its own cellular plan. Connected devices are commonly added at activation and then used exclusively over Wi-Fi.`,
           recommended_action:
-            'Move this device onto the primary user\'s shared-data plan via the carrier\'s number-sharing feature (Verizon NumberShare, AT&T NumberSync, T-Mobile DIGITS) — typically a few dollars per month instead of a standalone plan. If the device is unused entirely, cancel the line.',
+            "Move this device onto the primary user's shared-data plan via the carrier's number-sharing feature (Verizon NumberShare, AT&T NumberSync, T-Mobile DIGITS) — typically a few dollars per month instead of a standalone plan. If the device is unused entirely, cancel the line.",
           estimated_monthly_savings_cents: planBase,
           // Strong signal (device-name class + dual zero usage) but cannot
           // rule out mid-cycle activation, so kept just inside "high

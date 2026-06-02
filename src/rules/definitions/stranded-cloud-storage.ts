@@ -24,8 +24,7 @@ export const strandedCloudStorageRule: Rule = {
         // we only fire on the two strongest signals: suspended OR truly
         // empty (no device + no DPP).
         const isSuspended = line.is_suspended;
-        const noDeviceNoDpp =
-          line.device === null && line.dpp_installments.length === 0;
+        const noDeviceNoDpp = line.device === null && line.dpp_installments.length === 0;
         if (!isSuspended && !noDeviceNoDpp) return;
 
         const total = cloud.reduce((sum, f) => sum + f.monthly_cents, 0);

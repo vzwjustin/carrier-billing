@@ -11,10 +11,7 @@ import type { ReactElement } from 'react';
 
 import { formatCents } from '@/lib/utils';
 import type { Finding, Severity } from '@/rules/types';
-import {
-  buildFindingViewModel,
-  type FindingViewModel,
-} from '@/reports/finding-view-model';
+import { buildFindingViewModel, type FindingViewModel } from '@/reports/finding-view-model';
 
 const COLORS = {
   ink: '#0F172A',
@@ -152,13 +149,7 @@ function pluralize(n: number, singular: string, plural?: string): string {
   return `${n} ${plural ?? `${singular}s`}`;
 }
 
-function SeverityBadge({
-  severity,
-  label,
-}: {
-  severity: Severity;
-  label: string;
-}): ReactElement {
+function SeverityBadge({ severity, label }: { severity: Severity; label: string }): ReactElement {
   const palette = SEVERITY[severity];
   return (
     <View style={[styles.badge, { backgroundColor: palette.bg }]}>
@@ -193,9 +184,7 @@ export function FindingCard({
           <SeverityBadge severity={vm.severity} label={vm.severityLabel} />
           <Text style={titleStyle}>{vm.title}</Text>
         </View>
-        <Text style={savingsStyle}>
-          {formatCents(vm.monthlySavingsCents)}/mo
-        </Text>
+        <Text style={savingsStyle}>{formatCents(vm.monthlySavingsCents)}/mo</Text>
       </View>
 
       <Text style={bodyStyle}>{vm.description}</Text>
@@ -208,9 +197,7 @@ export function FindingCard({
       <View style={styles.metaRow}>
         {vm.affectedLineCount > 0 ? (
           <View style={styles.chip}>
-            <Text style={styles.chipText}>
-              {pluralize(vm.affectedLineCount, 'line')} affected
-            </Text>
+            <Text style={styles.chipText}>{pluralize(vm.affectedLineCount, 'line')} affected</Text>
           </View>
         ) : null}
         {vm.affectedAccountCount > 0 ? (
@@ -221,9 +208,7 @@ export function FindingCard({
           </View>
         ) : null}
         <View style={styles.chip}>
-          <Text style={styles.chipText}>
-            Confidence {vm.confidencePercent}%
-          </Text>
+          <Text style={styles.chipText}>Confidence {vm.confidencePercent}%</Text>
         </View>
         <View style={styles.chip}>
           <Text style={styles.chipText}>{vm.ruleId}</Text>

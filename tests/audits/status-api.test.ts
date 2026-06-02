@@ -182,9 +182,7 @@ describe('GET /api/audits/[id]/status', () => {
     expect(json['status']).toBe('failed');
     expect(json['progress']).toBe(100);
     expect(json['currentStep']).toBe('Failed');
-    expect(json['failure_reason']).toBe(
-      'extraction:llm-extract: schema validation failed',
-    );
+    expect(json['failure_reason']).toBe('extraction:llm-extract: schema validation failed');
   });
 
   it('uses the right currentStep wording for in-flight states', async () => {

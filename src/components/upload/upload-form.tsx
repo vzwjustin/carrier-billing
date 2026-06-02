@@ -54,10 +54,7 @@ function PhaseIndicator({ phase }: { phase: Phase }): React.JSX.Element | null {
   if (phase === 'idle') return null;
   const activeIndex = PHASE_ORDER.indexOf(phase);
   return (
-    <div
-      className="mt-4 flex items-center gap-2 text-xs text-neutral-600"
-      aria-live="polite"
-    >
+    <div className="mt-4 flex items-center gap-2 text-xs text-neutral-600" aria-live="polite">
       {PHASE_ORDER.map((p, i) => {
         const done = i < activeIndex;
         const active = i === activeIndex;

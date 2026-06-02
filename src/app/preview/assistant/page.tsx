@@ -12,12 +12,10 @@ export default function PreviewAssistantPage(): React.JSX.Element {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-neutral-900">
-          AI assistant
-        </h1>
+        <h1 className="text-2xl font-semibold text-neutral-900">AI assistant</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Ask anything about your audits, findings, autopsy, or contracts.
-          Every answer cites the data it used; nothing is invented.
+          Ask anything about your audits, findings, autopsy, or contracts. Every answer cites the
+          data it used; nothing is invented.
         </p>
       </div>
       <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6">
@@ -30,7 +28,7 @@ export default function PreviewAssistantPage(): React.JSX.Element {
         {/* Assistant message */}
         <div className="flex justify-start">
           <div className="max-w-3xl rounded-2xl rounded-bl-sm bg-neutral-50 px-4 py-3 text-sm text-neutral-900">
-            <p className="whitespace-pre-line leading-relaxed">
+            <p className="leading-relaxed whitespace-pre-line">
               {`Your April bill went up by $843.21 compared with March. The biggest drivers were:
 
   • +$312.00 from 8 new device installments on smartphones (iPhone 16 Pro and Samsung Galaxy S25 lines)
@@ -65,11 +63,11 @@ We flagged $274.50 as potentially disputable, mostly from the missing promo cred
         </div>
         <div className="flex justify-start">
           <div className="max-w-3xl rounded-2xl rounded-bl-sm bg-neutral-50 px-4 py-3 text-sm text-neutral-900">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+            <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
               Suggested email
             </p>
-            <pre className="mt-1 whitespace-pre-wrap font-sans leading-relaxed">
-{`Subject: Billing dispute — missing BYOD Loyalty Bonus credits, April 2026
+            <pre className="mt-1 font-sans leading-relaxed whitespace-pre-wrap">
+              {`Subject: Billing dispute — missing BYOD Loyalty Bonus credits, April 2026
 
 Hello,
 

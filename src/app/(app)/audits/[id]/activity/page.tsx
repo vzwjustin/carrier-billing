@@ -157,9 +157,7 @@ export default async function AuditActivityPage({
         >
           ← Back to audit
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-neutral-900">
-          Activity
-        </h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-neutral-900">Activity</h1>
         <p className="mt-1 max-w-xl truncate text-sm text-neutral-600">
           {auditData.original_filename}
         </p>
@@ -172,29 +170,20 @@ export default async function AuditActivityPage({
       ) : (
         <ul className="space-y-3">
           {recent.map((event) => (
-            <li
-              key={event.id}
-              className="rounded-md border border-neutral-200 bg-white p-4"
-            >
+            <li key={event.id} className="rounded-md border border-neutral-200 bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
                   {EVENT_LABEL[event.event_type] ?? event.event_type}
                 </span>
-                <span
-                  className="text-xs text-neutral-500"
-                  title={event.created_at}
-                >
+                <span className="text-xs text-neutral-500" title={event.created_at}>
                   {relativeTime(event.created_at)}
                 </span>
               </div>
               {event.actor_email !== null ? (
-                <p className="mt-2 text-xs text-neutral-600">
-                  by {event.actor_email}
-                </p>
+                <p className="mt-2 text-xs text-neutral-600">by {event.actor_email}</p>
               ) : null}
-              {event.metadata !== null &&
-              Object.keys(event.metadata).length > 0 ? (
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded bg-neutral-50 p-2 text-[11px] text-neutral-700">
+              {event.metadata !== null && Object.keys(event.metadata).length > 0 ? (
+                <pre className="mt-2 overflow-x-auto rounded bg-neutral-50 p-2 text-[11px] break-words whitespace-pre-wrap text-neutral-700">
                   {JSON.stringify(event.metadata, null, 2)}
                 </pre>
               ) : null}

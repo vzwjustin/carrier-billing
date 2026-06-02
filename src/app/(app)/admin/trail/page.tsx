@@ -1,7 +1,4 @@
-import {
-  AUDIT_TRAIL_EVENT_TYPES,
-  type AuditTrailEventType,
-} from '@/lib/audit-trail/log';
+import { AUDIT_TRAIL_EVENT_TYPES, type AuditTrailEventType } from '@/lib/audit-trail/log';
 import { requireAdmin } from '@/lib/admin/guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 
@@ -59,9 +56,7 @@ function parseWindow(raw: string | undefined): WindowValue {
  * silently — admins shouldn't be able to inject arbitrary text into the
  * IN-clause via URL.
  */
-function parseEventTypes(
-  raw: string | string[] | undefined,
-): AuditTrailEventType[] {
+function parseEventTypes(raw: string | string[] | undefined): AuditTrailEventType[] {
   if (raw === undefined) return [];
   const all: string[] = Array.isArray(raw) ? raw : [raw];
   const flat: string[] = [];
@@ -83,9 +78,9 @@ function parseUserSearch(raw: string | undefined): string {
   return trimmed.slice(0, 64);
 }
 
-export default async function AdminTrailPage(
-  { searchParams }: PageProps,
-): Promise<React.JSX.Element> {
+export default async function AdminTrailPage({
+  searchParams,
+}: PageProps): Promise<React.JSX.Element> {
   await requireAdmin();
   const admin = getAdminClient();
 
@@ -103,10 +98,9 @@ export default async function AdminTrailPage(
   // calls must happen before the range terminator.
   let builder = admin
     .from('audit_trail_events')
-    .select(
-      'id, user_id, event_type, entity_type, entity_id, actor_email, metadata, created_at',
-      { count: 'exact' },
-    );
+    .select('id, user_id, event_type, entity_type, entity_id, actor_email, metadata, created_at', {
+      count: 'exact',
+    });
 
   if (window !== 'all') {
     const hours = WINDOW_HOURS[window];
@@ -124,9 +118,7 @@ export default async function AdminTrailPage(
     builder = builder.ilike('actor_email', `${escaped}%`);
   }
 
-  const { data, count } = await builder
-    .order('created_at', { ascending: false })
-    .range(from, to);
+  const { data, count } = await builder.order('created_at', { ascending: false }).range(from, to);
   const rows = (Array.isArray(data) ? data : []) as TrailRow[];
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -144,7 +136,7 @@ export default async function AdminTrailPage(
 
       <form
         method="get"
-        className="grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900 md:grid-cols-3"
+        className="grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-sm md:grid-cols-3 dark:border-neutral-800 dark:bg-neutral-900"
       >
         <label className="space-y-1">
           <span className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
@@ -203,7 +195,7 @@ export default async function AdminTrailPage(
 
       <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+          <thead className="bg-neutral-50 text-left text-xs tracking-wide text-neutral-500 uppercase dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
               <th className="px-4 py-2 font-medium">When</th>
               <th className="px-4 py-2 font-medium">Actor</th>
@@ -217,7 +209,7 @@ export default async function AdminTrailPage(
                 key={r.id}
                 className="border-t border-neutral-200 align-top dark:border-neutral-800"
               >
-                <td className="px-4 py-2 whitespace-nowrap font-mono text-xs">
+                <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
                   {new Date(r.created_at).toLocaleString('en-US')}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-neutral-700 dark:text-neutral-300">
@@ -290,7 +282,7 @@ function TrailPager({
         className={
           canPrev
             ? 'rounded-md border border-neutral-300 px-3 py-1.5 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800'
-            : 'rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600 pointer-events-none'
+            : 'pointer-events-none rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600'
         }
       >
         Previous
@@ -301,7 +293,7 @@ function TrailPager({
         className={
           canNext
             ? 'rounded-md border border-neutral-300 px-3 py-1.5 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800'
-            : 'rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600 pointer-events-none'
+            : 'pointer-events-none rounded-md border border-neutral-200 px-3 py-1.5 text-neutral-400 dark:border-neutral-800 dark:text-neutral-600'
         }
       >
         Next

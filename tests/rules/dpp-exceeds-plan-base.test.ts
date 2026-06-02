@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dppExceedsPlanBaseRule } from '@/rules/definitions/dpp-exceeds-plan-base';
 import type { RuleContext } from '@/rules/types';
-import {
-  makeAccount,
-  makeBill,
-  makeDpp,
-  makeLine,
-  TEST_TODAY,
-} from './fixtures';
+import { makeAccount, makeBill, makeDpp, makeLine, TEST_TODAY } from './fixtures';
 
 function ctx(over: Parameters<typeof makeBill>[0] = {}): RuleContext {
   const bill = makeBill(over);
@@ -88,9 +82,7 @@ describe('dpp_exceeds_plan_base rule', () => {
           lines: [
             makeLine({
               plan_base_cents: 4500,
-              dpp_installments: [
-                makeDpp({ monthly_cents: 4500, remaining_payments: 12 }),
-              ],
+              dpp_installments: [makeDpp({ monthly_cents: 4500, remaining_payments: 12 })],
             }),
           ],
         }),
@@ -107,9 +99,7 @@ describe('dpp_exceeds_plan_base rule', () => {
           lines: [
             makeLine({
               plan_base_cents: 4500,
-              dpp_installments: [
-                makeDpp({ monthly_cents: 2799, remaining_payments: 12 }),
-              ],
+              dpp_installments: [makeDpp({ monthly_cents: 2799, remaining_payments: 12 })],
             }),
           ],
         }),
@@ -123,9 +113,7 @@ describe('dpp_exceeds_plan_base rule', () => {
     const c = ctx({
       accounts: [
         makeAccount({
-          lines: [
-            makeLine({ plan_base_cents: 4500, dpp_installments: [] }),
-          ],
+          lines: [makeLine({ plan_base_cents: 4500, dpp_installments: [] })],
         }),
       ],
     });
@@ -140,9 +128,7 @@ describe('dpp_exceeds_plan_base rule', () => {
           lines: [
             makeLine({
               plan_base_cents: 3500,
-              dpp_installments: [
-                makeDpp({ monthly_cents: 5500, remaining_payments: 0 }),
-              ],
+              dpp_installments: [makeDpp({ monthly_cents: 5500, remaining_payments: 0 })],
             }),
           ],
         }),
@@ -159,9 +145,7 @@ describe('dpp_exceeds_plan_base rule', () => {
           lines: [
             makeLine({
               plan_base_cents: null,
-              dpp_installments: [
-                makeDpp({ monthly_cents: 5500, remaining_payments: 24 }),
-              ],
+              dpp_installments: [makeDpp({ monthly_cents: 5500, remaining_payments: 24 })],
             }),
           ],
         }),
@@ -178,9 +162,7 @@ describe('dpp_exceeds_plan_base rule', () => {
           lines: [
             makeLine({
               plan_base_cents: 0,
-              dpp_installments: [
-                makeDpp({ monthly_cents: 5500, remaining_payments: 24 }),
-              ],
+              dpp_installments: [makeDpp({ monthly_cents: 5500, remaining_payments: 24 })],
             }),
           ],
         }),
@@ -197,9 +179,7 @@ describe('dpp_exceeds_plan_base rule', () => {
           lines: [
             makeLine({
               plan_base_cents: 100,
-              dpp_installments: [
-                makeDpp({ monthly_cents: 0, remaining_payments: 5 }),
-              ],
+              dpp_installments: [makeDpp({ monthly_cents: 0, remaining_payments: 5 })],
             }),
           ],
         }),

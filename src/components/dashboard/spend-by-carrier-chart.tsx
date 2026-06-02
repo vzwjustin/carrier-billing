@@ -79,7 +79,7 @@ export function SpendByCarrierChart({
       className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
     >
       <div className="mb-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+        <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
           Spend by carrier
         </p>
         <p className="mt-1 text-xs text-neutral-500">
@@ -97,11 +97,9 @@ export function SpendByCarrierChart({
             <li key={row.carrier}>
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="font-medium text-neutral-900">{label}</span>
-                <span className="tabular-nums text-neutral-700">
+                <span className="text-neutral-700 tabular-nums">
                   {formatCents(row.total_cents)}
-                  <span className="ml-2 text-xs text-neutral-500">
-                    {sharePct}%
-                  </span>
+                  <span className="ml-2 text-xs text-neutral-500">{sharePct}%</span>
                 </span>
               </div>
               <svg
@@ -114,15 +112,7 @@ export function SpendByCarrierChart({
                 <title>
                   {`${label}: ${formatCents(row.total_cents)} (${sharePct}% of fleet spend)`}
                 </title>
-                <rect
-                  x={0}
-                  y={0}
-                  width={widthPct}
-                  height={8}
-                  fill={color}
-                  rx={4}
-                  ry={4}
-                />
+                <rect x={0} y={0} width={widthPct} height={8} fill={color} rx={4} ry={4} />
               </svg>
             </li>
           );

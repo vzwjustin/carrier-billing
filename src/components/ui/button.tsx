@@ -10,14 +10,11 @@ const buttonVariants = cva(
       variant: {
         default:
           'bg-neutral-900 text-neutral-50 hover:bg-neutral-800 focus-visible:ring-neutral-900',
-        primary:
-          'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500',
+        primary: 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500',
         outline:
           'border border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-100 focus-visible:ring-neutral-900',
-        ghost:
-          'text-neutral-900 hover:bg-neutral-100 focus-visible:ring-neutral-900',
-        destructive:
-          'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500',
+        ghost: 'text-neutral-900 hover:bg-neutral-100 focus-visible:ring-neutral-900',
+        destructive: 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500',
       },
       size: {
         default: 'h-10 px-4 py-2',
@@ -33,8 +30,7 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, type = 'button', ...props }, ref) => {

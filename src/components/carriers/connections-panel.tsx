@@ -19,10 +19,8 @@ import {
 import { cn } from '@/lib/utils';
 
 const STATUS_BADGE: Record<CarrierConnection['status'], string> = {
-  connected:
-    'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-  disconnected:
-    'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+  connected: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  disconnected: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
   error: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
 };
 
@@ -38,9 +36,7 @@ function formatDate(value: string | null): string {
   });
 }
 
-export function ConnectionsPanel({
-  initial,
-}: ConnectionsPanelProps): React.JSX.Element {
+export function ConnectionsPanel({ initial }: ConnectionsPanelProps): React.JSX.Element {
   const byCarrier = new Map(initial.map((c) => [c.carrier, c]));
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<Carrier | null>(null);
@@ -104,9 +100,7 @@ export function ConnectionsPanel({
                     variant="outline"
                     size="sm"
                     disabled={isBusy}
-                    onClick={() =>
-                      run(carrier, syncCarrierAction, 'Sync complete.')
-                    }
+                    onClick={() => run(carrier, syncCarrierAction, 'Sync complete.')}
                   >
                     {isBusy ? 'Working…' : 'Sync'}
                   </Button>
@@ -115,13 +109,7 @@ export function ConnectionsPanel({
                     variant="outline"
                     size="sm"
                     disabled={isBusy}
-                    onClick={() =>
-                      run(
-                        carrier,
-                        disconnectCarrierAction,
-                        'Disconnected.',
-                      )
-                    }
+                    onClick={() => run(carrier, disconnectCarrierAction, 'Disconnected.')}
                   >
                     Disconnect
                   </Button>
@@ -131,9 +119,7 @@ export function ConnectionsPanel({
                   type="button"
                   size="sm"
                   disabled={isBusy}
-                  onClick={() =>
-                    run(carrier, connectCarrierAction, 'Connected.')
-                  }
+                  onClick={() => run(carrier, connectCarrierAction, 'Connected.')}
                 >
                   {isBusy ? 'Connecting…' : 'Connect'}
                 </Button>

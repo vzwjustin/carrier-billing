@@ -93,12 +93,9 @@ export default async function AutopsyPage({
   if (audit.status !== 'completed') {
     return (
       <div className="mx-auto max-w-3xl space-y-4">
-        <h1 className="text-2xl font-semibold text-neutral-900">
-          Bill Increase Autopsy
-        </h1>
+        <h1 className="text-2xl font-semibold text-neutral-900">Bill Increase Autopsy</h1>
         <p className="text-sm text-neutral-600">
-          This audit is not yet completed. The autopsy can only run between two
-          completed audits.
+          This audit is not yet completed. The autopsy can only run between two completed audits.
         </p>
       </div>
     );
@@ -146,9 +143,7 @@ export default async function AutopsyPage({
       )
       .eq('bill_comparison_id', existing.id);
     drivers = (driversData ?? []) as DriverRow[];
-    drivers.sort(
-      (a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents),
-    );
+    drivers.sort((a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents));
   }
 
   return (

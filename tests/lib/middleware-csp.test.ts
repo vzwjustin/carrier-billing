@@ -16,7 +16,7 @@ import { buildCsp } from '../../src/middleware';
 function getDirective(csp: string, name: string): string | undefined {
   const parts = csp.split(';').map((p) => p.trim());
   for (const part of parts) {
-    if (part === '' ) continue;
+    if (part === '') continue;
     const space = part.indexOf(' ');
     const key = space === -1 ? part : part.slice(0, space);
     if (key === name) {

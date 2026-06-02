@@ -22,10 +22,7 @@ import { FINDING_STATUS_VALUES } from '@/components/report/finding-status-meta';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
 import { logTrailEvent } from '@/lib/audit-trail/log';
 import { toCsv } from '@/lib/csv';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { isShareTokenExpired } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -142,9 +139,7 @@ function findingsToCsv(rows: FindingCsvRow[]): string {
     const sevB = SEVERITY_RANK[b.severity] ?? 99;
     if (sevA !== sevB) return sevA - sevB;
     if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
-      return (
-        b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents
-      );
+      return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
     }
     return a.title.localeCompare(b.title);
   });
@@ -206,10 +201,7 @@ export async function GET(
     url.searchParams.get('status'),
     FINDING_STATUS_VALUES,
   );
-  const severityFilter = parseEnumCsv<Severity>(
-    url.searchParams.get('severity'),
-    SEVERITY_VALUES,
-  );
+  const severityFilter = parseEnumCsv<Severity>(url.searchParams.get('severity'), SEVERITY_VALUES);
   if (!statusFilter.ok) {
     return NextResponse.json({ error: statusFilter.error }, { status: 400 });
   }
@@ -264,10 +256,7 @@ export async function GET(
       .eq('id', auditId)
       .maybeSingle<AuditAuthRow>();
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!data || data.user_id !== user.id) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -311,16 +300,23 @@ export async function GET(
       tags: { surface: 'findings.csv' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Failed to load findings.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to load findings.' }, { status: 500 });
   }
 
   const csv = findingsToCsv((findings ?? []) as FindingCsvRow[]);
   // Auth-only audit trail; public-token exports aren't attributable to a user.
   if (token === null) {
-    await logTrailEvent({ userId: audit.user_id, eventType: 'csv_exported', entityType: 'audit', entityId: auditId, metadata: { kind: 'findings', filtered_status: statusFilter.values, filtered_severity: severityFilter.values } });
+    await logTrailEvent({
+      userId: audit.user_id,
+      eventType: 'csv_exported',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: {
+        kind: 'findings',
+        filtered_status: statusFilter.values,
+        filtered_severity: severityFilter.values,
+      },
+    });
   }
   return csvResponse(csv, auditId);
 }

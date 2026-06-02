@@ -109,19 +109,12 @@ describe('parseCsvToBill', () => {
       '5553333333,Plan B,$60.00,2222222222\n' +
       '5554444444,Plan B,$60.00,2222222222\n' +
       '5555555555,Plan C,$80.00,3333333333\n';
-    const mapping = autoMap([
-      'Wireless Number',
-      'Plan',
-      'Monthly Plan Charge',
-      'Account Number',
-    ]);
+    const mapping = autoMap(['Wireless Number', 'Plan', 'Monthly Plan Charge', 'Account Number']);
     const res = parseCsvToBill(csv, mapping);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.bill.accounts).toHaveLength(3);
-    const totals = res.bill.accounts
-      .map((a) => a.total_charges_cents)
-      .sort((a, b) => a - b);
+    const totals = res.bill.accounts.map((a) => a.total_charges_cents).sort((a, b) => a - b);
     expect(totals).toEqual([8_000, 12_000, 8_000].sort((a, b) => a - b));
   });
 
@@ -258,13 +251,6 @@ describe('parseCsvToBill', () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const labels = res.bill.accounts[0]!.lines.map((line) => line.user_label);
-    expect(labels).toEqual([
-      'Department',
-      'Store',
-      'Line 12',
-      'Tablet',
-      'Router',
-      'CC-1001',
-    ]);
+    expect(labels).toEqual(['Department', 'Store', 'Line 12', 'Tablet', 'Router', 'CC-1001']);
   });
 });

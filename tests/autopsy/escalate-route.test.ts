@@ -86,8 +86,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
-    rpc: (name: string, args: Record<string, unknown>) =>
-      bumpCountsRpcMock(name, args),
+    rpc: (name: string, args: Record<string, unknown>) => bumpCountsRpcMock(name, args),
     from: (table: string) => {
       if (table === 'findings') {
         return {
@@ -143,9 +142,7 @@ vi.mock('@/env', () => ({
 
 import { POST } from '@/app/api/autopsy/drivers/[driverId]/escalate/route';
 
-function makeContext(
-  driverId: string = DRIVER_ID,
-): { params: Promise<{ driverId: string }> } {
+function makeContext(driverId: string = DRIVER_ID): { params: Promise<{ driverId: string }> } {
   return { params: Promise.resolve({ driverId }) };
 }
 

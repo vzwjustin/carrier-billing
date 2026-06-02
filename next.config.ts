@@ -28,9 +28,7 @@ const SECURITY_HEADERS = [
 // When two header entries match the same path and set the same key, the later
 // entry wins, so this overrides Referrer-Policy from SECURITY_HEADERS for these
 // routes only.
-const NO_REFERRER_HEADER = [
-  { key: 'Referrer-Policy', value: 'no-referrer' },
-];
+const NO_REFERRER_HEADER = [{ key: 'Referrer-Policy', value: 'no-referrer' }];
 
 export const headersConfig = [
   {

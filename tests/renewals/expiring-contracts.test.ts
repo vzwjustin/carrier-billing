@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  findExpiringContracts,
-  type ContractRow,
-} from '@/lib/renewals/expiring-contracts';
+import { findExpiringContracts, type ContractRow } from '@/lib/renewals/expiring-contracts';
 
 const TODAY = new Date('2026-05-08T12:00:00Z');
 

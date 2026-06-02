@@ -68,19 +68,11 @@ export function ReportActions({
   }, [auditId]);
 
   const handleDownload = React.useCallback((): void => {
-    window.open(
-      `/api/audits/${auditId}/report.pdf${tokenQuery}`,
-      '_blank',
-      'noopener',
-    );
+    window.open(`/api/audits/${auditId}/report.pdf${tokenQuery}`, '_blank', 'noopener');
   }, [auditId, tokenQuery]);
 
   const handleDownloadCsv = React.useCallback((): void => {
-    window.open(
-      `/api/audits/${auditId}/findings.csv${tokenQuery}`,
-      '_blank',
-      'noopener',
-    );
+    window.open(`/api/audits/${auditId}/findings.csv${tokenQuery}`, '_blank', 'noopener');
   }, [auditId, tokenQuery]);
 
   return (

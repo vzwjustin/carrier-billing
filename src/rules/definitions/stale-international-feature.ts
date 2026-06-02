@@ -34,10 +34,7 @@ export const staleInternationalFeatureRule: Rule = {
         hits.push({
           accountIndex,
           lineIndex,
-          total_cents: intlFeatures.reduce(
-            (sum, f) => sum + f.monthly_cents,
-            0,
-          ),
+          total_cents: intlFeatures.reduce((sum, f) => sum + f.monthly_cents, 0),
           feature_names: intlFeatures.map((f) => f.name),
         });
       });
@@ -66,10 +63,7 @@ export const staleInternationalFeatureRule: Rule = {
 
     const findings: Finding[] = [];
     for (const [accountIndex, accountHits] of byAccount) {
-      const accountTotal = accountHits.reduce(
-        (sum, h) => sum + h.total_cents,
-        0,
-      );
+      const accountTotal = accountHits.reduce((sum, h) => sum + h.total_cents, 0);
       const lineIndexes = accountHits.map((h) => h.lineIndex);
       const linePlural = accountHits.length === 1 ? '' : 's';
       const carries = accountHits.length === 1 ? 'ies' : 'y';

@@ -21,10 +21,7 @@ type ArbitrationRule = {
 const SAVINGS_ARBITRATION_RULES: readonly ArbitrationRule[] = [
   {
     dominantRuleId: 'zero_usage_phone_line',
-    suppressedRuleIds: [
-      'high_cost_low_usage_phone',
-      'underutilized_phone_on_premium_plan',
-    ],
+    suppressedRuleIds: ['high_cost_low_usage_phone', 'underutilized_phone_on_premium_plan'],
   },
   {
     dominantRuleId: 'insurance_after_device_payoff',

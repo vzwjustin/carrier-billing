@@ -30,7 +30,7 @@ const FINDINGS: Finding[] = [
     description:
       'Line *6677 is marked suspended but is still being charged $45.00/mo for plan access. Suspended lines should typically be at zero or a minimal seasonal rate.',
     recommended_action:
-      'Decide whether to cancel the line outright (eliminating the charge) or move it to the carrier\'s no-cost / vacation suspension tier.',
+      "Decide whether to cancel the line outright (eliminating the charge) or move it to the carrier's no-cost / vacation suspension tier.",
     estimated_monthly_savings_cents: 4500,
     confidence: 0.97,
     affected_line_indexes: [12],
@@ -81,7 +81,7 @@ const FINDINGS: Finding[] = [
     description:
       'Line *8841 recorded 0 voice minutes, 0 SMS, and 0 GB of data this billing period while still being charged $45.00/mo for plan access. The most common cause is a line that was never deactivated when an employee left.',
     recommended_action:
-      'Confirm the device is in service. If the line is not in use, cancel it or move it to the carrier\'s vacation/suspension tier.',
+      "Confirm the device is in service. If the line is not in use, cancel it or move it to the carrier's vacation/suspension tier.",
     estimated_monthly_savings_cents: 4500,
     confidence: 0.85,
     affected_line_indexes: [15],
@@ -99,9 +99,9 @@ export default function PreviewFindingsPage(): React.JSX.Element {
           Finding cards — all 6 reviewer statuses
         </h1>
         <p className="mt-1 text-sm text-neutral-600">
-          The status dropdown is what landed in PR #24 (reviewer workflow). On
-          the public <code>/share/[token]</code> surface the badge renders
-          read-only and the dropdown is omitted.
+          The status dropdown is what landed in PR #24 (reviewer workflow). On the public{' '}
+          <code>/share/[token]</code> surface the badge renders read-only and the dropdown is
+          omitted.
         </p>
       </div>
       <div className="space-y-3">

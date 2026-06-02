@@ -91,11 +91,7 @@ export async function runExtractionPipeline({
     // collapse it into a user-friendly `encrypted-pdf` reason instead of
     // the generic `extraction:extract_text:` label.
     if (isEncryptedPdfError(err)) {
-      throw new PipelineError(
-        'Encrypted PDF — cannot extract text',
-        'encrypted_pdf',
-        err,
-      );
+      throw new PipelineError('Encrypted PDF — cannot extract text', 'encrypted_pdf', err);
     }
     throw new PipelineError('Failed to read PDF text', 'extract_text', err);
   }
@@ -120,11 +116,7 @@ export async function runExtractionPipeline({
   try {
     detectedCarrier = detectCarrier(rawText);
   } catch (err) {
-    throw new PipelineError(
-      'Carrier detection failed',
-      'detect_carrier',
-      err,
-    );
+    throw new PipelineError('Carrier detection failed', 'detect_carrier', err);
   }
 
   // 4. LLM extraction.

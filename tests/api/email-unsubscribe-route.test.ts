@@ -76,9 +76,7 @@ describe('unsubscribe — token shape validation', () => {
   });
 
   it('returns the SUCCESS page when token is too short', async () => {
-    const res = await GET(
-      new Request('http://localhost/api/email/unsubscribe?token=abc'),
-    );
+    const res = await GET(new Request('http://localhost/api/email/unsubscribe?token=abc'));
     expect(res.status).toBe(200);
     expect(updateMock).not.toHaveBeenCalled();
   });
@@ -86,9 +84,7 @@ describe('unsubscribe — token shape validation', () => {
   it('returns the SUCCESS page when token contains invalid characters', async () => {
     // 32 chars including `=` which is not in the base64url alphabet.
     const bad = 'A'.repeat(30) + '==';
-    const res = await GET(
-      new Request(`http://localhost/api/email/unsubscribe?token=${bad}`),
-    );
+    const res = await GET(new Request(`http://localhost/api/email/unsubscribe?token=${bad}`));
     expect(res.status).toBe(200);
     expect(updateMock).not.toHaveBeenCalled();
   });
@@ -161,9 +157,7 @@ describe('unsubscribe — rate limit', () => {
   });
 
   it('uses "unknown" when neither IP header is present', async () => {
-    await GET(
-      new Request(`http://localhost/api/email/unsubscribe?token=${VALID_TOKEN}`),
-    );
+    await GET(new Request(`http://localhost/api/email/unsubscribe?token=${VALID_TOKEN}`));
     const call = consumeRateLimitMock.mock.calls[0]?.[0] as { key: string };
     expect(call.key).toBe('unsubscribe:unknown');
   });

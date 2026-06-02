@@ -101,10 +101,7 @@ export async function POST(
   }
   const bodyParsed = BodySchema.safeParse(body);
   if (!bodyParsed.success) {
-    return NextResponse.json(
-      { error: 'Invalid mapping.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid mapping.' }, { status: 400 });
   }
   const mapping = bodyParsed.data.mapping;
 
@@ -144,25 +141,16 @@ export async function POST(
         tags: { surface: 'audits.csv.process.fetch' },
         extra: { auditId, userId: user.id },
       });
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!rowData || !isAuditRow(rowData) || rowData.user_id !== user.id) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
     }
     if (rowData.source_format !== 'csv') {
-      return NextResponse.json(
-        { error: 'This audit is not a CSV import.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'This audit is not a CSV import.' }, { status: 400 });
     }
     if (rowData.status !== 'pending') {
-      return NextResponse.json(
-        { error: `Audit is already ${rowData.status}.` },
-        { status: 409 },
-      );
+      return NextResponse.json({ error: `Audit is already ${rowData.status}.` }, { status: 409 });
     }
 
     // 2. Plan gate + credit consumption. Mirrors the PDF init route.
@@ -197,17 +185,12 @@ export async function POST(
 
     // 3. Download CSV from storage. The bills bucket is private; service
     //    role bypasses RLS so the admin client is correct here.
-    const download = await admin.storage
-      .from('bills')
-      .download(rowData.storage_path);
+    const download = await admin.storage.from('bills').download(rowData.storage_path);
     if (download.error || !download.data) {
       await markFailed(admin, auditId, 'csv-download-failed');
       // System-fault → refund if we took a credit.
       await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
-      return NextResponse.json(
-        { error: 'Could not read uploaded file.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Could not read uploaded file.' }, { status: 500 });
     }
     const csvText = await download.data.text();
 
@@ -219,17 +202,11 @@ export async function POST(
       return NextResponse.json({ error: parseRes.error }, { status: 400 });
     }
     const bill = parseRes.bill;
-    const lineCount = bill.accounts.reduce<number>(
-      (sum, a) => sum + a.lines.length,
-      0,
-    );
+    const lineCount = bill.accounts.reduce<number>((sum, a) => sum + a.lines.length, 0);
     if (lineCount === 0) {
       await markFailed(admin, auditId, 'no lines extracted');
       await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
-      return NextResponse.json(
-        { error: 'CSV produced no lines.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'CSV produced no lines.' }, { status: 400 });
     }
 
     // 5. Flip → analyzing (status-guarded). Mirrors process-bill.ts.
@@ -283,10 +260,7 @@ export async function POST(
       });
       await markFailed(admin, auditId, 'csv-persist-failed');
       await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
-      return NextResponse.json(
-        { error: 'Failed to persist bill.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to persist bill.' }, { status: 500 });
     }
 
     // 7. Run rules + translate indexes + persist findings.
@@ -313,10 +287,7 @@ export async function POST(
       });
       await markFailed(admin, auditId, 'csv-findings-persist-failed');
       await refundConsumedCredit(admin, auditId, user.id, creditConsumed);
-      return NextResponse.json(
-        { error: 'Failed to persist findings.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to persist findings.' }, { status: 500 });
     }
 
     // 8. Flip → completed (status-guarded).
@@ -324,9 +295,7 @@ export async function POST(
       (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
       0,
     );
-    const highSeverityCount = findings.filter(
-      (f) => f.severity === ('high' as Severity),
-    ).length;
+    const highSeverityCount = findings.filter((f) => f.severity === ('high' as Severity)).length;
     const now = new Date().toISOString();
     const { data: completedRows, error: completedErr } = await admin
       .from('audits')
@@ -390,7 +359,19 @@ export async function POST(
       monthlySavingsCents: monthlySavings,
     });
 
-    await logTrailEvent({ userId: user.id, eventType: 'audit_uploaded', entityType: 'audit', entityId: auditId, metadata: { source: 'csv', account_count: bill.accounts.length, line_count: lineCount, finding_count: findings.length }, actorEmail: user.email ?? null });
+    await logTrailEvent({
+      userId: user.id,
+      eventType: 'audit_uploaded',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: {
+        source: 'csv',
+        account_count: bill.accounts.length,
+        line_count: lineCount,
+        finding_count: findings.length,
+      },
+      actorEmail: user.email ?? null,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -417,10 +398,7 @@ export async function POST(
         });
       }
     }
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }
 
@@ -460,10 +438,7 @@ async function refundConsumedCredit(
 // duplication is intentional and called out in the file header.
 // ---------------------------------------------------------------------------
 
-async function persistBill(
-  auditId: string,
-  bill: ExtractedBill,
-): Promise<PersistBillResult> {
+async function persistBill(auditId: string, bill: ExtractedBill): Promise<PersistBillResult> {
   const supabase = getAdminClient();
 
   // Delete-then-insert for idempotent re-runs (e.g. a retry of process route).
@@ -474,10 +449,7 @@ async function persistBill(
     'bill_lines',
     'bill_accounts',
   ] as const) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('audit_id', auditId);
+    const { error } = await supabase.from(table).delete().eq('audit_id', auditId);
     if (error) {
       throw new Error(`delete ${table} failed: ${error.message}`);
     }
@@ -548,9 +520,7 @@ async function persistBill(
   }
 
   // Build the per-account lineIds[][] structure for findings persistence.
-  const lineIds: string[][] = bill.accounts.map((a) =>
-    new Array<string>(a.lines.length),
-  );
+  const lineIds: string[][] = bill.accounts.map((a) => new Array<string>(a.lines.length));
   lineRows.forEach((row, idx) => {
     const origin = lineOrigin[idx];
     if (!origin) return;
@@ -575,10 +545,7 @@ async function persistFindings(
   ids: PersistBillResult,
 ): Promise<void> {
   const supabase = getAdminClient();
-  const { error: delErr } = await supabase
-    .from('findings')
-    .delete()
-    .eq('audit_id', auditId);
+  const { error: delErr } = await supabase.from('findings').delete().eq('audit_id', auditId);
   if (delErr) {
     throw new Error(`delete findings failed: ${delErr.message}`);
   }
@@ -643,4 +610,3 @@ async function markFailed(
     });
   }
 }
-

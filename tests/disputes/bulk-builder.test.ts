@@ -49,9 +49,7 @@ function makeEntry(
   };
 }
 
-function baseInput(
-  overrides: Partial<BulkDisputeBuilderInput> = {},
-): BulkDisputeBuilderInput {
+function baseInput(overrides: Partial<BulkDisputeBuilderInput> = {}): BulkDisputeBuilderInput {
   return {
     audit: {
       id: AUDIT_ID,
@@ -92,9 +90,7 @@ describe('buildBulkDisputeLetter', () => {
       baseInput({
         findings: [
           makeEntry('expired_promo_credit', 2500, {
-            lines: [
-              { id: 'l1', mdn_masked: '5551', plan_name: 'BizPlan' },
-            ],
+            lines: [{ id: 'l1', mdn_masked: '5551', plan_name: 'BizPlan' }],
             accounts: [
               {
                 id: 'a1',
@@ -147,9 +143,7 @@ describe('buildBulkDisputeLetter', () => {
       'rule_d',
       'rule_e',
     ]);
-    expect(letter.totalRequestedCreditCents).toBe(
-      1000 + 1500 + 2500 + 750 + 12500,
-    );
+    expect(letter.totalRequestedCreditCents).toBe(1000 + 1500 + 2500 + 750 + 12500);
     expect(letter.totalRequestedCreditDisplay).toBe('$182.50/mo');
     expect(letter.totalRequestedCreditAnnualCents).toBe(18250 * 12);
     expect(letter.totalRequestedCreditAnnualDisplay).toBe('$2,190.00');
@@ -240,12 +234,7 @@ describe('buildBulkDisputeLetter', () => {
         ],
       }),
     );
-    expect(letter.items.map((i) => i.severityLabel)).toEqual([
-      'High',
-      'Medium',
-      'Low',
-      'Info',
-    ]);
+    expect(letter.items.map((i) => i.severityLabel)).toEqual(['High', 'Medium', 'Low', 'Info']);
   });
 
   it('defensively truncates long MDN strings to last-4 (PII safety net)', () => {

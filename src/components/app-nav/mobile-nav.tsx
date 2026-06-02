@@ -33,7 +33,7 @@ export function MobileNav({ items, email }: MobileNavProps): React.JSX.Element {
         aria-expanded={open}
         aria-controls="mobile-nav-panel"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
       >
         {open ? (
           <svg
@@ -76,17 +76,14 @@ export function MobileNav({ items, email }: MobileNavProps): React.JSX.Element {
         >
           <nav className="mx-auto flex w-full max-w-6xl flex-col gap-1 px-4 py-3 text-sm text-neutral-700">
             {items.map((item) => {
-              const active =
-                pathname === item.href ||
-                pathname.startsWith(`${item.href}/`);
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
                     'rounded-md px-3 py-2 hover:bg-neutral-100 hover:text-neutral-900',
-                    active &&
-                      'bg-neutral-100 font-medium text-neutral-900',
+                    active && 'bg-neutral-100 font-medium text-neutral-900',
                   )}
                 >
                   {item.label}
@@ -95,9 +92,7 @@ export function MobileNav({ items, email }: MobileNavProps): React.JSX.Element {
             })}
             <div className="mt-2 flex items-center justify-between gap-3 border-t border-neutral-200 px-3 pt-3">
               {email ? (
-                <p className="truncate text-xs text-neutral-500">
-                  Signed in as {email}
-                </p>
+                <p className="truncate text-xs text-neutral-500">Signed in as {email}</p>
               ) : (
                 <span />
               )}

@@ -261,7 +261,8 @@ function attBusinessMedium(): ExtractedBill {
   }
 
   const lineCharges = lines.reduce(
-    (acc, l) => acc + (l.plan_base_cents ?? 0) + l.features.reduce((a, f) => a + f.monthly_cents, 0),
+    (acc, l) =>
+      acc + (l.plan_base_cents ?? 0) + l.features.reduce((a, f) => a + f.monthly_cents, 0),
     0,
   );
 
@@ -321,9 +322,7 @@ function tmobileBusinessLarge(): ExtractedBill {
   }
   const acct1Total = acct1Lines.reduce(
     (acc, l) =>
-      acc +
-      (l.plan_base_cents ?? 0) +
-      l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0),
+      acc + (l.plan_base_cents ?? 0) + l.dpp_installments.reduce((a, d) => a + d.monthly_cents, 0),
     0,
   );
   const acct1: ExtractedAccount = {
@@ -429,9 +428,7 @@ function verizonBusinessLarge(): ExtractedBill {
     label: 'Verizon Business — HQ',
     total_charges_cents: acct1Total,
     taxes_fees_cents: 5400,
-    account_level_credits: [
-      makeCredit('Volume Discount Promo', -3000, '2026-06-01', true),
-    ],
+    account_level_credits: [makeCredit('Volume Discount Promo', -3000, '2026-06-01', true)],
     lines: acct1Lines,
   };
 
@@ -470,9 +467,7 @@ function verizonBusinessLarge(): ExtractedBill {
   }
   const acct2Total = acct2Lines.reduce(
     (acc, l) =>
-      acc +
-      (l.plan_base_cents ?? 0) +
-      l.features.reduce((a, f) => a + f.monthly_cents, 0),
+      acc + (l.plan_base_cents ?? 0) + l.features.reduce((a, f) => a + f.monthly_cents, 0),
     0,
   );
   const acct2: ExtractedAccount = {
@@ -732,9 +727,7 @@ function tmobileBusinessMedium(): ExtractedBill {
       );
       continue;
     }
-    lines.push(
-      makeLine(i, { plan_name: 'Business Unlimited Advanced', plan_base_cents: 5500 }),
-    );
+    lines.push(makeLine(i, { plan_name: 'Business Unlimited Advanced', plan_base_cents: 5500 }));
   }
   const total = lines.reduce(
     (acc, l) =>
@@ -797,9 +790,7 @@ async function main(): Promise<void> {
     const parsed = ExtractedBillSchema.safeParse(fixture.bill);
     if (!parsed.success) {
       const issues = JSON.stringify(parsed.error.issues, null, 2);
-      throw new Error(
-        `Fixture ${fixture.filename} failed schema validation:\n${issues}`,
-      );
+      throw new Error(`Fixture ${fixture.filename} failed schema validation:\n${issues}`);
     }
     const outPath = path.join(OUT_DIR, fixture.filename);
     await fs.writeFile(outPath, `${JSON.stringify(parsed.data, null, 2)}\n`, 'utf8');

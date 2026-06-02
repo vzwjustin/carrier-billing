@@ -257,13 +257,9 @@ function buildHtml(props: MonthlyDigestProps): string {
             .slice(0, 3)
             .map((line) => {
               const last4 = escapeHtml(clampLast4(line.mdnMaskedLast4));
-              const label = escapeHtml(
-                line.label && line.label.length > 0 ? line.label : 'Line',
-              );
+              const label = escapeHtml(line.label && line.label.length > 0 ? line.label : 'Line');
               const tag = escapeHtml(ruleLabel(line.ruleId));
-              const amount = escapeHtml(
-                formatCents(line.estimatedMonthlySavingsCents),
-              );
+              const amount = escapeHtml(formatCents(line.estimatedMonthlySavingsCents));
               return `
               <li style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
                 <strong>${label}</strong>

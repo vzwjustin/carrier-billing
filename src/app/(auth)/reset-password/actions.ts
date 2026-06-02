@@ -20,9 +20,7 @@ const UpdatePasswordSchema = z.object({
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-export async function requestPasswordResetAction(
-  input: unknown,
-): Promise<ActionResult> {
+export async function requestPasswordResetAction(input: unknown): Promise<ActionResult> {
   const parsed = ResetSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: 'Enter a valid email address.' };
@@ -38,12 +36,9 @@ export async function requestPasswordResetAction(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(
-    parsed.data.email,
-    {
-      redirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/auth/update-password`,
-    },
-  );
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/auth/update-password`,
+  });
 
   if (error) {
     // Per Supabase docs we still return success to avoid leaking which emails
@@ -54,9 +49,7 @@ export async function requestPasswordResetAction(
   return { ok: true };
 }
 
-export async function resendSignupConfirmationAction(
-  input: unknown,
-): Promise<ActionResult> {
+export async function resendSignupConfirmationAction(input: unknown): Promise<ActionResult> {
   const parsed = ResendSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: 'Invalid email.' };
@@ -92,9 +85,7 @@ export async function resendSignupConfirmationAction(
   return { ok: true };
 }
 
-export async function updatePasswordAction(
-  input: unknown,
-): Promise<ActionResult> {
+export async function updatePasswordAction(input: unknown): Promise<ActionResult> {
   const parsed = UpdatePasswordSchema.safeParse(input);
   if (!parsed.success) {
     return {

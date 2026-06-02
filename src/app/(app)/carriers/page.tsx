@@ -18,9 +18,9 @@ export default async function CarriersPage(): Promise<React.JSX.Element> {
           Carrier connections
         </h1>
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Link a carrier to pull bills automatically. Carriers expose no public
-          billing API, so connection and sync run through a simulated adapter —
-          uploading a PDF remains the source of truth for real audits.
+          Link a carrier to pull bills automatically. Carriers expose no public billing API, so
+          connection and sync run through a simulated adapter — uploading a PDF remains the source
+          of truth for real audits.
         </p>
       </header>
       <ConnectionsPanel initial={connections} />

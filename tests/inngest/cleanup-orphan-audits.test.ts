@@ -38,10 +38,12 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
   it('find-orphans sweep TTL uses updated_at (not created_at)', () => {
     const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
     const handlerSource =
-      typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
+      typeof fn.fn === 'function'
+        ? (fn.fn as () => unknown).toString()
+        : String(cleanupOrphanAuditsFn);
     const block = handlerSource.slice(
       handlerSource.indexOf('find-orphans'),
-      handlerSource.indexOf('logger.info(\'cleanupOrphanAudits: found orphans\''),
+      handlerSource.indexOf("logger.info('cleanupOrphanAudits: found orphans'"),
     );
     expect(block).toMatch(/\.lt\(['"]updated_at['"]\s*,\s*cutoff\)/);
     expect(block).not.toMatch(/\.lt\(['"]created_at['"]\s*,\s*cutoff\)/);
@@ -50,7 +52,9 @@ describe('cleanupOrphanAuditsFn (structural)', () => {
   it('fail-subscription-orphans sweep TTL uses updated_at (not created_at)', () => {
     const fn = cleanupOrphanAuditsFn as unknown as { fn?: unknown };
     const handlerSource =
-      typeof fn.fn === 'function' ? (fn.fn as () => unknown).toString() : String(cleanupOrphanAuditsFn);
+      typeof fn.fn === 'function'
+        ? (fn.fn as () => unknown).toString()
+        : String(cleanupOrphanAuditsFn);
     const block = handlerSource.slice(
       handlerSource.indexOf('fail-subscription-orphans'),
       handlerSource.indexOf('return { processed:'),
@@ -115,8 +119,8 @@ describe('refundOrphanAudit', () => {
       error: { message: 'connection lost' },
     });
 
-    await expect(
-      refundOrphanAudit(makeSupabaseStub(rpcMock), ORPHAN),
-    ).rejects.toThrow(/refund_orphan_audit failed: connection lost/);
+    await expect(refundOrphanAudit(makeSupabaseStub(rpcMock), ORPHAN)).rejects.toThrow(
+      /refund_orphan_audit failed: connection lost/,
+    );
   });
 });

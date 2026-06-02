@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  aggregateFindingsOverTime,
-  SEVERITY_ORDER,
-} from '@/lib/dashboard/findings-over-time';
+import { aggregateFindingsOverTime, SEVERITY_ORDER } from '@/lib/dashboard/findings-over-time';
 
 describe('aggregateFindingsOverTime', () => {
   it('returns an empty array when given no audits', () => {
@@ -32,14 +29,7 @@ describe('aggregateFindingsOverTime', () => {
     expect(result).toHaveLength(6);
     // After truncation to first 6 (newest 6 = a8..a3) and reversal, output
     // should read oldest → newest: a3, a4, a5, a6, a7, a8.
-    expect(result.map((r) => r.audit_id)).toEqual([
-      'a3',
-      'a4',
-      'a5',
-      'a6',
-      'a7',
-      'a8',
-    ]);
+    expect(result.map((r) => r.audit_id)).toEqual(['a3', 'a4', 'a5', 'a6', 'a7', 'a8']);
   });
 
   it('returns all-zero counts when audits exist but have zero findings', () => {
@@ -55,10 +45,7 @@ describe('aggregateFindingsOverTime', () => {
     expect(
       result.every(
         (r) =>
-          r.counts.high === 0 &&
-          r.counts.medium === 0 &&
-          r.counts.low === 0 &&
-          r.counts.info === 0,
+          r.counts.high === 0 && r.counts.medium === 0 && r.counts.low === 0 && r.counts.info === 0,
       ),
     ).toBe(true);
   });
@@ -91,11 +78,6 @@ describe('aggregateFindingsOverTime', () => {
     });
     expect(result[0]?.total).toBe(6);
     // Iteration order on the counts object follows SEVERITY_ORDER.
-    expect(Object.keys(result[0]!.counts)).toEqual([
-      'high',
-      'medium',
-      'low',
-      'info',
-    ]);
+    expect(Object.keys(result[0]!.counts)).toEqual(['high', 'medium', 'low', 'info']);
   });
 });

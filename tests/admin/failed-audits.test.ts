@@ -118,9 +118,7 @@ vi.mock('@/components/admin/retry-button', () => ({
 }));
 
 // Import after mocks are registered.
-const { default: AdminFailedAuditsPage } = await import(
-  '@/app/(app)/admin/failed-audits/page'
-);
+const { default: AdminFailedAuditsPage } = await import('@/app/(app)/admin/failed-audits/page');
 
 beforeEach(() => {
   getUserMock.mockReset();
@@ -137,9 +135,9 @@ describe('GET /admin/failed-audits (role gate + query)', () => {
   it('role gate: anonymous caller is redirected to /dashboard', async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
 
-    await expect(
-      AdminFailedAuditsPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrowError(NextRedirectError);
+    await expect(AdminFailedAuditsPage({ searchParams: Promise.resolve({}) })).rejects.toThrowError(
+      NextRedirectError,
+    );
     // Confirm redirect destination matches the established admin gate.
     try {
       await AdminFailedAuditsPage({ searchParams: Promise.resolve({}) });
@@ -158,9 +156,9 @@ describe('GET /admin/failed-audits (role gate + query)', () => {
       error: null,
     });
 
-    await expect(
-      AdminFailedAuditsPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrowError(NextRedirectError);
+    await expect(AdminFailedAuditsPage({ searchParams: Promise.resolve({}) })).rejects.toThrowError(
+      NextRedirectError,
+    );
   });
 
   it('happy path: admin sees status=failed query with default pagination', async () => {

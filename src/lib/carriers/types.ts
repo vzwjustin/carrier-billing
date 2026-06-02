@@ -11,11 +11,7 @@ export const CARRIER_LABELS: Record<Carrier, string> = {
 
 export const CarrierSchema = z.enum(CARRIERS);
 
-export const ConnectionStatusSchema = z.enum([
-  'disconnected',
-  'connected',
-  'error',
-]);
+export const ConnectionStatusSchema = z.enum(['disconnected', 'connected', 'error']);
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
 
 export interface CarrierConnection {

@@ -123,8 +123,7 @@ export default async function ContractDetailPage({
     notes: termsData?.notes ?? null,
   };
 
-  const statusCls =
-    STATUS_STYLES[contractData.status] ?? 'bg-neutral-100 text-neutral-700';
+  const statusCls = STATUS_STYLES[contractData.status] ?? 'bg-neutral-100 text-neutral-700';
   const statusLabel = STATUS_LABELS[contractData.status] ?? contractData.status;
 
   return (
@@ -152,9 +151,7 @@ export default async function ContractDetailPage({
 
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-neutral-200 bg-white p-4 md:grid-cols-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Carrier
-          </p>
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Carrier</p>
           <p className="mt-1 text-sm text-neutral-900">
             {contractData.carrier
               ? (CARRIER_LABELS[contractData.carrier] ?? contractData.carrier)
@@ -162,7 +159,7 @@ export default async function ContractDetailPage({
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
             BAN (last 4)
           </p>
           <p className="mt-1 font-mono text-sm text-neutral-900">
@@ -170,17 +167,13 @@ export default async function ContractDetailPage({
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Effective
-          </p>
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Effective</p>
           <p className="mt-1 text-sm text-neutral-900">
             {formatIsoDateDisplay(contractData.effective_date)}
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Expires
-          </p>
+          <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Expires</p>
           <p className="mt-1 text-sm text-neutral-900">
             {formatIsoDateDisplay(contractData.expiration_date)}
           </p>
@@ -196,18 +189,14 @@ export default async function ContractDetailPage({
 
       {contractData.status === 'extracting' ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-          Extraction is in progress. Refresh the page in a moment to see the
-          parsed terms.
+          Extraction is in progress. Refresh the page in a moment to see the parsed terms.
         </div>
       ) : null}
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          Extracted terms
-        </h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Extracted terms</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          Edit any field below and save. These terms drive the
-          contract-vs-bill audit rule.
+          Edit any field below and save. These terms drive the contract-vs-bill audit rule.
         </p>
         <div className="mt-6">
           <TermsEditor

@@ -32,11 +32,7 @@ export async function POST(request: Request): Promise<Response> {
 
     let event: Stripe.Event;
     try {
-      event = getStripe().webhooks.constructEvent(
-        rawBody,
-        signature,
-        env.STRIPE_WEBHOOK_SECRET,
-      );
+      event = getStripe().webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
     } catch {
       return new Response('Invalid signature', { status: 400 });
     }
@@ -61,10 +57,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (existing.data) {
       const row = existing.data as BillingEventRow;
-      if (
-        row.processed_status === 'success' ||
-        row.processed_status === 'in_flight'
-      ) {
+      if (row.processed_status === 'success' || row.processed_status === 'in_flight') {
         // H8: already-processed → idempotent ack.
         // R1-F2: in_flight → another worker is mid-handler right now. Dedupe
         // at the entry path so we don't invoke handleStripeEvent in parallel.
@@ -100,25 +93,15 @@ export async function POST(request: Request): Promise<Response> {
             .eq('stripe_event_id', event.id)
             .maybeSingle();
           if (!raced.data) {
-            console.error(
-              '[stripe.webhook] race fetch failed',
-              event.type,
-              event.id,
-            );
-            Sentry.captureException(
-              new Error('race fetch returned no row after 23505'),
-              {
-                tags: { area: 'stripe.webhook', stripe_event_type: event.type },
-                extra: { stripe_event_id: event.id },
-              },
-            );
+            console.error('[stripe.webhook] race fetch failed', event.type, event.id);
+            Sentry.captureException(new Error('race fetch returned no row after 23505'), {
+              tags: { area: 'stripe.webhook', stripe_event_type: event.type },
+              extra: { stripe_event_id: event.id },
+            });
             return new Response('Internal error', { status: 500 });
           }
           const row = raced.data as BillingEventRow;
-          if (
-            row.processed_status === 'success' ||
-            row.processed_status === 'in_flight'
-          ) {
+          if (row.processed_status === 'success' || row.processed_status === 'in_flight') {
             // R1-F2 — same dedupe as the existing-row path above.
             console.log('[stripe.webhook]', event.type, event.id, 'deduped');
             return Response.json({ received: true, deduped: true });
@@ -144,11 +127,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       } else {
         if (!insertResult.data) {
-          console.error(
-            '[stripe.webhook] insert returned no row',
-            event.type,
-            event.id,
-          );
+          console.error('[stripe.webhook] insert returned no row', event.type, event.id);
           return new Response('Internal error', { status: 500 });
         }
         const row = insertResult.data as BillingEventRow;
@@ -193,9 +172,7 @@ export async function POST(request: Request): Promise<Response> {
         '[stripe.webhook] handler failed',
         event.type,
         event.id,
-        scrubString(
-          handlerErr instanceof Error ? handlerErr.message : String(handlerErr),
-        ),
+        scrubString(handlerErr instanceof Error ? handlerErr.message : String(handlerErr)),
       );
       Sentry.captureException(handlerErr, {
         tags: { area: 'stripe.webhook.handler', stripe_event_type: event.type },
@@ -295,9 +272,7 @@ async function markSuccess(
   }
   const rows = (data ?? []) as Array<{ id: string }>;
   if (rows.length !== 1) {
-    const rowCountErr = new Error(
-      `markSuccess matched ${rows.length} billing_events rows`,
-    );
+    const rowCountErr = new Error(`markSuccess matched ${rows.length} billing_events rows`);
     Sentry.captureException(rowCountErr, {
       tags: { area: 'stripe.webhook.mark_success' },
       extra: { billingEventId, matchCount: rows.length },

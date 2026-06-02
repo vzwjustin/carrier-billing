@@ -59,18 +59,15 @@ export function ExtractionConfidenceBanner({
       aria-label="Extraction confidence notice"
       role="status"
     >
-      <p
-        className={`text-xs font-medium uppercase tracking-wider ${c.label}`}
-      >
+      <p className={`text-xs font-medium tracking-wider uppercase ${c.label}`}>
         Extraction confidence: {confidence}
       </p>
       <p className={`mt-1 text-sm font-medium ${c.heading}`}>{heading}</p>
       <p className={`mt-1 text-sm ${c.body}`}>
-        Some values on this bill didn&apos;t fully reconcile during parsing — the
-        printed total may not match the sum of its line items, or the document
-        needed image-based text recognition. The findings below are still useful
-        as leads, but confirm the underlying numbers against your bill before
-        acting on the savings estimates.
+        Some values on this bill didn&apos;t fully reconcile during parsing — the printed total may
+        not match the sum of its line items, or the document needed image-based text recognition.
+        The findings below are still useful as leads, but confirm the underlying numbers against
+        your bill before acting on the savings estimates.
       </p>
     </section>
   );
