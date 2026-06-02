@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { BillSummary } from '@/components/report/bill-summary';
+import { ExtractionConfidenceBanner } from '@/components/report/extraction-confidence-banner';
 import { FindingsList } from '@/components/report/findings-list';
 import { ReportActions } from '@/components/report/report-actions';
 import { SavingsHero } from '@/components/report/savings-hero';
@@ -25,6 +26,9 @@ export function ReportView({
 }: ReportViewProps): React.JSX.Element {
   return (
     <div className="space-y-6">
+      <ExtractionConfidenceBanner
+        confidence={report.audit.extraction_confidence}
+      />
       <SavingsHero audit={report.audit} />
       <ReportActions
         auditId={report.audit.id}

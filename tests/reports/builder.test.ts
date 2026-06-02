@@ -153,6 +153,28 @@ describe('buildReportData', () => {
     expect(report.audit.estimated_annual_savings_cents).toBe(12_345 * 12);
   });
 
+  it('passes extraction_confidence through to the report', () => {
+    const report = buildReportData({
+      audit: makeAudit({ extraction_confidence: 'low' }),
+      findings: [],
+      accounts: [],
+      lines: [],
+      ...noBillRows,
+    });
+    expect(report.audit.extraction_confidence).toBe('low');
+  });
+
+  it('normalizes a missing extraction_confidence to null', () => {
+    const report = buildReportData({
+      audit: makeAudit(),
+      findings: [],
+      accounts: [],
+      lines: [],
+      ...noBillRows,
+    });
+    expect(report.audit.extraction_confidence).toBeNull();
+  });
+
   it('computes per-account line counts from bill_lines rows', () => {
     const accounts: ReportAccountRow[] = [
       {

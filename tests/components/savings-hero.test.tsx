@@ -28,6 +28,7 @@ function makeAudit(over: Partial<ReportAudit> = {}): ReportAudit {
     estimated_monthly_savings_cents: 8500,
     estimated_annual_savings_cents: 102000,
     completed_at: '2026-05-01T00:00:00Z',
+    extraction_confidence: 'high',
     ...over,
   };
 }

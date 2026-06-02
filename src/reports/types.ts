@@ -17,6 +17,12 @@ export interface ReportAuditRow {
   estimated_monthly_savings_cents: number | null;
   estimated_annual_savings_cents: number | null;
   completed_at: string | null;
+  /**
+   * Bill-level extraction confidence ('high' | 'medium' | 'low'), added in
+   * migration 0037. NULL on rows extracted before the column existed; the
+   * viewer treats NULL as 'high' (no caution banner).
+   */
+  extraction_confidence?: string | null;
 }
 
 /** Row shape for `bill_accounts` joined to a per-account line count. */
@@ -95,6 +101,8 @@ export interface ReportAudit {
   estimated_monthly_savings_cents: number;
   estimated_annual_savings_cents: number;
   completed_at: string | null;
+  /** 'high' | 'medium' | 'low' | null — null is treated as high (no banner). */
+  extraction_confidence: string | null;
 }
 
 /** Sub-shape exposed to the viewer for the bill summary block. */
