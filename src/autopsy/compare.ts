@@ -833,18 +833,23 @@ export function compareBills(previous: ExtractedBill, current: ExtractedBill): A
   // surface first in any UI that iterates the array in order.
   drivers.sort((a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents));
 
-  const disputable = drivers
-    .filter((d) => d.is_disputable && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const optimization = drivers
-    .filter((d) => d.is_optimization && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const unexplained = drivers
-    .filter((d) => d.is_unexplained)
-    .reduce((s, d) => s + Math.abs(d.difference_cents), 0);
-
+  // Consolidated 3 map/reduce chains + array iterations into a single
+  // pass for performance (O(n) instead of O(4n)).
+  let disputable = 0;
+  let optimization = 0;
+  let unexplained = 0;
   const drivers_by_category: Partial<Record<ChangeCategory, number>> = {};
+
   for (const d of drivers) {
+    if (d.is_disputable && d.difference_cents > 0) {
+      disputable += d.difference_cents;
+    }
+    if (d.is_optimization && d.difference_cents > 0) {
+      optimization += d.difference_cents;
+    }
+    if (d.is_unexplained) {
+      unexplained += Math.abs(d.difference_cents);
+    }
     drivers_by_category[d.category] = (drivers_by_category[d.category] ?? 0) + 1;
   }
 
