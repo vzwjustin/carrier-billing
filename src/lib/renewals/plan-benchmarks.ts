@@ -109,11 +109,13 @@ export function benchmarkPlans(lines: ReadonlyArray<BillLineRow>): BenchmarkRow[
     }
   }
 
-  const rows: BenchmarkRow[] = Array.from(buckets.values()).map((b) => {
+  const rows: BenchmarkRow[] = [];
+  // ⚡ Bolt: Single-pass map iteration avoids intermediate Array allocation from Array.from()
+  for (const b of buckets.values()) {
     const avg =
       b.lines_with_plan_base > 0 ? Math.round(b.total_plan_base_cents / b.lines_with_plan_base) : 0;
     const monthly = b.line_count * b.pattern.estimated_monthly_savings_cents;
-    return {
+    rows.push({
       carrier: b.carrier,
       legacy_plan_name: b.pattern.pattern.source,
       replacement_plan: b.pattern.replacement_plan,
@@ -123,8 +125,8 @@ export function benchmarkPlans(lines: ReadonlyArray<BillLineRow>): BenchmarkRow[
       estimated_per_line_savings_cents: b.pattern.estimated_monthly_savings_cents,
       estimated_monthly_savings_cents: monthly,
       estimated_annual_savings_cents: monthly * 12,
-    };
-  });
+    });
+  }
 
   rows.sort((a, b) => {
     if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
