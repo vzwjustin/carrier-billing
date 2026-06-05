@@ -137,15 +137,30 @@ export async function findReplayCandidates(
   }
 
   const merged = new Map<string, ReplayCandidate>();
-  for (const row of [
-    ...((nullStatusQuery.data ?? []) as ReplayCandidate[]),
-    ...((failedNoAttemptQuery.data ?? []) as ReplayCandidate[]),
-    ...((failedCooledQuery.data ?? []) as ReplayCandidate[]),
-    ...((stuckInFlightQuery.data ?? []) as ReplayCandidate[]),
-  ]) {
-    if (!merged.has(row.id)) merged.set(row.id, row);
+  // ⚡ Bolt: Sequential loop avoids allocating a massive spread array
+  const sources = [
+    nullStatusQuery.data,
+    failedNoAttemptQuery.data,
+    failedCooledQuery.data,
+    stuckInFlightQuery.data,
+  ];
+
+  for (const source of sources) {
+    if (!source) continue;
+    for (const row of source as ReplayCandidate[]) {
+      if (!merged.has(row.id)) merged.set(row.id, row);
+    }
   }
-  return Array.from(merged.values()).slice(0, REPLAY_BATCH_LIMIT);
+
+  // ⚡ Bolt: Single pass iteration stops early at REPLAY_BATCH_LIMIT
+  // instead of allocating full Array then calling slice().
+  const result: ReplayCandidate[] = [];
+  for (const candidate of merged.values()) {
+    if (result.length >= REPLAY_BATCH_LIMIT) break;
+    result.push(candidate);
+  }
+
+  return result;
 }
 
 export type ReplayOutcome = 'success' | 'failed' | 'invalid_payload' | 'skipped';

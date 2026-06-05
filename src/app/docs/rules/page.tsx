@@ -115,12 +115,22 @@ function renderAppliesTo(appliesTo: DocsRuleEntry['appliesTo']): string {
 export default function DocsRulesPage(): React.ReactElement {
   const rules = formatRulesForDocs(ALL_RULES);
 
-  const sections: BandSection[] = BAND_ORDER.map((band) => ({
-    band,
-    heading: BAND_HEADING[band],
-    blurb: BAND_BLURB[band],
-    ruleIds: new Set(rules.filter((r) => bandForRule(r.id) === band).map((r) => r.id)),
-  }));
+  const sections: BandSection[] = BAND_ORDER.map((band) => {
+    // ⚡ Bolt: Single-pass filter & map avoids two intermediate array instantiations
+    const ruleIds = new Set<string>();
+    for (const r of rules) {
+      if (bandForRule(r.id) === band) {
+        ruleIds.add(r.id);
+      }
+    }
+
+    return {
+      band,
+      heading: BAND_HEADING[band],
+      blurb: BAND_BLURB[band],
+      ruleIds,
+    };
+  });
 
   return (
     <div className="flex flex-col gap-10 text-neutral-700">
