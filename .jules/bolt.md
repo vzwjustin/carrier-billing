@@ -5,3 +5,6 @@
 ## 2024-06-05 - Avoiding multiple array allocations with spread and filter/map
 **Learning:** Found multiple instances where large arrays were allocated unnecessarily: chained `.filter().map()` calls, large array spreads `[...a, ...b, ...c]`, and full array allocations before early slicing `Array.from(map.values()).slice(0, N)`.
 **Action:** Replace chained array functions with single `for...of` loops, sequence multi-array iterations with nested loops instead of spreading, and loop over iterators like `map.values()` to `break` early rather than allocating a full array then slicing.
+## 2025-02-12 - Combined Filter/Reduce Traversals into Single-Pass Execution
+**Learning:** Found sequential array iterations relying on chained `.filter().reduce()` that caused unnecessary intermediate array allocations and repetitive O(N) array traversals (e.g. processing properties of 'drivers' in `src/autopsy/compare.ts`). Consolidating these loops eliminates both the instantiation overhead and the multiple passes.
+**Action:** Consistently replace multiple `.filter().reduce()` chains performing aggregates over the same sequence with a unified `for...of` loop to compute all related aggregations in a single O(N) pass.
