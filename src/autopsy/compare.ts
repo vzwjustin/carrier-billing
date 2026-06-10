@@ -833,18 +833,16 @@ export function compareBills(previous: ExtractedBill, current: ExtractedBill): A
   // surface first in any UI that iterates the array in order.
   drivers.sort((a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents));
 
-  const disputable = drivers
-    .filter((d) => d.is_disputable && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const optimization = drivers
-    .filter((d) => d.is_optimization && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const unexplained = drivers
-    .filter((d) => d.is_unexplained)
-    .reduce((s, d) => s + Math.abs(d.difference_cents), 0);
-
+  let disputable = 0;
+  let optimization = 0;
+  let unexplained = 0;
   const drivers_by_category: Partial<Record<ChangeCategory, number>> = {};
+
   for (const d of drivers) {
+    if (d.is_disputable && d.difference_cents > 0) disputable += d.difference_cents;
+    if (d.is_optimization && d.difference_cents > 0) optimization += d.difference_cents;
+    if (d.is_unexplained) unexplained += Math.abs(d.difference_cents);
+
     drivers_by_category[d.category] = (drivers_by_category[d.category] ?? 0) + 1;
   }
 
@@ -885,11 +883,14 @@ function buildExecutiveSummary(input: {
   }
   const direction = netChange === 0 ? 'unchanged' : netChange > 0 ? 'increased' : 'decreased';
   const magnitude = formatCentsSigned(Math.abs(netChange));
-  const top = drivers
-    .filter((d) => d.difference_cents !== 0)
-    .slice(0, 5)
-    .map((d) => `- ${signedFormatted(d.difference_cents)} from ${d.title}`)
-    .join('\n');
+  const topItems: string[] = [];
+  for (const d of drivers) {
+    if (d.difference_cents !== 0) {
+      topItems.push(`- ${signedFormatted(d.difference_cents)} from ${d.title}`);
+      if (topItems.length === 5) break;
+    }
+  }
+  const top = topItems.join('\n');
   const disputeLine =
     disputable > 0
       ? `\n\nWe found ${formatCentsSigned(disputable)} that appears potentially disputable.`
