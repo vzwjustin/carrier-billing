@@ -1,0 +1,10 @@
+--- src/app/api/inngest/route.ts
++++ src/app/api/inngest/route.ts
+@@ -16,7 +16,7 @@
+
+ export const { GET, POST, PUT } = serve({
+   client: inngest,
+-  functions,
++  functions: [...functions],
+   signingKey: env.INNGEST_SIGNING_KEY,
+ });
