@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 if (
   process.env.NODE_ENV === 'production' &&
   process.env.SKIP_ENV_VALIDATION !== '1' &&
+  !process.env.CF_PAGES &&
   !process.env.CI &&
   !env.INNGEST_SIGNING_KEY
 ) {
