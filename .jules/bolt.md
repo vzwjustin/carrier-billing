@@ -5,3 +5,8 @@
 ## 2024-06-05 - Avoiding multiple array allocations with spread and filter/map
 **Learning:** Found multiple instances where large arrays were allocated unnecessarily: chained `.filter().map()` calls, large array spreads `[...a, ...b, ...c]`, and full array allocations before early slicing `Array.from(map.values()).slice(0, N)`.
 **Action:** Replace chained array functions with single `for...of` loops, sequence multi-array iterations with nested loops instead of spreading, and loop over iterators like `map.values()` to `break` early rather than allocating a full array then slicing.
+
+
+## 2026-06-12 - [Resend Batch API]
+**Learning:** Sequential HTTP requests to external APIs (like sending 1000 emails individually) cause excessive I/O bottleneck and function timeout risk.
+**Action:** Always prefer batching APIs (e.g. `resend.batch.send`) combined with careful chunking (e.g. max 100 limit for Resend).

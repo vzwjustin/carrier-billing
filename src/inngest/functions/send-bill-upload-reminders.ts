@@ -73,17 +73,29 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
     const uploadUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/audits/new`;
     let sent = 0;
 
-    for (const user of due) {
-      await step.run(`send-${user.id}`, async () => {
-        const props: BillReminderEmailProps = { uploadUrl };
+    const BATCH_SIZE = 100;
+    const batches = [];
+    for (let i = 0; i < due.length; i += BATCH_SIZE) {
+      batches.push(due.slice(i, i + BATCH_SIZE));
+    }
+
+    // Process batches sequentially to respect rate limits, but drastically reduce I/O round trips.
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]!;
+      await step.run(`send-batch-${i}`, async () => {
         const resend = getResend();
-        const response = await resend.emails.send({
-          from: FROM_ADDRESS,
-          to: user.email,
-          subject: 'Time for this month’s CarrierAudit bill check',
-          react: React.createElement(BillReminderEmail, props),
-          text: renderBillReminderText(props),
+        const emails = batch.map((user) => {
+          const props: BillReminderEmailProps = { uploadUrl };
+          return {
+            from: FROM_ADDRESS,
+            to: user.email,
+            subject: 'Time for this month’s CarrierAudit bill check',
+            react: React.createElement(BillReminderEmail, props),
+            text: renderBillReminderText(props),
+          };
         });
+
+        const response = await resend.batch.send(emails);
         if (response.error) {
           const code =
             typeof (response.error as { name?: unknown }).name === 'string'
@@ -93,7 +105,7 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
         }
         return { ok: true };
       });
-      sent += 1;
+      sent += batch.length;
     }
 
     logger.info('sendBillUploadReminders: done', { sent });
