@@ -5,3 +5,6 @@
 ## 2024-06-05 - Avoiding multiple array allocations with spread and filter/map
 **Learning:** Found multiple instances where large arrays were allocated unnecessarily: chained `.filter().map()` calls, large array spreads `[...a, ...b, ...c]`, and full array allocations before early slicing `Array.from(map.values()).slice(0, N)`.
 **Action:** Replace chained array functions with single `for...of` loops, sequence multi-array iterations with nested loops instead of spreading, and loop over iterators like `map.values()` to `break` early rather than allocating a full array then slicing.
+## 2024-06-12 - Eliminate N+1 DB query in cleanup-orphan-audits
+**Learning:** Chained `.filter().reduce()` operations inside a database read loop degrade performance, particularly when paired with an N+1 query loop. The database latency is `2N` round trips rather than `N+1` when sequentially looping to pull dependent row values.
+**Action:** When gathering related data for multiple primary keys (e.g., findings for multiple audit IDs), use `in()` to bulk-fetch the related data, group it in memory via a Map or dictionary, and compute logic in a single-pass loop (like `for...of`).

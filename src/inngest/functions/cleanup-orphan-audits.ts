@@ -203,21 +203,46 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
       }
       const rows = (data ?? []) as Array<{ id: string }>;
       let completed = 0;
+      if (rows.length === 0) return completed;
+
+      const auditIds = rows.map((r) => r.id);
+
+      // ⚡ Bolt: Fetch all findings for all stuck audits in one query to eliminate N+1 loop
+      const { data: allFindings, error: fErr } = await supabase
+        .from('findings')
+        .select('audit_id, severity, estimated_monthly_savings_cents')
+        .in('audit_id', auditIds);
+
+      if (fErr) {
+        logger.warn('cleanupOrphanAudits: bulk findings read failed', { error: fErr.message });
+        return completed;
+      }
+
+      // Group findings by audit_id in memory (single-pass loop optimization)
+      type FindingRow = {
+        audit_id: string;
+        severity: string;
+        estimated_monthly_savings_cents: number | null;
+      };
+      const findingsByAudit = new Map<string, FindingRow[]>();
+      for (const f of (allFindings ?? []) as FindingRow[]) {
+        const arr = findingsByAudit.get(f.audit_id);
+        if (arr) arr.push(f);
+        else findingsByAudit.set(f.audit_id, [f]);
+      }
+
       for (const row of rows) {
-        const { data: fRows, error: fErr } = await supabase
-          .from('findings')
-          .select('severity, estimated_monthly_savings_cents')
-          .eq('audit_id', row.id);
-        if (fErr) {
-          logger.warn('cleanupOrphanAudits: findings read failed', { auditId: row.id });
-          continue;
+        const findings = findingsByAudit.get(row.id) ?? [];
+
+        let monthly = 0;
+        let high = 0;
+
+        // ⚡ Bolt: Single-pass loop to replace chained .reduce() and .filter()
+        for (const f of findings) {
+          monthly += f.estimated_monthly_savings_cents ?? 0;
+          if (f.severity === 'high') high += 1;
         }
-        const findings = (fRows ?? []) as Array<{
-          severity: string;
-          estimated_monthly_savings_cents: number | null;
-        }>;
-        const monthly = findings.reduce((s, f) => s + (f.estimated_monthly_savings_cents ?? 0), 0);
-        const high = findings.filter((f) => f.severity === 'high').length;
+
         const now = new Date().toISOString();
         const { error: upErr } = await supabase
           .from('audits')
