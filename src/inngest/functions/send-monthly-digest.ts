@@ -399,139 +399,204 @@ export const sendMonthlyDigestFn = inngest.createFunction(
     let skipped = 0;
     let errored = 0;
 
-    for (const recipient of cohort) {
-      try {
-        const result = (await step.run(`send-${recipient.id}`, async () => {
-          const admin = getAdminClient();
+    // Process the cohort in chunks so that we can bulk-read their profiles
+    // accurately inside the step execution. This eliminates N+1 profile queries.
+    const BATCH_SIZE = 50;
+    const batches: DigestRecipient[][] = [];
+    for (let i = 0; i < cohort.length; i += BATCH_SIZE) {
+      batches.push(cohort.slice(i, i + BATCH_SIZE));
+    }
 
-          // ── re-check the gate inside the step so a race against another
-          //    cron run (or a manual replay) cannot double-send ──────────────
-          const { data: freshProfile, error: profileErr } = await admin
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      if (!batch) continue;
+
+      try {
+        const batchResults = (await step.run(`send-batch-${b}`, async () => {
+          const admin = getAdminClient();
+          const batchIds = batch.map((r) => r.id);
+
+          // ── bulk re-check the gate inside the step ──────────────────
+          const { data: profilesData, error: profilesErr } = await admin
             .from('profiles')
-            .select('digest_opt_out, digest_last_sent_at, email')
-            .eq('id', recipient.id)
-            .maybeSingle();
-          if (profileErr) {
-            throw new Error(`profile re-read failed: ${profileErr.message}`);
+            .select('id, digest_opt_out, digest_last_sent_at, email')
+            .in('id', batchIds);
+
+          if (profilesErr) {
+            throw new Error(`batch profile read failed: ${profilesErr.message}`);
           }
-          const fresh = (freshProfile ?? null) as {
-            digest_opt_out: boolean | null;
-            digest_last_sent_at: string | null;
-            email: string | null;
-          } | null;
-          if (!fresh || fresh.digest_opt_out === true || !fresh.email) {
-            return { status: 'skipped' as const, reason: 'opt-out-or-no-email' };
-          }
-          if (fresh.digest_last_sent_at) {
-            const ts = Date.parse(fresh.digest_last_sent_at);
-            if (
-              !Number.isNaN(ts) &&
-              Date.now() - ts < ELIGIBILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000
-            ) {
-              return { status: 'skipped' as const, reason: 'within-window' };
+
+          const profileMap = new Map((profilesData ?? []).map((p) => [p.id, p]));
+          const outcomes: Array<{
+            id: string;
+            status: 'sent' | 'skipped' | 'error';
+            messageId?: string | null;
+            reason?: string;
+          }> = [];
+
+          for (const recipient of batch) {
+            try {
+              const fresh = (profileMap.get(recipient.id) ?? null) as {
+                id: string;
+                digest_opt_out: boolean | null;
+                digest_last_sent_at: string | null;
+                email: string | null;
+              } | null;
+
+              if (!fresh || fresh.digest_opt_out === true || !fresh.email) {
+                outcomes.push({
+                  id: recipient.id,
+                  status: 'skipped',
+                  reason: 'opt-out-or-no-email',
+                });
+                continue;
+              }
+              if (fresh.digest_last_sent_at) {
+                const ts = Date.parse(fresh.digest_last_sent_at);
+                if (
+                  !Number.isNaN(ts) &&
+                  Date.now() - ts < ELIGIBILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000
+                ) {
+                  outcomes.push({ id: recipient.id, status: 'skipped', reason: 'within-window' });
+                  continue;
+                }
+              }
+
+              const token = await ensureUnsubToken(admin, recipient.id);
+              const unsubscribeUrl = buildUnsubscribeUrl(token);
+              const aggregated = await aggregateDigestContext(admin, recipient.id);
+
+              const props: MonthlyDigestProps = {
+                periodLabel,
+                totalSpendCents: aggregated.totalSpendCents,
+                autopsy: aggregated.autopsy,
+                openFindingsBySeverity: aggregated.openFindingsBySeverity,
+                totalRecoverableSavingsCents: aggregated.totalRecoverableSavingsCents,
+                topUnusedLines: aggregated.topUnusedLines,
+                dashboardUrl,
+                unsubscribeUrl,
+              };
+              const rendered = buildMonthlyDigest(props);
+
+              const resend = getResend();
+              // M7: an Inngest step retry that lands AFTER resend.emails.send
+              // committed but BEFORE the digest_last_sent_at stamp persisted would
+              // re-read the un-stamped row, pass the gate, and send a second email.
+              // A per-recipient-per-period idempotency key makes Resend dedupe the
+              // duplicate send server-side — preventing the double-send without the
+              // under-delivery risk of stamping before the send.
+              const idempotencyKey = `digest-${recipient.id}-${periodLabel.replace(/\s+/g, '-')}`;
+              const response = await resend.emails.send(
+                {
+                  from: FROM_ADDRESS,
+                  to: fresh.email,
+                  subject: rendered.subject,
+                  html: rendered.html,
+                  text: rendered.text,
+                  headers: {
+                    // RFC 8058 one-click unsubscribe metadata. Gmail / Apple Mail
+                    // surface this header as a native button.
+                    'List-Unsubscribe': `<${unsubscribeUrl}>`,
+                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                  },
+                },
+                { idempotencyKey },
+              );
+
+              if (response.error) {
+                const code =
+                  typeof (response.error as { name?: unknown }).name === 'string'
+                    ? (response.error as { name: string }).name
+                    : 'unknown';
+                throw new Error(`resend send failed: ${code}`);
+              }
+
+              const messageId =
+                response.data && typeof response.data.id === 'string' ? response.data.id : null;
+
+              // Stamp last-sent BEFORE returning so a retry sees the latest
+              // timestamp and short-circuits at the gate above.
+              const { error: stampErr } = await admin
+                .from('profiles')
+                .update({
+                  digest_last_sent_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', recipient.id);
+              if (stampErr) {
+                // The email is already out the door — surface to Sentry but
+                // don't throw, as throwing would cause Inngest to retry the send.
+                Sentry.captureException(
+                  new Error(`digest_last_sent_at stamp failed: ${stampErr.message}`),
+                  {
+                    tags: { surface: 'send-monthly-digest.stamp' },
+                    extra: { userId: recipient.id },
+                  },
+                );
+              }
+
+              outcomes.push({ id: recipient.id, status: 'sent', messageId });
+            } catch (err) {
+              Sentry.captureException(err, {
+                tags: { surface: 'send-monthly-digest.per-user' },
+                extra: { userId: recipient.id },
+              });
+              logger.error('sendMonthlyDigest: per-user error', {
+                userId: recipient.id,
+                message: err instanceof Error ? err.message : 'unknown',
+              });
+              outcomes.push({
+                id: recipient.id,
+                status: 'error',
+                reason: err instanceof Error ? err.message : 'unknown',
+              });
             }
           }
 
-          const token = await ensureUnsubToken(admin, recipient.id);
-          const unsubscribeUrl = buildUnsubscribeUrl(token);
-          const aggregated = await aggregateDigestContext(admin, recipient.id);
-
-          const props: MonthlyDigestProps = {
-            periodLabel,
-            totalSpendCents: aggregated.totalSpendCents,
-            autopsy: aggregated.autopsy,
-            openFindingsBySeverity: aggregated.openFindingsBySeverity,
-            totalRecoverableSavingsCents: aggregated.totalRecoverableSavingsCents,
-            topUnusedLines: aggregated.topUnusedLines,
-            dashboardUrl,
-            unsubscribeUrl,
-          };
-          const rendered = buildMonthlyDigest(props);
-
-          const resend = getResend();
-          // M7: an Inngest step retry that lands AFTER resend.emails.send
-          // committed but BEFORE the digest_last_sent_at stamp persisted would
-          // re-read the un-stamped row, pass the gate, and send a second email.
-          // A per-recipient-per-period idempotency key makes Resend dedupe the
-          // duplicate send server-side — preventing the double-send without the
-          // under-delivery risk of stamping before the send.
-          const idempotencyKey = `digest-${recipient.id}-${periodLabel.replace(/\s+/g, '-')}`;
-          const response = await resend.emails.send(
-            {
-              from: FROM_ADDRESS,
-              to: fresh.email,
-              subject: rendered.subject,
-              html: rendered.html,
-              text: rendered.text,
-              headers: {
-                // RFC 8058 one-click unsubscribe metadata. Gmail / Apple Mail
-                // surface this header as a native button.
-                'List-Unsubscribe': `<${unsubscribeUrl}>`,
-                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-              },
-            },
-            { idempotencyKey },
-          );
-
-          if (response.error) {
-            const code =
-              typeof (response.error as { name?: unknown }).name === 'string'
-                ? (response.error as { name: string }).name
-                : 'unknown';
-            throw new Error(`resend send failed: ${code}`);
+          // Throw an error if any send failed to trigger a step retry.
+          // Because we use an idempotencyKey with Resend and check the gate,
+          // retrying the whole batch is safe.
+          const errors = outcomes.filter((o) => o.status === 'error');
+          if (errors.length > 0) {
+            throw new Error(`Batch had ${errors.length} failed sends (e.g. ${errors[0]?.reason})`);
           }
 
-          const messageId =
-            response.data && typeof response.data.id === 'string' ? response.data.id : null;
+          return outcomes;
+        })) as Array<{
+          id: string;
+          status: 'sent' | 'skipped' | 'error';
+          messageId?: string | null;
+          reason?: string;
+        }>;
 
-          // Stamp last-sent BEFORE returning so a retry sees the latest
-          // timestamp and short-circuits at the gate above.
-          const { error: stampErr } = await admin
-            .from('profiles')
-            .update({
-              digest_last_sent_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', recipient.id);
-          if (stampErr) {
-            // The email is already out the door — surface to Sentry but
-            // don't throw, as throwing would cause Inngest to retry the send.
-            Sentry.captureException(
-              new Error(`digest_last_sent_at stamp failed: ${stampErr.message}`),
-              {
-                tags: { surface: 'send-monthly-digest.stamp' },
-                extra: { userId: recipient.id },
-              },
-            );
+        for (const res of batchResults) {
+          if (res.status === 'sent') {
+            sent += 1;
+            logger.info('sendMonthlyDigest: sent', {
+              userId: res.id,
+              resendMessageId: res.messageId,
+            });
+          } else if (res.status === 'skipped') {
+            skipped += 1;
+            logger.info('sendMonthlyDigest: skipped', {
+              userId: res.id,
+              reason: res.reason,
+            });
+          } else {
+            errored += 1;
           }
-
-          return { status: 'sent' as const, messageId };
-        })) as { status: 'sent'; messageId: string | null } | { status: 'skipped'; reason: string };
-
-        if (result.status === 'sent') {
-          sent += 1;
-          logger.info('sendMonthlyDigest: sent', {
-            userId: recipient.id,
-            resendMessageId: result.messageId,
-          });
-        } else {
-          skipped += 1;
-          logger.info('sendMonthlyDigest: skipped', {
-            userId: recipient.id,
-            reason: result.reason,
-          });
         }
       } catch (err) {
-        errored += 1;
+        // Entire batch step failed
+        errored += batch.length;
         Sentry.captureException(err, {
-          tags: { surface: 'send-monthly-digest.per-user' },
-          extra: { userId: recipient.id },
+          tags: { surface: 'send-monthly-digest.batch' },
+          extra: { batchIndex: b },
         });
-        logger.error('sendMonthlyDigest: per-user error', {
-          userId: recipient.id,
+        logger.error('sendMonthlyDigest: batch error', {
+          batchIndex: b,
           message: err instanceof Error ? err.message : 'unknown',
         });
-        // Continue the cohort.
       }
     }
 
