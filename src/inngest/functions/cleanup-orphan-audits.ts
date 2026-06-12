@@ -155,22 +155,21 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
         throw new Error(`audits select (refund-leaked-credits) failed: ${error.message}`);
       }
       const rows = (data ?? []) as Array<{ id: string; user_id: string }>;
-      let refunded = 0;
-      for (const row of rows) {
-        const { error: rpcErr } = await supabase.rpc('refund_failed_audit', {
-          p_audit_id: row.id,
-          p_user_id: row.user_id,
+      if (rows.length === 0) return 0;
+
+      const { data: refundedCount, error: rpcErr } = await supabase.rpc('refund_failed_audits_bulk', {
+        p_audit_ids: rows.map(r => r.id),
+        p_user_ids: rows.map(r => r.user_id),
+      });
+
+      if (rpcErr) {
+        logger.warn('cleanupOrphanAudits: refund_failed_audits_bulk error', {
+          error: rpcErr.message,
         });
-        if (rpcErr) {
-          // 0034 raises on profile mismatch; log and continue so one bad row
-          // doesn't wedge the whole sweep.
-          logger.warn('cleanupOrphanAudits: refund_failed_audit error', {
-            auditId: row.id,
-          });
-          continue;
-        }
-        refunded += 1;
+        return 0; // Don't throw, let the next sweep try again.
       }
+
+      const refunded = (refundedCount as number) ?? 0;
       if (refunded > 0) {
         logger.info('cleanupOrphanAudits: reclaimed leaked credits', { refunded });
       }
