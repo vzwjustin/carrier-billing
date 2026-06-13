@@ -13,7 +13,7 @@ export default function AuditsListLoading() {
 
       <div className="bg-card rounded-xl border shadow-sm">
         <div className="divide-y">
-          {Array.from({ length: 5 }).map((_, i) => (
+          {Array.from({ length: 5 }, (_, i) => (
             <div key={i} className="flex items-center justify-between gap-4 p-4">
               <div className="flex items-center gap-4">
                 <div className="bg-muted h-10 w-10 animate-pulse rounded-lg" />

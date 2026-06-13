@@ -59,7 +59,8 @@ export function aggregateCostCenters(
     total += cents;
   }
 
-  const rows: CostCenterRollupRow[] = Array.from(buckets.entries()).map(([cost_center, b]) => ({
+  // Optimization: Use Array.from mapping function to avoid creating an intermediate array
+  const rows: CostCenterRollupRow[] = Array.from(buckets.entries(), ([cost_center, b]) => ({
     cost_center,
     line_count: b.line_count,
     monthly_total_cents: b.monthly_total_cents,
