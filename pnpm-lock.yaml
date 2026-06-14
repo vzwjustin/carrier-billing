@@ -36,11 +36,11 @@ importers:
         specifier: ^10.56.0
         version: 10.56.0(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.217.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(next@15.5.18(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(webpack@5.106.2(esbuild@0.28.0))
       '@supabase/ssr':
-        specifier: ^0.12.0
-        version: 0.12.0(@supabase/supabase-js@2.108.1)
+        specifier: ^0.5.1
+        version: 0.5.1(@supabase/supabase-js@2.107.0)
       '@supabase/supabase-js':
-        specifier: ^2.108.1
-        version: 2.108.1
+        specifier: ^2.107.0
+        version: 2.107.0
       '@t3-oss/env-nextjs':
         specifier: ^0.13.11
         version: 0.13.11(typescript@6.0.3)(zod@3.25.76)
@@ -2179,36 +2179,36 @@ packages:
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
-  '@supabase/auth-js@2.108.1':
-    resolution: {integrity: sha512-Lle5rKU8f9LF3K5dDd8Or8mkkG+ptzRZZWKPVMm9B9UuovH65Ss2+iFnQqRsCqaGouvJEcTWyl0cj2riNrrDLQ==}
+  '@supabase/auth-js@2.107.0':
+    resolution: {integrity: sha512-XA7x+WIeIvuC3GTZ2ey67QcBbGw4n+o5B7M+dMm9KT1lL3wX1B52DfEWW00WuPt/LnniJLLIn1WIm9YPtuxzKQ==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/functions-js@2.108.1':
-    resolution: {integrity: sha512-fxBRW/A4IG7ADQztVt0NaEy5ysiO1WJ2pbldsnBchrkHuyepX0Krek9qA9T4gUQBVVTCE9Ea4pdsM5hfn3nc4A==}
+  '@supabase/functions-js@2.107.0':
+    resolution: {integrity: sha512-iMtRUmEj1KOgQd/a3MR4hnBlPnZc62DW8+z8aPpnzbxWkexEZUVL2fSgvvp15gqFg1V55e2yMGqgK+yhSQxp5w==}
     engines: {node: '>=20.0.0'}
 
   '@supabase/phoenix@0.4.2':
     resolution: {integrity: sha512-YSAGnmDAfuleFCVt3CeurQZAhxRfXWeZIIkwp7NhYzQ1UwW6ePSnzsFAiUm/mbCkfoCf70QQHKW/K6RKh52a4A==}
 
-  '@supabase/postgrest-js@2.108.1':
-    resolution: {integrity: sha512-9lj2MCPPMgSTaJ5y+amnhb3TWPtMFVlbDn2hmX/VV91xQU4j0AauwfMaBErHBJ+zzsSwjc0jLU+zLIZFLQzfig==}
+  '@supabase/postgrest-js@2.107.0':
+    resolution: {integrity: sha512-7ARs47/tyIjX7T0Ive20d4NY8zQYXsP5/P07jJWxffSIM2gpnSnGRnL/Fe15GPbdjsW2sTYeckHcyaoKbM6yWQ==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/realtime-js@2.108.1':
-    resolution: {integrity: sha512-mHGGqOjwd1XTydcoffUqEMsbFQHUi6A3uhQ0EXr3iqzpLqItxKA9nbN6gIQxrZ7JRRnuUe/iOFPUkYV9Tdc5lg==}
+  '@supabase/realtime-js@2.107.0':
+    resolution: {integrity: sha512-cF2KYdR3JIn9YlWGeluY9S0G+otqTdL6hB8GzpatlEIY6fZudCcyFo6Dc3+X9tjeb+x9XcIyNAk9qhNAknjH1A==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/ssr@0.12.0':
-    resolution: {integrity: sha512-d9XV5XzJvzzZbeAIM7fWTCUYxQJZ2Ru6ny3dJHmHGp/LIrJ+o9FpD7N9Rf/UhhWEvHXSoDe8SI32Z2ouOdMjBg==}
+  '@supabase/ssr@0.5.1':
+    resolution: {integrity: sha512-+G94H/GZG0nErZ3FQV9yJmsC5Rj7dmcfCAwOt37hxeR1La+QTl8cE9whzYwPUrTJjMLGNXoO+1BMvVxwBAbz4g==}
     peerDependencies:
-      '@supabase/supabase-js': ^2.108.0
+      '@supabase/supabase-js': ^2.43.4
 
-  '@supabase/storage-js@2.108.1':
-    resolution: {integrity: sha512-Er0SGGt85iT6ye+SSh98Az6L2CesoZJuyzEZYH2oBOAnIxa9Nn4CtwUC3veGxYggoT56X+3tVuuQeDBP8kR8sg==}
+  '@supabase/storage-js@2.107.0':
+    resolution: {integrity: sha512-/X8OOVwKBn8aVKuHAGOz2yLA0d2OauqhVuy4mNtN+o7wttHOgx1/j+pqOzlsjmhOHrYykF6AJNZhs3gKZzcMUw==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/supabase-js@2.108.1':
-    resolution: {integrity: sha512-V/1hRKLSCJ0zEL+9QFRBUtivvePfOsaAYQmC0HhFNSHC2F3xFs4jSF3YhkLmzex6E4V4FGvmBDOP72D/53NnZA==}
+  '@supabase/supabase-js@2.107.0':
+    resolution: {integrity: sha512-ChKzdlWVweMUUhr0U79JhMmgm1haS/C5JquaiCDr70JaGARRtjjoY9rkIheXWybXxTSNzRiQs3Sk8IAg1HS3ZA==}
     engines: {node: '>=20.0.0'}
 
   '@swc/helpers@0.5.15':
@@ -3000,9 +3000,9 @@ packages:
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
-  cookie@1.1.1:
-    resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
-    engines: {node: '>=18'}
+  cookie@0.6.0:
+    resolution: {integrity: sha512-U71cyTamuh1CRNCfpGY6to28lxvNwPG4Guz/EVjgf3Jmzv0vlDp1atT9eS5dDjMYHucpHbWns6Lwf3BKz6svdw==}
+    engines: {node: '>= 0.6'}
 
   core-js@3.49.0:
     resolution: {integrity: sha512-es1U2+YTtzpwkxVLwAFdSpaIMyQaq0PBgm3YD1W3Qpsn1NAmO3KSgZfu+oGSWVu6NvLHoHCV/aYcsE5wiB7ALg==}
@@ -7358,42 +7358,42 @@ snapshots:
 
   '@standard-schema/utils@0.3.0': {}
 
-  '@supabase/auth-js@2.108.1':
+  '@supabase/auth-js@2.107.0':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/functions-js@2.108.1':
+  '@supabase/functions-js@2.107.0':
     dependencies:
       tslib: 2.8.1
 
   '@supabase/phoenix@0.4.2': {}
 
-  '@supabase/postgrest-js@2.108.1':
+  '@supabase/postgrest-js@2.107.0':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/realtime-js@2.108.1':
+  '@supabase/realtime-js@2.107.0':
     dependencies:
       '@supabase/phoenix': 0.4.2
       tslib: 2.8.1
 
-  '@supabase/ssr@0.12.0(@supabase/supabase-js@2.108.1)':
+  '@supabase/ssr@0.5.1(@supabase/supabase-js@2.107.0)':
     dependencies:
-      '@supabase/supabase-js': 2.108.1
-      cookie: 1.1.1
+      '@supabase/supabase-js': 2.107.0
+      cookie: 0.6.0
 
-  '@supabase/storage-js@2.108.1':
+  '@supabase/storage-js@2.107.0':
     dependencies:
       iceberg-js: 0.8.1
       tslib: 2.8.1
 
-  '@supabase/supabase-js@2.108.1':
+  '@supabase/supabase-js@2.107.0':
     dependencies:
-      '@supabase/auth-js': 2.108.1
-      '@supabase/functions-js': 2.108.1
-      '@supabase/postgrest-js': 2.108.1
-      '@supabase/realtime-js': 2.108.1
-      '@supabase/storage-js': 2.108.1
+      '@supabase/auth-js': 2.107.0
+      '@supabase/functions-js': 2.107.0
+      '@supabase/postgrest-js': 2.107.0
+      '@supabase/realtime-js': 2.107.0
+      '@supabase/storage-js': 2.107.0
 
   '@swc/helpers@0.5.15':
     dependencies:
@@ -8194,7 +8194,7 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  cookie@1.1.1: {}
+  cookie@0.6.0: {}
 
   core-js@3.49.0: {}
 
