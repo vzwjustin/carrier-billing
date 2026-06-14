@@ -5,3 +5,7 @@
 ## 2024-06-05 - Avoiding multiple array allocations with spread and filter/map
 **Learning:** Found multiple instances where large arrays were allocated unnecessarily: chained `.filter().map()` calls, large array spreads `[...a, ...b, ...c]`, and full array allocations before early slicing `Array.from(map.values()).slice(0, N)`.
 **Action:** Replace chained array functions with single `for...of` loops, sequence multi-array iterations with nested loops instead of spreading, and loop over iterators like `map.values()` to `break` early rather than allocating a full array then slicing.
+
+## 2024-06-14 - Intermediate Array Allocation via Array.from
+**Learning:** Found multiple instances where an intermediate array is unnecessarily created by calling `Array.from(iterable).map()`. This requires an entire allocation for the array plus a second iteration pass to map the array.
+**Action:** Utilize the `Array.from(iterable, mapFn)` pattern. This performs the mapping inline during iteration over the original iterable, skipping the intermediary array allocation.
