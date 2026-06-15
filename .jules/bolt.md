@@ -5,3 +5,11 @@
 ## 2024-06-05 - Avoiding multiple array allocations with spread and filter/map
 **Learning:** Found multiple instances where large arrays were allocated unnecessarily: chained `.filter().map()` calls, large array spreads `[...a, ...b, ...c]`, and full array allocations before early slicing `Array.from(map.values()).slice(0, N)`.
 **Action:** Replace chained array functions with single `for...of` loops, sequence multi-array iterations with nested loops instead of spreading, and loop over iterators like `map.values()` to `break` early rather than allocating a full array then slicing.
+
+## 2024-11-20 - Sequential O(N) chains over same array
+**Learning:** Found multiple places using chained  on the same `drivers` array (up to 3 times) to calculate sums. This allocates temporary arrays and needlessly repeats full array passes.
+**Action:** Use a single `for...of` loop instead when multiple aggregates or groupings need to be accumulated from a single array.
+
+## 2024-11-20 - Sequential O(N) chains over same array
+**Learning:** Found multiple places using chained filter/reduce on the same `drivers` array (up to 3 times) to calculate sums. This allocates temporary arrays and needlessly repeats full array passes.
+**Action:** Use a single `for...of` loop instead when multiple aggregates or groupings need to be accumulated from a single array.
