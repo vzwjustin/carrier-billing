@@ -122,23 +122,27 @@ export default async function InventoryLinePage({
   const accountIds = new Set<string>();
   for (const a of accountsRes.data ?? []) accountIds.add(a.id);
 
-  const matching: InventoryLineInput[] = (linesRes.data ?? [])
-    .filter((line) => accountIds.has(line.account_id))
-    .map((line) => {
-      const audit = auditMeta.get(line.audit_id);
-      return {
-        audit_id: line.audit_id,
-        account_number_masked: parsed.accountLast4,
-        mdn_masked: line.mdn_masked,
-        device_description: line.device_description,
-        plan_name: line.plan_name,
-        plan_base_cents: line.plan_base_cents,
-        is_suspended: line.is_suspended,
-        carrier: audit?.carrier ?? null,
-        billing_period_end: audit?.billing_period_end ?? null,
-        completed_at: audit?.completed_at ?? null,
-      };
-    });
+  const matching: InventoryLineInput[] = (linesRes.data ?? []).reduce<InventoryLineInput[]>(
+    (acc, line) => {
+      if (accountIds.has(line.account_id)) {
+        const audit = auditMeta.get(line.audit_id);
+        acc.push({
+          audit_id: line.audit_id,
+          account_number_masked: parsed.accountLast4,
+          mdn_masked: line.mdn_masked,
+          device_description: line.device_description,
+          plan_name: line.plan_name,
+          plan_base_cents: line.plan_base_cents,
+          is_suspended: line.is_suspended,
+          carrier: audit?.carrier ?? null,
+          billing_period_end: audit?.billing_period_end ?? null,
+          completed_at: audit?.completed_at ?? null,
+        });
+      }
+      return acc;
+    },
+    [],
+  );
 
   if (matching.length === 0) notFound();
 

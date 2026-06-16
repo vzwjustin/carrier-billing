@@ -345,16 +345,15 @@ export async function aggregateDigestContext(
       const lines = (linesData ?? []) as BillLineRow[];
       const lineMap = new Map(lines.map((l) => [l.id, l]));
 
-      topUnusedLines = Array.from(lineSavingsCents.entries())
-        .map(([lineId, { ruleId, cents }]) => {
-          const line = lineMap.get(lineId);
-          return {
-            label: line?.user_label ?? null,
-            mdnMaskedLast4: line?.mdn_masked ?? null,
-            ruleId,
-            estimatedMonthlySavingsCents: cents,
-          } satisfies DigestTopLine;
-        })
+      topUnusedLines = Array.from(lineSavingsCents.entries(), ([lineId, { ruleId, cents }]) => {
+        const line = lineMap.get(lineId);
+        return {
+          label: line?.user_label ?? null,
+          mdnMaskedLast4: line?.mdn_masked ?? null,
+          ruleId,
+          estimatedMonthlySavingsCents: cents,
+        } satisfies DigestTopLine;
+      })
         .sort((a, b) => b.estimatedMonthlySavingsCents - a.estimatedMonthlySavingsCents)
         .slice(0, 3);
     }

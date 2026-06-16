@@ -415,9 +415,11 @@ export async function executeGetFinding(
     if (linesError) {
       throw new Error(`get_finding lines lookup failed: ${linesError.message}`);
     }
-    affectedLineLast4 = ((lines ?? []) as LineLast4Row[])
-      .map((l) => takeLast4(l.mdn_masked))
-      .filter((v): v is string => v !== null);
+    affectedLineLast4 = ((lines ?? []) as LineLast4Row[]).reduce<string[]>((acc, l) => {
+      const v = takeLast4(l.mdn_masked);
+      if (v !== null) acc.push(v);
+      return acc;
+    }, []);
   }
 
   let affectedAccountLast4: string[] = [];
@@ -430,9 +432,11 @@ export async function executeGetFinding(
     if (accountsError) {
       throw new Error(`get_finding accounts lookup failed: ${accountsError.message}`);
     }
-    affectedAccountLast4 = ((accounts ?? []) as AccountLast4Row[])
-      .map((a) => takeLast4(a.account_number_masked))
-      .filter((v): v is string => v !== null);
+    affectedAccountLast4 = ((accounts ?? []) as AccountLast4Row[]).reduce<string[]>((acc, a) => {
+      const v = takeLast4(a.account_number_masked);
+      if (v !== null) acc.push(v);
+      return acc;
+    }, []);
   }
 
   citations.auditIds.add(row.audit_id);
@@ -630,7 +634,10 @@ export async function executeListLines(
     if (featureError) {
       throw new Error(`list_lines feature filter failed: ${featureError.message}`);
     }
-    const featureLineIds = new Set(((featureRows ?? []) as FeatureLinkRow[]).map((f) => f.line_id));
+    const featureLineIds = new Set();
+    for (const f of (featureRows ?? []) as FeatureLinkRow[]) {
+      featureLineIds.add(f.line_id);
+    }
     lines = lines.filter((l) => featureLineIds.has(l.id));
   }
 

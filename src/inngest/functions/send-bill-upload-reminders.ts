@@ -54,9 +54,15 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
         throw new Error(`profiles select failed: ${profileErr.message}`);
       }
 
-      return ((profileData ?? []) as ProfileRow[])
-        .filter((p) => !active.has(p.id) && !!p.email)
-        .map((p) => ({ id: p.id, email: p.email as string }));
+      return ((profileData ?? []) as ProfileRow[]).reduce<{ id: string; email: string }[]>(
+        (acc, p) => {
+          if (!active.has(p.id) && !!p.email) {
+            acc.push({ id: p.id, email: p.email });
+          }
+          return acc;
+        },
+        [],
+      );
     })) as { id: string; email: string }[];
 
     const enabled = env.BILL_REMINDER_ENABLED === 'true';

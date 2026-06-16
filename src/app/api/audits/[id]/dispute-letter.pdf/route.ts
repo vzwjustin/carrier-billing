@@ -335,12 +335,21 @@ export async function GET(
       affected_line_ids: f.affected_line_ids,
       affected_account_ids: f.affected_account_ids,
     };
-    const lines: DisputeLineInput[] = (f.affected_line_ids ?? [])
-      .map((id) => linesById.get(id))
-      .filter((l): l is DisputeLineInput => l !== undefined);
-    const accounts: DisputeAccountInput[] = (f.affected_account_ids ?? [])
-      .map((id) => accountsById.get(id))
-      .filter((a): a is DisputeAccountInput => a !== undefined);
+    const lines: DisputeLineInput[] = (f.affected_line_ids ?? []).reduce<DisputeLineInput[]>(
+      (acc, id) => {
+        const l = linesById.get(id);
+        if (l !== undefined) acc.push(l);
+        return acc;
+      },
+      [],
+    );
+    const accounts: DisputeAccountInput[] = (f.affected_account_ids ?? []).reduce<
+      DisputeAccountInput[]
+    >((acc, id) => {
+      const a = accountsById.get(id);
+      if (a !== undefined) acc.push(a);
+      return acc;
+    }, []);
     return { finding: findingInput, lines, accounts };
   });
 

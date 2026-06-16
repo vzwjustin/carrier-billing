@@ -310,8 +310,17 @@ function planChangeNote(prev: ExtractedLine, curr: ExtractedLine): string {
 function dppDeltaNote(prev: ExtractedLine | null, curr: ExtractedLine | null): string {
   const prevDevices = new Set((prev?.dpp_installments ?? []).map((d) => d.device));
   const currDevices = new Set((curr?.dpp_installments ?? []).map((d) => d.device));
-  const added = [...currDevices].filter((d) => !prevDevices.has(d));
-  const removed = [...prevDevices].filter((d) => !currDevices.has(d));
+
+  const added: string[] = [];
+  for (const d of currDevices) {
+    if (!prevDevices.has(d)) added.push(d);
+  }
+
+  const removed: string[] = [];
+  for (const d of prevDevices) {
+    if (!currDevices.has(d)) removed.push(d);
+  }
+
   if (added.length && removed.length) {
     return `Devices changed: removed ${removed.join(', ')}, added ${added.join(', ')}`;
   }
@@ -833,15 +842,21 @@ export function compareBills(previous: ExtractedBill, current: ExtractedBill): A
   // surface first in any UI that iterates the array in order.
   drivers.sort((a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents));
 
-  const disputable = drivers
-    .filter((d) => d.is_disputable && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const optimization = drivers
-    .filter((d) => d.is_optimization && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const unexplained = drivers
-    .filter((d) => d.is_unexplained)
-    .reduce((s, d) => s + Math.abs(d.difference_cents), 0);
+  let disputable = 0;
+  let optimization = 0;
+  let unexplained = 0;
+
+  for (const d of drivers) {
+    if (d.is_disputable && d.difference_cents > 0) {
+      disputable += d.difference_cents;
+    }
+    if (d.is_optimization && d.difference_cents > 0) {
+      optimization += d.difference_cents;
+    }
+    if (d.is_unexplained) {
+      unexplained += Math.abs(d.difference_cents);
+    }
+  }
 
   const drivers_by_category: Partial<Record<ChangeCategory, number>> = {};
   for (const d of drivers) {
@@ -885,11 +900,14 @@ function buildExecutiveSummary(input: {
   }
   const direction = netChange === 0 ? 'unchanged' : netChange > 0 ? 'increased' : 'decreased';
   const magnitude = formatCentsSigned(Math.abs(netChange));
-  const top = drivers
-    .filter((d) => d.difference_cents !== 0)
-    .slice(0, 5)
-    .map((d) => `- ${signedFormatted(d.difference_cents)} from ${d.title}`)
-    .join('\n');
+  const topDrivers = [];
+  for (const d of drivers) {
+    if (d.difference_cents !== 0) {
+      topDrivers.push(`- ${signedFormatted(d.difference_cents)} from ${d.title}`);
+      if (topDrivers.length >= 5) break;
+    }
+  }
+  const top = topDrivers.join('\n');
   const disputeLine =
     disputable > 0
       ? `\n\nWe found ${formatCentsSigned(disputable)} that appears potentially disputable.`
