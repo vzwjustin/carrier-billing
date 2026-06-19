@@ -383,11 +383,11 @@ export function buildExecutiveReport(input: BuildExecutiveReportInput): Executiv
       estimated_monthly_savings_cents: b.estimated_monthly_savings_cents,
     }),
   ).sort((a, b) => {
-      if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
-        return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
-      }
-      return a.category_label.localeCompare(b.category_label);
-    });
+    if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
+      return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
+    }
+    return a.category_label.localeCompare(b.category_label);
+  });
 
   // ── 7. By cost-center (NULL when no tagged lines exist anywhere) ─────
   const anyTagged = billLines.some((l) => l.cost_center !== null && l.cost_center.trim() !== '');
