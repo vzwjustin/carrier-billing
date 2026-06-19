@@ -52,7 +52,8 @@ export function aggregateSpendByCarrier(
     total += audit.total_charges_cents;
   }
 
-  const rows: CarrierSpendRow[] = Array.from(buckets.entries()).map(([carrier, total_cents]) => ({
+  // ⚡ Bolt: Single-pass map iteration avoids intermediate Array allocation from Array.from()
+  const rows: CarrierSpendRow[] = Array.from(buckets.entries(), ([carrier, total_cents]) => ({
     carrier,
     total_cents,
     share: total > 0 ? total_cents / total : 0,
