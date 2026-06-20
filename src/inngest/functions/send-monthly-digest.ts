@@ -345,8 +345,10 @@ export async function aggregateDigestContext(
       const lines = (linesData ?? []) as BillLineRow[];
       const lineMap = new Map(lines.map((l) => [l.id, l]));
 
-      topUnusedLines = Array.from(lineSavingsCents.entries())
-        .map(([lineId, { ruleId, cents }]) => {
+      // ⚡ Bolt: Use map function in Array.from to prevent intermediate array allocation
+      topUnusedLines = Array.from(
+        lineSavingsCents.entries(),
+        ([lineId, { ruleId, cents }]) => {
           const line = lineMap.get(lineId);
           return {
             label: line?.user_label ?? null,
@@ -354,8 +356,8 @@ export async function aggregateDigestContext(
             ruleId,
             estimatedMonthlySavingsCents: cents,
           } satisfies DigestTopLine;
-        })
-        .sort((a, b) => b.estimatedMonthlySavingsCents - a.estimatedMonthlySavingsCents)
+        },
+      ).sort((a, b) => b.estimatedMonthlySavingsCents - a.estimatedMonthlySavingsCents)
         .slice(0, 3);
     }
   }
