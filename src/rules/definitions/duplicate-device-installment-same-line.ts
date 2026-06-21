@@ -38,7 +38,13 @@ export const duplicateDeviceInstallmentSameLineRule: Rule = {
           byDevice.set(key, bucket);
         }
 
-        const duplicates = Array.from(byDevice.entries()).filter(([, rows]) => rows.length >= 2);
+        // ⚡ Bolt: Use for...of to avoid intermediate array allocation from Array.from() and .filter()
+        const duplicates: Array<[string, typeof line.dpp_installments]> = [];
+        for (const entry of byDevice.entries()) {
+          if (entry[1].length >= 2) {
+            duplicates.push(entry);
+          }
+        }
         if (duplicates.length === 0) return;
 
         // Recoverable amount = sum of the duplicated installments minus one

@@ -374,13 +374,15 @@ export function buildExecutiveReport(input: BuildExecutiveReportInput): Executiv
       });
     }
   }
-  const byCategory: ExecutiveCategoryRow[] = Array.from(categoryBuckets.entries())
-    .map(([category_label, b]) => ({
+  // ⚡ Bolt: Single-pass Array.from mapping avoids intermediate array instantiation
+  const byCategory: ExecutiveCategoryRow[] = Array.from(
+    categoryBuckets.entries(),
+    ([category_label, b]) => ({
       category_label,
       finding_count: b.finding_count,
       estimated_monthly_savings_cents: b.estimated_monthly_savings_cents,
-    }))
-    .sort((a, b) => {
+    }),
+  ).sort((a, b) => {
       if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
         return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
       }
