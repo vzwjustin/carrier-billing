@@ -13,3 +13,7 @@
 ## 2024-07-28 - Multiple array filter/reduce loops over same dataset
 **Learning:** Found an anti-pattern in metric aggregation where a large array is iterated over multiple times using chained `.filter().reduce()` for different metric categories. This increases algorithmic time complexity and creates intermediate filtered array allocations unnecessarily.
 **Action:** When calculating multiple aggregate metrics or grouping from a single collection, consolidate the calculations into a single pass (like a `for...of` loop) to avoid multiple full O(N) passes and redundant intermediate arrays.
+
+## 2024-07-28 - Build failing on production build Next JS server environment validation
+**Learning:** For Next.js builds on environments (like Vercel/Netlify builds or CI), if a build requires a Supabase client (`createBrowserClient` or `createServerClient`) inside files evaluated at build time (e.g. `src/middleware.ts` or Layouts rendering the SiteNav which indirectly evaluate auth contexts) and the environment variables are not injected (since `.env.local` is ignored in CI and production secrets aren't available), Zod schema validations triggered in `src/env.ts` will crash the build with "Invalid environment variables".
+**Action:** When working on components that get statically rendered or imported at build-time, ensure you aren't removing or changing `SKIP_ENV_VALIDATION` checks or causing early evaluation of strictly validated ENV keys in files evaluated by `next build`.
