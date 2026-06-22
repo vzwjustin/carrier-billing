@@ -9,3 +9,7 @@
 ## 2024-06-21 - Array.from mapFn vs chained map
 **Learning:** `Array.from(iterable).map(mapFn)` is an anti-pattern that creates two arrays (one for `from`, one for `map`) and loops twice. Using the built-in mapFn argument `Array.from(iterable, mapFn)` achieves the same result with half the allocations and iterations.
 **Action:** Always prefer the mapFn argument of `Array.from` when mapping iterables to an array. Apply the same logic to `.filter()` by converting to a `for...of` loop when dealing with iterables to prevent intermediate array allocation.
+
+## 2024-07-28 - Multiple array filter/reduce loops over same dataset
+**Learning:** Found an anti-pattern in metric aggregation where a large array is iterated over multiple times using chained `.filter().reduce()` for different metric categories. This increases algorithmic time complexity and creates intermediate filtered array allocations unnecessarily.
+**Action:** When calculating multiple aggregate metrics or grouping from a single collection, consolidate the calculations into a single pass (like a `for...of` loop) to avoid multiple full O(N) passes and redundant intermediate arrays.

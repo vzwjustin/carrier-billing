@@ -151,18 +151,27 @@ function matchLinesWithinAccount(pair: AccountPair): LinePair[] {
 
 function sumFeatures(line: ExtractedLine | null): number {
   if (!line) return 0;
-  return line.features.reduce((s, f) => s + f.monthly_cents, 0);
+  // ⚡ Bolt: Single pass iteration via for...of to avoid array allocations or functional overhead.
+  let sum = 0;
+  for (const f of line.features) sum += f.monthly_cents;
+  return sum;
 }
 
 function sumCredits(line: ExtractedLine | null): number {
   if (!line) return 0;
   // Credits are signed-negative in the schema; we sum them as-is.
-  return line.credits.reduce((s, c) => s + c.monthly_cents, 0);
+  // ⚡ Bolt: Single pass iteration via for...of to avoid array allocations or functional overhead.
+  let sum = 0;
+  for (const c of line.credits) sum += c.monthly_cents;
+  return sum;
 }
 
 function sumDpp(line: ExtractedLine | null): number {
   if (!line) return 0;
-  return line.dpp_installments.reduce((s, d) => s + d.monthly_cents, 0);
+  // ⚡ Bolt: Single pass iteration via for...of to avoid array allocations or functional overhead.
+  let sum = 0;
+  for (const d of line.dpp_installments) sum += d.monthly_cents;
+  return sum;
 }
 
 function planBase(line: ExtractedLine | null): number {
@@ -310,8 +319,17 @@ function planChangeNote(prev: ExtractedLine, curr: ExtractedLine): string {
 function dppDeltaNote(prev: ExtractedLine | null, curr: ExtractedLine | null): string {
   const prevDevices = new Set((prev?.dpp_installments ?? []).map((d) => d.device));
   const currDevices = new Set((curr?.dpp_installments ?? []).map((d) => d.device));
-  const added = [...currDevices].filter((d) => !prevDevices.has(d));
-  const removed = [...prevDevices].filter((d) => !currDevices.has(d));
+
+  // ⚡ Bolt: Single pass iterations to avoid allocating full intermediate arrays before filtering
+  const added: string[] = [];
+  for (const d of currDevices) {
+    if (!prevDevices.has(d)) added.push(d);
+  }
+  const removed: string[] = [];
+  for (const d of prevDevices) {
+    if (!currDevices.has(d)) removed.push(d);
+  }
+
   if (added.length && removed.length) {
     return `Devices changed: removed ${removed.join(', ')}, added ${added.join(', ')}`;
   }
@@ -833,19 +851,24 @@ export function compareBills(previous: ExtractedBill, current: ExtractedBill): A
   // surface first in any UI that iterates the array in order.
   drivers.sort((a, b) => Math.abs(b.difference_cents) - Math.abs(a.difference_cents));
 
-  const disputable = drivers
-    .filter((d) => d.is_disputable && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const optimization = drivers
-    .filter((d) => d.is_optimization && d.difference_cents > 0)
-    .reduce((s, d) => s + d.difference_cents, 0);
-  const unexplained = drivers
-    .filter((d) => d.is_unexplained)
-    .reduce((s, d) => s + Math.abs(d.difference_cents), 0);
-
+  // ⚡ Bolt: Single pass calculation for sums and category counts to avoid multiple .filter().reduce() full passes.
+  let disputable = 0;
+  let optimization = 0;
+  let unexplained = 0;
   const drivers_by_category: Partial<Record<ChangeCategory, number>> = {};
+
   for (const d of drivers) {
     drivers_by_category[d.category] = (drivers_by_category[d.category] ?? 0) + 1;
+
+    if (d.is_disputable && d.difference_cents > 0) {
+      disputable += d.difference_cents;
+    }
+    if (d.is_optimization && d.difference_cents > 0) {
+      optimization += d.difference_cents;
+    }
+    if (d.is_unexplained) {
+      unexplained += Math.abs(d.difference_cents);
+    }
   }
 
   return {
