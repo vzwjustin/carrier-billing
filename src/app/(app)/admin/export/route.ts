@@ -33,7 +33,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       const cols = ['id', 'email', 'role', 'audit_credits', 'subscription_status', 'created_at'];
       csv = toCsv(
         cols,
-        ((data ?? []) as Record<string, unknown>[]).map((r) => cols.map((c) => r[c])),
+        Array.from((data ?? []) as Record<string, unknown>[], (r) => cols.map((c) => r[c])),
       );
     }
     filename = 'users.csv';
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       ];
       csv = toCsv(
         cols,
-        ((data ?? []) as Record<string, unknown>[]).map((r) => cols.map((c) => r[c])),
+        Array.from((data ?? []) as Record<string, unknown>[], (r) => cols.map((c) => r[c])),
       );
     }
     filename = 'audits.csv';
@@ -71,3 +71,4 @@ export async function GET(req: NextRequest): Promise<Response> {
     },
   });
 }
+export const runtime = 'nodejs';

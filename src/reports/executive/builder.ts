@@ -374,18 +374,20 @@ export function buildExecutiveReport(input: BuildExecutiveReportInput): Executiv
       });
     }
   }
-  const byCategory: ExecutiveCategoryRow[] = Array.from(categoryBuckets.entries())
-    .map(([category_label, b]) => ({
+  // ⚡ Bolt: Single-pass map iteration avoids intermediate Array allocation from Array.from()
+  const byCategory: ExecutiveCategoryRow[] = Array.from(
+    categoryBuckets.entries(),
+    ([category_label, b]) => ({
       category_label,
       finding_count: b.finding_count,
       estimated_monthly_savings_cents: b.estimated_monthly_savings_cents,
-    }))
-    .sort((a, b) => {
-      if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
-        return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
-      }
-      return a.category_label.localeCompare(b.category_label);
-    });
+    }),
+  ).sort((a, b) => {
+    if (b.estimated_monthly_savings_cents !== a.estimated_monthly_savings_cents) {
+      return b.estimated_monthly_savings_cents - a.estimated_monthly_savings_cents;
+    }
+    return a.category_label.localeCompare(b.category_label);
+  });
 
   // ── 7. By cost-center (NULL when no tagged lines exist anywhere) ─────
   const anyTagged = billLines.some((l) => l.cost_center !== null && l.cost_center.trim() !== '');
