@@ -333,20 +333,26 @@ export function buildExecutiveReport(input: BuildExecutiveReportInput): Executiv
 
   // ── 5. Top 5 autopsy drivers by absolute |Δ|, only for comparisons
   //      whose endpoints are within the input audit set ────────────────
-  const comparison_ids = new Set(
-    comparisons
-      .filter((c) => audit_ids.has(c.previous_audit_id) && audit_ids.has(c.current_audit_id))
-      .map((c) => c.id),
-  );
-  const topDriversAll: ExecutiveTopDriver[] = drivers
-    .filter((d) => comparison_ids.has(d.bill_comparison_id))
-    .map((d) => ({
-      comparison_id: d.bill_comparison_id,
-      category: d.category,
-      title: d.title,
-      difference_cents: d.difference_cents,
-      affected_lines_count: d.affected_lines_count,
-    }));
+  const comparison_ids = new Set<string>();
+  for (const c of comparisons) {
+    if (audit_ids.has(c.previous_audit_id) && audit_ids.has(c.current_audit_id)) {
+      comparison_ids.add(c.id);
+    }
+  }
+
+  // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocations from .filter().map()
+  const topDriversAll: ExecutiveTopDriver[] = [];
+  for (const d of drivers) {
+    if (comparison_ids.has(d.bill_comparison_id)) {
+      topDriversAll.push({
+        comparison_id: d.bill_comparison_id,
+        category: d.category,
+        title: d.title,
+        difference_cents: d.difference_cents,
+        affected_lines_count: d.affected_lines_count,
+      });
+    }
+  }
   topDriversAll.sort((a, b) => {
     const ad = Math.abs(a.difference_cents);
     const bd = Math.abs(b.difference_cents);
