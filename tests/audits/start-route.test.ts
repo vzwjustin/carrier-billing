@@ -22,9 +22,10 @@ type AuditRowResp = {
 
 // Wrap top-level mocks in vi.hoisted so they're initialized before the
 // vi.mock factories below run (per CLAUDE.md test-mocking rule).
-const { getUserMock, auditsSelectMock, inngestSendMock } = vi.hoisted(() => ({
+const { getUserMock, auditsSelectMock, storageInfoMock, inngestSendMock } = vi.hoisted(() => ({
   getUserMock: vi.fn<() => Promise<GetUserResult>>(),
   auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
+  storageInfoMock: vi.fn<() => Promise<{ data: unknown; error: null | { message: string } }>>(),
   inngestSendMock: vi.fn(async (_event: unknown) => undefined),
 }));
 
@@ -43,6 +44,11 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: () => getUserMock() },
     from: (_table: string) => makeFromChain(),
+    storage: {
+      from: (_bucket: string) => ({
+        info: (_path: string) => storageInfoMock(),
+      }),
+    },
   }),
 }));
 
@@ -70,6 +76,7 @@ function makeContext() {
 beforeEach(() => {
   getUserMock.mockReset();
   auditsSelectMock.mockReset();
+  storageInfoMock.mockReset();
   inngestSendMock.mockReset();
 
   getUserMock.mockResolvedValue({
@@ -85,6 +92,7 @@ beforeEach(() => {
     },
     error: null,
   });
+  storageInfoMock.mockResolvedValue({ data: { size: 1024 }, error: null });
 });
 
 describe('POST /api/audits/[id]/start', () => {
@@ -157,6 +165,35 @@ describe('POST /api/audits/[id]/start', () => {
     });
     const res = await POST(req, makeContext());
     expect(res.status).toBe(409);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+    expect(storageInfoMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 upload_missing when the uploaded object is absent — no event sent', async () => {
+    storageInfoMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'not found' },
+    });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: 'upload_missing' });
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 413 upload_too_large when storage metadata exceeds 25MB — no event sent', async () => {
+    storageInfoMock.mockResolvedValueOnce({
+      data: { size: 25 * 1024 * 1024 + 1 },
+      error: null,
+    });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(413);
+    await expect(res.json()).resolves.toEqual({ error: 'upload_too_large' });
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
 

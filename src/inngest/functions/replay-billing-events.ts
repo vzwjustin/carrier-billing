@@ -185,13 +185,22 @@ export async function replayBillingEvent(
   const claimBase = supabase
     .from('billing_events')
     .update({ last_attempted_at: now.toISOString() })
-    .eq('id', row.id)
-    .is('last_attempted_at', row.last_attempted_at);
+    .eq('id', row.id);
+  const claimWithAttempt =
+    row.last_attempted_at === null
+      ? claimBase.is('last_attempted_at', null)
+      : claimBase.eq('last_attempted_at', row.last_attempted_at);
   const claimWithStatus =
     row.processed_status === null
-      ? claimBase.is('processed_status', null)
-      : claimBase.eq('processed_status', row.processed_status);
+      ? claimWithAttempt.is('processed_status', null)
+      : claimWithAttempt.eq('processed_status', row.processed_status);
   const claim = await claimWithStatus.select('id');
+
+  if (claim.error) {
+    throw new Error(
+      `replay-billing-events: claim update failed for billing event ${row.id}: ${claim.error.message}`,
+    );
+  }
 
   const claimedRows = (claim.data ?? []) as Array<{ id: string }>;
   if (claimedRows.length === 0) {

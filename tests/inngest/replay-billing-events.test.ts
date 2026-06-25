@@ -121,7 +121,11 @@ function makeFilterableSelect(
 
 function makeSupabaseStub(
   source: Array<Record<string, unknown>>,
-  updateLog: Array<{ patch: Record<string, unknown>; eq: [string, unknown] }>,
+  updateLog: Array<{
+    patch: Record<string, unknown>;
+    eq: [string, unknown];
+    filters?: Array<{ method: 'is' | 'eq'; args: [string, unknown] }>;
+  }>,
   options: {
     /**
      * H3 — model the atomic CAS claim: a row is "stolen" if its current
@@ -131,6 +135,7 @@ function makeSupabaseStub(
      * id returns 0 rows so the worker skips.
      */
     stolen?: Set<string>;
+    claimError?: { message: string };
     /**
      * Throw when invoking the corresponding row id in step.run — used to
      * exercise the M-S3 sibling-row continuation guard. Throwing happens
@@ -150,6 +155,7 @@ function makeSupabaseStub(
           // by the H3 atomic claim. Falls back to the non-CAS path for the
           // success/failure bookkeeping updates that don't include `.is()`.
           const eqHandler = (col: string, val: unknown) => {
+            const filters: Array<{ method: 'is' | 'eq'; args: [string, unknown] }> = [];
             const applyPatch = () => {
               const r = source.find((row) => row['id'] === val);
               if (r) {
@@ -170,21 +176,26 @@ function makeSupabaseStub(
               eq: (c: string, v: unknown) => typeof casChainable;
               select: (cols: string) => Promise<{
                 data: Array<{ id: unknown }>;
-                error: null;
+                error: { message: string } | null;
               }>;
             } = {
-              is(_c, _v) {
+              is(c, v) {
+                filters.push({ method: 'is', args: [c, v] });
                 return casChainable;
               },
-              eq(_c, _v) {
+              eq(c, v) {
+                filters.push({ method: 'eq', args: [c, v] });
                 return casChainable;
               },
               select(_cols) {
+                if (options.claimError) {
+                  return Promise.resolve({ data: [], error: options.claimError });
+                }
                 return Promise.resolve(
                   options.stolen && options.stolen.has(String(val))
                     ? { data: [] as Array<{ id: unknown }>, error: null }
                     : (() => {
-                        updateLog.push({ patch, eq: [col, val] });
+                        updateLog.push({ patch, eq: [col, val], filters: [...filters] });
                         applyPatch();
                         return {
                           data: [{ id: val }] as Array<{ id: unknown }>,
@@ -204,10 +215,12 @@ function makeSupabaseStub(
                 applyPatch();
                 resolve({ error: null });
               },
-              is(_col2, _val2) {
+              is(col2, val2) {
+                filters.push({ method: 'is', args: [col2, val2] });
                 return casChainable;
               },
-              eq(_col2, _val2) {
+              eq(col2, val2) {
+                filters.push({ method: 'eq', args: [col2, val2] });
                 return casChainable;
               },
             };
@@ -555,6 +568,63 @@ describe('replayBillingEvent', () => {
     // Handler was NOT invoked — that's the whole point of the claim.
     expect(handleStripeEventMock).not.toHaveBeenCalled();
     // No bookkeeping update happened either (we never claimed the row).
+    expect(updates).toHaveLength(0);
+  });
+
+  it('uses .is(last_attempted_at, null) when claiming a never-attempted row', async () => {
+    const updates: Array<{
+      patch: Record<string, unknown>;
+      eq: [string, unknown];
+      filters?: Array<{ method: 'is' | 'eq'; args: [string, unknown] }>;
+    }> = [];
+
+    await replayBillingEvent(makeSupabaseStub([], updates), makeRow(VALID_PAYLOAD), NOW);
+
+    expect(updates[0]?.filters).toContainEqual({
+      method: 'is',
+      args: ['last_attempted_at', null],
+    });
+    expect(updates[0]?.filters).not.toContainEqual({
+      method: 'eq',
+      args: ['last_attempted_at', null],
+    });
+  });
+
+  it('uses .eq(last_attempted_at, timestamp) when claiming an attempted row', async () => {
+    const updates: Array<{
+      patch: Record<string, unknown>;
+      eq: [string, unknown];
+      filters?: Array<{ method: 'is' | 'eq'; args: [string, unknown] }>;
+    }> = [];
+    const row = makeRow(VALID_PAYLOAD);
+    row.last_attempted_at = '2026-05-09T11:58:00.000Z';
+
+    await replayBillingEvent(makeSupabaseStub([], updates), row, NOW);
+
+    expect(updates[0]?.filters).toContainEqual({
+      method: 'eq',
+      args: ['last_attempted_at', '2026-05-09T11:58:00.000Z'],
+    });
+    expect(updates[0]?.filters).not.toContainEqual({
+      method: 'is',
+      args: ['last_attempted_at', '2026-05-09T11:58:00.000Z'],
+    });
+  });
+
+  it('claim update error throws so Inngest retries and handler is NOT invoked', async () => {
+    const updates: Array<{
+      patch: Record<string, unknown>;
+      eq: [string, unknown];
+      filters?: Array<{ method: 'is' | 'eq'; args: [string, unknown] }>;
+    }> = [];
+    const supabase = makeSupabaseStub([], updates, {
+      claimError: { message: 'connection reset' },
+    });
+
+    await expect(replayBillingEvent(supabase, makeRow(VALID_PAYLOAD), NOW)).rejects.toThrow(
+      'claim update failed for billing event be_target: connection reset',
+    );
+    expect(handleStripeEventMock).not.toHaveBeenCalled();
     expect(updates).toHaveLength(0);
   });
 });

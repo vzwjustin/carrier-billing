@@ -17,6 +17,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const reportViewMock = vi.hoisted(() => vi.fn());
+
 // ---------------------------------------------------------------------------
 // notFound() from next/navigation throws a sentinel error in App Router.
 // We mock it to throw a recognizable "NEXT_NOT_FOUND" error our tests assert.
@@ -70,7 +72,10 @@ const auditMaybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
 function makeAdminTableBuilder(table: string) {
   return {
     select: (_cols: string) => ({
-      eq: (_col: string, _val: string): Promise<ListResult> & {
+      eq: (
+        _col: string,
+        _val: string,
+      ): Promise<ListResult> & {
         maybeSingle: () => Promise<MaybeSingleResult>;
       } => {
         const listPromise = Promise.resolve<ListResult>({
@@ -121,11 +126,12 @@ vi.mock('@/env', () => ({
 
 // Stub the heavy ReportView so we don't have to render every child component.
 vi.mock('@/components/audits/report-view', () => ({
-  ReportView: ({ isPublic }: { isPublic?: boolean }) => ({
-    type: 'div',
+  ReportView: ({ isPublic, publicToken }: { isPublic?: boolean; publicToken?: string }) => ({
+    type: reportViewMock({ isPublic, publicToken }) ?? 'div',
     props: {
       'data-testid': 'report-view',
       'data-public': isPublic ? 'true' : 'false',
+      'data-public-token': publicToken,
     },
   }),
 }));
@@ -163,6 +169,7 @@ const VALID_TOKEN_32 = 'abcdefghij1234567890abcdefghij12';
 beforeEach(() => {
   auditMaybeSingleMock.mockReset();
   adminFromMock.mockClear();
+  reportViewMock.mockClear();
 });
 
 describe('GET /share/[token] page handler', () => {
@@ -180,6 +187,20 @@ describe('GET /share/[token] page handler', () => {
     expect(element).toBeDefined();
     // The audits lookup must have been issued.
     expect(adminFromMock).toHaveBeenCalledWith('audits');
+    function findPublicToken(node: unknown): unknown {
+      if (typeof node !== 'object' || node === null) return undefined;
+      const props = (node as { props?: Record<string, unknown> }).props;
+      if (props?.['publicToken']) return props['publicToken'];
+      const children = props?.['children'];
+      if (Array.isArray(children)) {
+        for (const child of children) {
+          const found = findPublicToken(child);
+          if (found) return found;
+        }
+      }
+      return findPublicToken(children);
+    }
+    expect(findPublicToken(element)).toBe(VALID_TOKEN_32);
   });
 
   it('(b) unknown token → notFound() is invoked', async () => {

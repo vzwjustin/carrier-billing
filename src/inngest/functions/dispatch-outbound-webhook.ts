@@ -189,34 +189,27 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
         .digest('hex');
       const signatureHeader = `t=${timestamp},v1=${sigHex}`;
 
-      // Re-validate the URL at dispatch time — checking only at submit-time
-      // would let an attacker register a public DNS name now and rebind it to
-      // 127.0.0.1 / 169.254.169.254 before the worker fires. Resolve fresh
-      // here, then `fetch` the literal IP with the original Host header
-      // preserved so TLS/SNI still terminates correctly.
-      const target = await assertPublicHttpsTarget(ctx.url);
-
-      const original = new URL(ctx.url);
-      const host =
-        original.port.length > 0
-          ? `${original.hostname}:${original.port}`
-          : original.hostname;
-      // Wrap IPv6 literal in brackets for URL syntax.
-      const ipForUrl =
-        target.family === 6 ? `[${target.resolvedIp}]` : target.resolvedIp;
-      const portSuffix = original.port.length > 0 ? `:${original.port}` : '';
-      const pinnedUrl = `https://${ipForUrl}${portSuffix}${original.pathname}${original.search}`;
+      // Re-validate the URL immediately before dispatch — checking only at
+      // submit-time would let an attacker register a public DNS name now and
+      // rebind it to 127.0.0.1 / 169.254.169.254 before the worker fires.
+      //
+      // We intentionally use normal `fetch(ctx.url)` instead of fetching an IP
+      // literal with a forged Host header: IP-literal HTTPS breaks certificate
+      // validation/SNI for ordinary webhook endpoints. This leaves a narrow DNS
+      // rebinding race between this validation lookup and fetch's own lookup;
+      // redirects remain disabled and the preflight still blocks private,
+      // loopback, link-local, and mixed DNS answers at dispatch time.
+      await assertPublicHttpsTarget(ctx.url);
 
       // Bound the round-trip so a slow consumer doesn't park a worker.
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15_000);
 
       try {
-        const response = await fetch(pinnedUrl, {
+        const response = await fetch(ctx.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Host: host,
             'X-CarrierAudit-Timestamp': String(timestamp),
             'X-CarrierAudit-Signature': signatureHeader,
             'X-CarrierAudit-Event': 'audit.completed',

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 export interface ReportActionsProps {
   auditId: string;
   isPublic?: boolean;
+  publicToken?: string;
 }
 
 interface ShareResponse {
@@ -23,6 +24,7 @@ function isShareResponse(v: unknown): v is ShareResponse {
 export function ReportActions({
   auditId,
   isPublic = false,
+  publicToken,
 }: ReportActionsProps): React.JSX.Element {
   const [isLoading, setIsLoading] = React.useState(false);
 
@@ -56,8 +58,12 @@ export function ReportActions({
   }, [auditId]);
 
   const handleDownload = React.useCallback((): void => {
-    window.open(`/api/audits/${auditId}/report.pdf`, '_blank', 'noopener');
-  }, [auditId]);
+    const url =
+      isPublic && publicToken
+        ? `/api/audits/${auditId}/report.pdf?token=${encodeURIComponent(publicToken)}`
+        : `/api/audits/${auditId}/report.pdf`;
+    window.open(url, '_blank', 'noopener');
+  }, [auditId, isPublic, publicToken]);
 
   return (
     <div className="flex flex-wrap items-center gap-3">

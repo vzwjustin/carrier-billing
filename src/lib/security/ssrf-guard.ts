@@ -9,9 +9,9 @@ import { isIP } from 'node:net';
  *   1. `assertPublicHttpsTarget(url)` — accept a string URL and reject if the
  *      scheme is not HTTPS or any DNS-resolved address falls in a private,
  *      loopback, link-local, CGNAT, or otherwise non-public range. Returns the
- *      first resolved address so callers can pin the connect (defeats DNS
- *      rebinding by reusing the *vetted* IP and forwarding the original Host
- *      header).
+ *      first resolved address for observability/tests; normal callers should
+ *      still fetch the original URL so HTTPS certificate validation and SNI use
+ *      the intended hostname.
  *   2. `isBlockedAddress(ip)` — exposed for tests + callers that already have
  *      a resolved address (e.g. validating a redirect Location host).
  *
@@ -46,8 +46,11 @@ interface ResolvedTarget {
  *   - non-HTTPS schemes
  *   - hostnames whose DNS resolution returns any address in a non-public range
  *
- * Returns the first resolved address. Caller should `fetch(\`https://${ip}\`)`
- * and forward the original Host header for TLS/SNI correctness.
+ * Returns the first resolved address. Call this immediately before fetching the
+ * original URL. This preflight blocks obvious SSRF targets, including mixed
+ * public/private DNS answers, but does not pin fetch's later DNS lookup; callers
+ * requiring full DNS-rebinding resistance need a transport-level custom lookup
+ * that preserves the original hostname for TLS/SNI.
  */
 export async function assertPublicHttpsTarget(
   url: string,

@@ -45,6 +45,7 @@ import { BillUploadedDataSchema, parseEventData } from '../events';
  */
 
 const FAILURE_REASON_MAX = 500;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /**
  * Hard wall on the extraction step. Inngest's per-function deadline is 15min;
@@ -214,6 +215,20 @@ type ExtractionStepResult = {
 function isEdi811Buffer(buffer: Buffer): boolean {
   if (buffer.length < 3) return false;
   return buffer.slice(0, 3).toString('ascii') === 'ISA';
+}
+
+function isPdfBuffer(buffer: Buffer): boolean {
+  if (buffer.length < 5) return false;
+  return buffer.slice(0, 5).toString('ascii') === '%PDF-';
+}
+
+function assertSupportedUploadBuffer(buffer: Buffer): void {
+  if (buffer.length > MAX_UPLOAD_BYTES) {
+    throw new Error('upload-too-large');
+  }
+  if (!isPdfBuffer(buffer) && !isEdi811Buffer(buffer)) {
+    throw new Error('unsupported-upload-format');
+  }
 }
 
 /**
@@ -391,6 +406,7 @@ export const processBillFn = inngest.createFunction(
         const arrayBuffer = await download.data.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const sizeBytes = buffer.length;
+        assertSupportedUploadBuffer(buffer);
 
         // (E5) Cap the extraction at EXTRACTION_TIMEOUT_MS (12 minutes).
         // The OCR fallback inside the pipeline polls Textract, which has been
@@ -1264,6 +1280,10 @@ export const __testables = {
   withTimeout,
   ExtractionTimeoutError,
   EXTRACTION_TIMEOUT_MS,
+  MAX_UPLOAD_BYTES,
+  isPdfBuffer,
+  isEdi811Buffer,
+  assertSupportedUploadBuffer,
   withGeneratedId,
 };
 

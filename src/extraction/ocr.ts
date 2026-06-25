@@ -156,7 +156,9 @@ async function runAsync(buffer: Buffer): Promise<string> {
     // Steps 3-4: poll and aggregate.
     return await pollJob(jobId);
   } finally {
-    // TODO(launch): non-rethrow — bucket lifecycle (`scripts/configure-textract-bucket.ts`) reaps orphans; surface to Sentry so accumulation is visible.
+    // Non-rethrow: bucket lifecycle (`scripts/configure-textract-bucket.ts`)
+    // reaps orphans; Sentry visibility makes accumulation detectable without
+    // failing an otherwise successful extraction.
     try {
       await s3.send(
         new DeleteObjectCommand({ Bucket: bucket, Key: key }),

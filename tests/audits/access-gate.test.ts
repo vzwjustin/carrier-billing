@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const TEST_USER_ID = '22222222-2222-4222-8222-222222222222';
+
 // --- Mocks --------------------------------------------------------------
 // Declared before importing the route under test.
 
@@ -98,7 +100,7 @@ beforeEach(() => {
   decrementMock.mockReset();
 
   getUserMock.mockResolvedValue({
-    data: { user: { id: 'user-1', email: 'a@b.com' } },
+    data: { user: { id: TEST_USER_ID, email: 'a@b.com' } },
     error: null,
   });
   auditsInsertMock.mockResolvedValue({ data: null, error: null });
@@ -106,7 +108,7 @@ beforeEach(() => {
     data: {
       signedUrl: 'https://supabase.local/signed-url',
       token: 'tok_abc',
-      path: 'user-1/audit/bill.pdf',
+      path: `${TEST_USER_ID}/audit/bill.pdf`,
     },
     error: null,
   });

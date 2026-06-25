@@ -12,6 +12,10 @@ const {
   withTimeout,
   ExtractionTimeoutError,
   EXTRACTION_TIMEOUT_MS,
+  MAX_UPLOAD_BYTES,
+  isPdfBuffer,
+  isEdi811Buffer,
+  assertSupportedUploadBuffer,
   withGeneratedId,
 } = __testables;
 
@@ -341,5 +345,31 @@ describe('withTimeout (E5)', () => {
     expect(EXTRACTION_TIMEOUT_MS).toBeLessThan(15 * 60 * 1000);
     // Confirm we're at the spec'd 12 minutes.
     expect(EXTRACTION_TIMEOUT_MS).toBe(12 * 60 * 1000);
+  });
+});
+
+describe('upload buffer safeguards', () => {
+  it('accepts PDF and EDI/X12 magic bytes', () => {
+    expect(isPdfBuffer(Buffer.from('%PDF-1.7'))).toBe(true);
+    expect(isEdi811Buffer(Buffer.from('ISA*00*'))).toBe(true);
+    expect(() => assertSupportedUploadBuffer(Buffer.from('%PDF-1.7'))).not.toThrow();
+    expect(() => assertSupportedUploadBuffer(Buffer.from('ISA*00*'))).not.toThrow();
+  });
+
+  it('rejects unsupported content before extraction', () => {
+    expect(() => assertSupportedUploadBuffer(Buffer.from('not a bill'))).toThrow(
+      'unsupported-upload-format',
+    );
+  });
+
+  it('rejects buffers over 25MB before extraction', () => {
+    const oversized = Buffer.concat([
+      Buffer.from('%PDF-'),
+      Buffer.alloc(MAX_UPLOAD_BYTES - 4),
+    ]);
+    expect(oversized.length).toBe(MAX_UPLOAD_BYTES + 1);
+    expect(() => assertSupportedUploadBuffer(oversized)).toThrow(
+      'upload-too-large',
+    );
   });
 });

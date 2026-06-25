@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const TEST_USER_ID = '22222222-2222-4222-8222-222222222222';
+
 // --- Mocks --------------------------------------------------------------
 // Regression tests for H1: when createSignedUploadUrl fails after a credit
 // has been decremented, the credit must be refunded. Subscription users
@@ -24,8 +26,7 @@ type GateResult =
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditsInsertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
 const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
-const createSignedUploadUrlMock =
-  vi.fn<(path: string) => Promise<SignedUrlResult>>();
+const createSignedUploadUrlMock = vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
 const auditsUpdateMock = vi.fn(async () => ({ data: [{ id: 'audit-1' }], error: null }));
 
@@ -63,8 +64,7 @@ vi.mock('@/lib/access/decrement', () => ({
   decrementAuditCreditAtomically: () => decrementMock(),
 }));
 
-const adminRpcMock =
-  vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
+const adminRpcMock = vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     rpc: adminRpcMock,
@@ -109,7 +109,7 @@ beforeEach(() => {
   sentryCaptureMock.mockReset();
 
   getUserMock.mockResolvedValue({
-    data: { user: { id: 'user-uuid-1', email: 'test@example.com' } },
+    data: { user: { id: TEST_USER_ID, email: 'test@example.com' } },
     error: null,
   });
   auditsInsertMock.mockResolvedValue({ data: null, error: null });
@@ -126,15 +126,13 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     gateMock.mockResolvedValue({ ok: true, reason: 'credit', remaining: 3 });
     adminRpcMock.mockResolvedValue({ data: 1, error: null });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     expect(decrementMock).toHaveBeenCalledTimes(1);
     expect(adminRpcMock).toHaveBeenCalledTimes(1);
     expect(adminRpcMock).toHaveBeenCalledWith('increment_audit_credits', {
-      profile_id: 'user-uuid-1',
+      profile_id: TEST_USER_ID,
       delta: 1,
     });
     // Audit row was deleted as part of cleanup.
@@ -144,9 +142,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
   it('does NOT refund when the user is on an active subscription', async () => {
     gateMock.mockResolvedValue({ ok: true, reason: 'subscription' });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     // Subscription users never consumed a credit, so neither path runs.
@@ -161,9 +157,7 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
       error: { message: 'rpc unavailable' },
     });
 
-    const res = await POST(
-      makeRequest({ filename: 'bill.pdf', fileSize: 12345 }),
-    );
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
 
     expect(res.status).toBe(500);
     expect(adminRpcMock).toHaveBeenCalledTimes(1);
@@ -174,6 +168,6 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     ];
     expect(err).toBeInstanceOf(Error);
     expect(ctx.tags?.['surface']).toBe('audits.create.refund');
-    expect(ctx.extra?.['userId']).toBe('user-uuid-1');
+    expect(ctx.extra?.['userId']).toBe(TEST_USER_ID);
   });
 });

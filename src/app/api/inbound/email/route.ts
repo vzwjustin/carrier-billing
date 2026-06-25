@@ -43,7 +43,7 @@ import { inngest } from '@/inngest/client';
 import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { parseInboundRecipient, verifyHmac } from '@/lib/inbound/token';
-import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
+import { consumeRateLimit } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
@@ -108,16 +108,10 @@ function isPdfAttachment(att: { content_type: string; filename: string }): boole
  * bypass dedupe and re-upload the same bill repeatedly. The triple
  * `userId|pdfSha256|normalizedFilename` is what we actually want to be unique.
  */
-function computeEventHash(
-  userId: string,
-  pdfBytes: Buffer,
-  filename: string,
-): string {
+function computeEventHash(userId: string, pdfBytes: Buffer, filename: string): string {
   const pdfSha256 = createHash('sha256').update(pdfBytes).digest('hex');
   const normalizedFilename = safeFilename(filename).toLowerCase();
-  return createHash('sha256')
-    .update(`${userId}|${pdfSha256}|${normalizedFilename}`)
-    .digest('hex');
+  return createHash('sha256').update(`${userId}|${pdfSha256}|${normalizedFilename}`).digest('hex');
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -129,10 +123,7 @@ function isUniqueViolation(error: unknown): boolean {
 async function releaseDedupeClaim(eventHash: string): Promise<void> {
   try {
     const admin = getAdminClient();
-    const { error } = await admin
-      .from('inbound_email_events')
-      .delete()
-      .eq('event_hash', eventHash);
+    const { error } = await admin.from('inbound_email_events').delete().eq('event_hash', eventHash);
     if (error) {
       throw new Error(error.message);
     }
@@ -140,6 +131,17 @@ async function releaseDedupeClaim(eventHash: string): Promise<void> {
     Sentry.captureException(err, {
       tags: { surface: 'inbound.email.dedupe_release' },
     });
+  }
+}
+
+async function refundAuditCredit(userId: string): Promise<void> {
+  const admin = getAdminClient();
+  const { error } = await admin.rpc('increment_audit_credits', {
+    profile_id: userId,
+    delta: 1,
+  });
+  if (error) {
+    throw new Error(`increment_audit_credits refund failed: ${error.message}`);
   }
 }
 
@@ -160,11 +162,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'missing_content_length' }, { status: 411 });
   }
   const contentLength = Number(contentLengthHeader);
-  if (
-    !Number.isFinite(contentLength) ||
-    contentLength <= 0 ||
-    contentLength > MAX_REQUEST_BYTES
-  ) {
+  if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > MAX_REQUEST_BYTES) {
     return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   }
 
@@ -247,7 +245,7 @@ export async function POST(request: Request): Promise<Response> {
       windowSeconds: 60 * 60,
     });
     if (!limit.ok) {
-      return rateLimitedResponse(limit.resetAt);
+      return NextResponse.json({ ok: true, skipped: 'rate_limited' });
     }
 
     // Find first PDF attachment. Carriers occasionally email a body-only
@@ -359,11 +357,30 @@ export async function POST(request: Request): Promise<Response> {
         .update({ credit_consumed: true })
         .eq('id', auditId);
       if (creditMarkerErr) {
+        try {
+          await refundAuditCredit(userId);
+        } catch (refundErr) {
+          claimedDedupeHash = null;
+          Sentry.captureException(refundErr, {
+            level: 'fatal',
+            tags: {
+              surface: 'inbound.email.credit_marker_refund',
+              severity: 'high',
+            },
+            extra: { userId, auditId },
+          });
+          return NextResponse.json({ ok: true, skipped: 'internal_error' });
+        }
+
         await admin.from('audits').delete().eq('id', auditId);
         await admin.storage.from('bills').remove([storagePath]);
         await releaseDedupeClaim(eventHash);
         claimedDedupeHash = null;
-        throw new Error(`credit marker failed: ${creditMarkerErr.message}`);
+        Sentry.captureException(new Error(`credit marker failed: ${creditMarkerErr.message}`), {
+          tags: { surface: 'inbound.email.credit_marker' },
+          extra: { userId, auditId },
+        });
+        return NextResponse.json({ ok: true, skipped: 'internal_error' });
       }
     }
 

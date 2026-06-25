@@ -43,6 +43,7 @@ const billingEvents: BillingEventRow[] = [];
 // `processed_status='success'` returns an error and leaves the row's
 // processed_status untouched.
 let nextMarkSuccessError: { message: string } | null = null;
+let nextMarkInFlightError: { message: string } | null = null;
 
 function applyPatch(row: BillingEventRow, patch: Record<string, unknown>): void {
   if ('processed_status' in patch) {
@@ -115,6 +116,11 @@ const fromMock = vi.fn(() => ({
       if (nextMarkSuccessError && patch['processed_status'] === 'success') {
         const err = nextMarkSuccessError;
         nextMarkSuccessError = null;
+        return { matched: [], error: err };
+      }
+      if (nextMarkInFlightError && patch['processed_status'] === 'in_flight') {
+        const err = nextMarkInFlightError;
+        nextMarkInFlightError = null;
         return { matched: [], error: err };
       }
       const matched = billingEvents.filter((r) =>
@@ -237,6 +243,7 @@ beforeEach(() => {
   handleStripeEventMock.mockResolvedValue(undefined);
   billingEvents.length = 0;
   nextMarkSuccessError = null;
+  nextMarkInFlightError = null;
 });
 
 describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
@@ -401,6 +408,21 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
       (r) => r.stripe_event_id === 'evt_marksuccess_fail',
     );
     expect(row?.processed_status).toBe('in_flight');
+  });
+
+  it('markInFlight DB error ⇒ 5xx (not deduped 200), handler not invoked', async () => {
+    const event = makeCheckoutEvent('evt_markinflight_fail');
+    constructEventMock.mockReturnValue(event);
+    nextMarkInFlightError = { message: 'claim update unavailable' };
+
+    const res = await POST(makeRequest('{}'));
+    expect(res.status).toBe(500);
+    expect(handleStripeEventMock).not.toHaveBeenCalled();
+
+    const row = billingEvents.find(
+      (r) => r.stripe_event_id === 'evt_markinflight_fail',
+    );
+    expect(row?.processed_status).toBeNull();
   });
 
   it('Stripe retry of a failed event flips processed_status from failed to success', async () => {

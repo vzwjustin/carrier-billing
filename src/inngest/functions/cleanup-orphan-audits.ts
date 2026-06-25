@@ -25,6 +25,7 @@ export type OrphanRow = {
   id: string;
   user_id: string;
   created_at: string;
+  updated_at: string;
 };
 
 /**
@@ -63,22 +64,14 @@ export const cleanupOrphanAuditsFn = inngest.createFunction(
     const orphans = (await step.run('find-orphans', async () => {
       const supabase = getAdminClient();
       const cutoff = new Date(Date.now() - TTL_MINUTES * 60_000).toISOString();
-      // L9: filter to credit-bearing audits at the query layer. The RPC's
-      // internal guard (0016) already refuses to refund subscription audits,
-      // but enforcing the invariant in the query means
-      //   - cleaner observability ("we refunded N" is unambiguous)
-      //   - resilience to future column drift (a code path that sets
-      //     credit_consumed=true on a sub audit would otherwise quietly
-      //     mint a credit via this cron)
-      // Subscription audits stuck in `pending` are still handled — they
-      // simply do not flow through the refund path; manual reconciliation
-      // is the right answer for them.
+      // Select all stale pending audits. The RPC is responsible for refunding
+      // only credit_consumed rows; subscription-backed pending orphans still
+      // need to be failed so they do not accumulate forever.
       const { data, error } = await supabase
         .from('audits')
-        .select('id, user_id, created_at')
+        .select('id, user_id, created_at, updated_at')
         .eq('status', 'pending')
-        .eq('credit_consumed', true)
-        .lt('created_at', cutoff);
+        .lt('updated_at', cutoff);
       if (error) {
         throw new Error(`audits select (find-orphans) failed: ${error.message}`);
       }

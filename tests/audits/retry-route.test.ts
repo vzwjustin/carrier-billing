@@ -36,6 +36,9 @@ const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditsSelectMock = vi.fn<() => Promise<AuditRowResp>>();
 const inngestSendMock = vi.fn(async (_event: unknown) => undefined);
 
+const adminUpdateCalls: Record<string, unknown>[] = [];
+const adminEqCalls: Array<[string, unknown]> = [];
+
 // admin: update().eq().eq().eq().select()
 const adminUpdateSelectMock = vi.fn<() => Promise<UpdateResp>>();
 
@@ -59,16 +62,18 @@ function makeServerFromChain() {
 //  1. update(...).eq(...).eq(...).eq(...).select(...) → returns { data, error }
 //  2. storage.from('reports').remove([...])
 function makeAdminFromChain() {
+  const chain = {
+    eq: (col: string, val: unknown) => {
+      adminEqCalls.push([col, val]);
+      return chain;
+    },
+    select: (_cols: string) => adminUpdateSelectMock(),
+  };
   return {
-    update: (_row: Record<string, unknown>) => ({
-      eq: (_c1: string, _v1: unknown) => ({
-        eq: (_c2: string, _v2: unknown) => ({
-          eq: (_c3: string, _v3: unknown) => ({
-            select: (_cols: string) => adminUpdateSelectMock(),
-          }),
-        }),
-      }),
-    }),
+    update: (row: Record<string, unknown>) => {
+      adminUpdateCalls.push(row);
+      return chain;
+    },
   };
 }
 
@@ -131,6 +136,8 @@ beforeEach(() => {
   auditsSelectMock.mockReset();
   inngestSendMock.mockReset();
   adminUpdateSelectMock.mockReset();
+  adminUpdateCalls.length = 0;
+  adminEqCalls.length = 0;
   storageRemoveMock.mockClear();
   sentryCaptureMock.mockReset();
 
@@ -145,7 +152,7 @@ beforeEach(() => {
 });
 
 describe('POST /api/audits/[id]/retry', () => {
-  it('happy path: idempotency id includes retry_count and a timestamp suffix (M-9)', async () => {
+  it('happy path: idempotency id is deterministic from retry_count (M-9)', async () => {
     const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
     const res = await POST(req, makeContext());
     expect(res.status).toBe(200);
@@ -153,11 +160,7 @@ describe('POST /api/audits/[id]/retry', () => {
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
     const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string; name?: string };
     expect(sent?.name).toBe('bill.uploaded');
-    // M-9: key now includes a Date.now() suffix so a half-failed inngest.send
-    // followed by a rollback can't collide with the next attempt.
-    expect(sent?.id).toMatch(
-      new RegExp(`^${TEST_AUDIT_ID}-uploaded-retry-1-\\d+$`),
-    );
+    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-1`);
   });
 
   it('two retry POSTs racing → CAS loser returns 409 and does NOT enqueue', async () => {
@@ -246,10 +249,28 @@ describe('POST /api/audits/[id]/retry', () => {
     const res = await POST(req, makeContext());
     expect(res.status).toBe(200);
 
-    // Idempotency key tracks the new count (and includes Date.now() suffix per M-9).
+    // Idempotency key tracks the new count deterministically.
     const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
-    expect(sent?.id).toMatch(
-      new RegExp(`^${TEST_AUDIT_ID}-uploaded-retry-3-\\d+$`),
+    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-3`);
+  });
+
+  it('inngest.send failure rolls status back guarded by pending and keeps incremented retry_count', async () => {
+    inngestSendMock.mockRejectedValueOnce(new Error('accepted-but-timeout'));
+
+    const req = new Request('http://localhost/api/audits/X/retry', { method: 'POST' });
+    const res = await POST(req, makeContext());
+
+    expect(res.status).toBe(500);
+    expect(adminUpdateCalls.at(-1)).toMatchObject({
+      status: 'failed',
+      retry_count: 1,
+    });
+    expect(adminEqCalls).toEqual(
+      expect.arrayContaining([
+        ['id', TEST_AUDIT_ID],
+        ['status', 'pending'],
+        ['retry_count', 1],
+      ]),
     );
   });
 });

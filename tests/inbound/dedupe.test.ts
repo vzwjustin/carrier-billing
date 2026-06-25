@@ -3,12 +3,21 @@ import { createHmac } from 'node:crypto';
 
 // ─── Mocks (must be set up before importing the route) ─────────────────────
 
-const inboundEventsInsertMock = vi.fn<(row: unknown) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>>();
+const inboundEventsInsertMock =
+  vi.fn<
+    (row: unknown) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>
+  >();
 const inboundEventsUpdateEqMock = vi.fn(async () => ({ data: null, error: null }));
 const inboundEventsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
 const profilesSelectMock = vi.fn();
 const auditsInsertMock = vi.fn(async (_row: unknown) => ({ data: null, error: null }));
 const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
+const auditsUpdateEqMock = vi.fn<
+  () => Promise<{ data: unknown; error: { message: string } | null }>
+>(async () => ({ data: null, error: null }));
+const rpcMock = vi.fn<
+  (fn: string, args: unknown) => Promise<{ data: unknown; error: { message: string } | null }>
+>(async (_fn: string, _args: unknown) => ({ data: 1, error: null }));
 const storageUploadMock = vi.fn<
   (
     path: string,
@@ -22,7 +31,12 @@ const storageUploadMock = vi.fn<
 const storageRemoveMock = vi.fn(async (_paths: string[]) => ({ data: null, error: null }));
 const inngestSendMock = vi.fn(async (..._args: unknown[]) => ({}));
 const decrementMock = vi.fn(async (_uid: string) => ({ remaining: 0 }));
-const gateMock = vi.fn<(uid: string) => Promise<{ ok: true; reason: 'subscription' } | { ok: false; reason: string }>>(async () => ({ ok: true, reason: 'subscription' }));
+const gateMock = vi.fn<
+  (
+    uid: string,
+  ) => Promise<{ ok: true; reason: 'subscription' | 'credit' } | { ok: false; reason: string }>
+>(async () => ({ ok: true, reason: 'subscription' }));
+const consumeRateLimitMock = vi.fn(async (_opts: unknown) => ({ ok: true, resetAt: new Date() }));
 
 const fromMock = vi.fn((table: string) => {
   if (table === 'profiles') {
@@ -48,6 +62,9 @@ const fromMock = vi.fn((table: string) => {
   if (table === 'audits') {
     return {
       insert: (row: unknown) => auditsInsertMock(row),
+      update: (_row: unknown) => ({
+        eq: () => auditsUpdateEqMock(),
+      }),
       delete: () => ({
         eq: () => auditsDeleteEqMock(),
       }),
@@ -57,14 +74,14 @@ const fromMock = vi.fn((table: string) => {
 });
 
 const storageFromMock = vi.fn((_bucket: string) => ({
-  upload: (path: string, body: Buffer, opts: unknown) =>
-    storageUploadMock(path, body, opts),
+  upload: (path: string, body: Buffer, opts: unknown) => storageUploadMock(path, body, opts),
   remove: (paths: string[]) => storageRemoveMock(paths),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     from: fromMock,
+    rpc: (fn: string, args: unknown) => rpcMock(fn, args),
     storage: { from: storageFromMock },
   }),
 }));
@@ -79,6 +96,10 @@ vi.mock('@/lib/access/gate', () => ({
 
 vi.mock('@/lib/access/decrement', () => ({
   decrementAuditCreditAtomically: (uid: string) => decrementMock(uid),
+}));
+
+vi.mock('@/lib/security/rate-limit', () => ({
+  consumeRateLimit: (opts: unknown) => consumeRateLimitMock(opts),
 }));
 
 vi.mock('@/env', () => ({
@@ -96,6 +117,7 @@ vi.mock('@sentry/nextjs', () => ({
 // Import after mocks. The real `@/lib/inbound/token` is intentionally not
 // mocked — we want its real `parseInboundRecipient` + `verifyHmac` here.
 import { POST } from '@/app/api/inbound/email/route';
+import * as Sentry from '@sentry/nextjs';
 
 const SECRET = 'test-secret-1234567890abcdef';
 const TOKEN = 'abcdefgh23456pqr'; // 16-char base32 (RFC4648: a-z, 2-7)
@@ -137,12 +159,17 @@ beforeEach(() => {
   });
   auditsInsertMock.mockClear();
   auditsDeleteEqMock.mockClear();
+  auditsUpdateEqMock.mockClear();
+  rpcMock.mockClear();
   storageUploadMock.mockClear();
   storageRemoveMock.mockClear();
   inngestSendMock.mockClear();
   decrementMock.mockClear();
   gateMock.mockClear();
   gateMock.mockResolvedValue({ ok: true, reason: 'subscription' });
+  consumeRateLimitMock.mockClear();
+  consumeRateLimitMock.mockResolvedValue({ ok: true, resetAt: new Date() });
+  vi.mocked(Sentry.captureException).mockClear();
 });
 
 describe('POST /api/inbound/email — dedupe stability', () => {
@@ -206,9 +233,8 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(body1.ok).toBe(true);
     expect(body1.auditId).toBeTruthy();
     expect(inboundEventsInsertMock).toHaveBeenCalledTimes(1);
-    const firstHash = (
-      inboundEventsInsertMock.mock.calls[0]?.[0] as { event_hash: string }
-    ).event_hash;
+    const firstHash = (inboundEventsInsertMock.mock.calls[0]?.[0] as { event_hash: string })
+      .event_hash;
     expect(firstHash).toMatch(/^[0-9a-f]{64}$/);
 
     // Second request — same userId + same PDF + same filename, but the email
@@ -234,9 +260,8 @@ describe('POST /api/inbound/email — dedupe stability', () => {
 
     // The second insert was attempted with the SAME hash as the first.
     expect(inboundEventsInsertMock).toHaveBeenCalledTimes(2);
-    const secondHash = (
-      inboundEventsInsertMock.mock.calls[1]?.[0] as { event_hash: string }
-    ).event_hash;
+    const secondHash = (inboundEventsInsertMock.mock.calls[1]?.[0] as { event_hash: string })
+      .event_hash;
     expect(secondHash).toBe(firstHash);
 
     // And no second storage upload happened — dedupe fired before upload.
@@ -289,6 +314,72 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(body.skipped).toBe('bad_recipient_domain');
     expect(profilesSelectMock).not.toHaveBeenCalled();
     expect(inboundEventsInsertMock).not.toHaveBeenCalled();
+  });
+
+  it('returns provider-ack 200 when inbound rate limit denies', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 rate-limit', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    consumeRateLimitMock.mockResolvedValueOnce({ ok: false, resetAt: new Date() });
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ ok: true, skipped: 'rate_limited' });
+    expect(inboundEventsInsertMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves audit, storage, and dedupe evidence when credit marker refund fails', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 marker-refund-fail', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    gateMock.mockResolvedValueOnce({ ok: true, reason: 'credit' });
+    auditsUpdateEqMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'marker write failed' },
+    });
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'refund failed' } });
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ ok: true, skipped: 'internal_error' });
+    expect(decrementMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledWith('increment_audit_credits', {
+      profile_id: 'user-uuid-1',
+      delta: 1,
+    });
+    expect(auditsDeleteEqMock).not.toHaveBeenCalled();
+    expect(storageRemoveMock).not.toHaveBeenCalled();
+    expect(inboundEventsDeleteEqMock).not.toHaveBeenCalled();
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        level: 'fatal',
+        tags: expect.objectContaining({
+          surface: 'inbound.email.credit_marker_refund',
+          severity: 'high',
+        }),
+        extra: { userId: 'user-uuid-1', auditId: expect.any(String) },
+      }),
+    );
+    expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
   it('releases dedupe claim when downstream storage upload fails', async () => {

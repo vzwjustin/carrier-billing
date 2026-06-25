@@ -11,6 +11,8 @@ const ParamsSchema = z.object({
   id: z.string().uuid(),
 });
 
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 interface AuditRow {
   id: string;
   user_id: string;
@@ -27,6 +29,18 @@ function isAuditRow(value: unknown): value is AuditRow {
     typeof v.status === 'string' &&
     typeof v.storage_path === 'string'
   );
+}
+
+function getStorageObjectSize(value: unknown): number | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.size === 'number') return v.size;
+  const metadata = v.metadata;
+  if (typeof metadata === 'object' && metadata !== null) {
+    const size = (metadata as Record<string, unknown>).size;
+    if (typeof size === 'number') return size;
+  }
+  return null;
 }
 
 export async function POST(
@@ -74,6 +88,21 @@ export async function POST(
         { error: `Audit is already ${data.status}.` },
         { status: 409 },
       );
+    }
+
+    const info = await supabase.storage.from('bills').info(data.storage_path);
+    if (info.error || !info.data) {
+      return NextResponse.json({ error: 'upload_missing' }, { status: 409 });
+    }
+    const uploadedSize = getStorageObjectSize(info.data);
+    if (uploadedSize === null) {
+      return NextResponse.json(
+        { error: 'Failed to verify upload.' },
+        { status: 500 },
+      );
+    }
+    if (uploadedSize > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: 'upload_too_large' }, { status: 413 });
     }
 
     // B2 — idempotency key. Browser/proxy retries (or a duplicate /start POST)

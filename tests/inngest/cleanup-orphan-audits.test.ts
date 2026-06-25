@@ -53,6 +53,7 @@ const ORPHAN: OrphanRow = {
   id: 'audit-123',
   user_id: 'user-abc',
   created_at: '2026-05-08T00:00:00.000Z',
+  updated_at: '2026-05-08T00:00:00.000Z',
 };
 
 describe('refundOrphanAudit', () => {
@@ -91,8 +92,8 @@ describe('refundOrphanAudit', () => {
       error: { message: 'connection lost' },
     });
 
-    await expect(
-      refundOrphanAudit(makeSupabaseStub(rpcMock), ORPHAN),
-    ).rejects.toThrow(/refund_orphan_audit failed: connection lost/);
+    await expect(refundOrphanAudit(makeSupabaseStub(rpcMock), ORPHAN)).rejects.toThrow(
+      /refund_orphan_audit failed: connection lost/,
+    );
   });
 });

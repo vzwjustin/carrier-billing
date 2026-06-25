@@ -72,10 +72,7 @@ export async function POST(
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!data || !isAuditRow(data)) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -132,10 +129,7 @@ export async function POST(
       .select('retry_count');
 
     if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to reset audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to reset audit.' }, { status: 500 });
     }
 
     // CAS lost — a concurrent retry already won. Don't double-enqueue.
@@ -154,7 +148,7 @@ export async function POST(
 
     try {
       await inngest.send({
-        id: `${auditId}-uploaded-retry-${retryCount}-${Date.now()}`,
+        id: `${auditId}-uploaded-retry-${retryCount}`,
         name: 'bill.uploaded',
         data: {
           auditId: data.id,
@@ -167,17 +161,18 @@ export async function POST(
         tags: { surface: 'audits.retry.inngest_send' },
         extra: { auditId },
       });
-      // Best-effort rollback: reset audit to failed with original retry_count so
-      // the user can attempt again rather than being stuck in pending forever.
+      // Best-effort rollback: reset audit to failed but keep the incremented
+      // retry_count so a remotely-accepted event id is never reused.
       try {
         await admin
           .from('audits')
           .update({
             status: 'failed',
-            retry_count: data.retry_count,
+            retry_count: nextRetryCount,
             updated_at: new Date().toISOString(),
           })
           .eq('id', auditId)
+          .eq('status', 'pending')
           .eq('retry_count', nextRetryCount);
       } catch (rollbackErr) {
         Sentry.captureException(rollbackErr, {
@@ -185,10 +180,7 @@ export async function POST(
           extra: { auditId },
         });
       }
-      return NextResponse.json(
-        { error: 'Internal server error.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
@@ -197,9 +189,6 @@ export async function POST(
       tags: { surface: 'audits.retry.unknown' },
       extra: { auditId },
     });
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

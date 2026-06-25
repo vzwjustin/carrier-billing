@@ -1,3 +1,4 @@
+import { cleanupExpiredShareTokensFn } from './cleanup-expired-share-tokens';
 import { cleanupOrphanAuditsFn } from './cleanup-orphan-audits';
 import { dispatchOutboundWebhookFn } from './dispatch-outbound-webhook';
 import { processBillFn } from './process-bill';
@@ -14,10 +15,12 @@ export const functions = [
   sendPaymentFailedEmailFn,
   dispatchOutboundWebhookFn,
   cleanupOrphanAuditsFn,
+  cleanupExpiredShareTokensFn,
   replayBillingEventsFn,
 ] as const;
 
 export {
+  cleanupExpiredShareTokensFn,
   cleanupOrphanAuditsFn,
   dispatchOutboundWebhookFn,
   processBillFn,

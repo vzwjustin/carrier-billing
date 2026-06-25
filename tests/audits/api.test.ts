@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const TEST_USER_ID = '22222222-2222-4222-8222-222222222222';
+
 // --- Mocks --------------------------------------------------------------
 // These must be declared before importing the route under test.
 
@@ -86,7 +88,7 @@ beforeEach(() => {
 
   // Sensible defaults; individual tests override as needed.
   getUserMock.mockResolvedValue({
-    data: { user: { id: 'user-uuid-1', email: 'test@example.com' } },
+    data: { user: { id: TEST_USER_ID, email: 'test@example.com' } },
     error: null,
   });
   auditsInsertMock.mockResolvedValue({ data: null, error: null });
@@ -94,7 +96,7 @@ beforeEach(() => {
     data: {
       signedUrl: 'https://supabase.local/signed-url',
       token: 'tok_abc',
-      path: 'user-uuid-1/audit/bill.pdf',
+      path: `${TEST_USER_ID}/audit/bill.pdf`,
     },
     error: null,
   });
@@ -138,13 +140,13 @@ describe('POST /api/audits', () => {
     expect(json.auditId.length).toBeGreaterThan(0);
     expect(json.uploadUrl).toBe('https://supabase.local/signed-url');
     expect(json.token).toBe('tok_abc');
-    expect(json.storagePath.startsWith('user-uuid-1/')).toBe(true);
+    expect(json.storagePath.startsWith(`${TEST_USER_ID}/`)).toBe(true);
     expect(json.storagePath.endsWith('/bill.pdf')).toBe(true);
 
     // Confirm we wrote an audits row with the expected shape.
     expect(auditsInsertMock).toHaveBeenCalledTimes(1);
     const inserted = auditsInsertMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted['user_id']).toBe('user-uuid-1');
+    expect(inserted['user_id']).toBe(TEST_USER_ID);
     expect(inserted['status']).toBe('pending');
     expect(inserted['original_filename']).toBe('bill.pdf');
     expect(inserted['file_size_bytes']).toBe(12345);
