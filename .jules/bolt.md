@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-06-26 - Avoiding array allocations with reduce and Array.from
+**Learning:** Found instances of chained `.map().filter()` and `.filter().map()` in `src/lib/assistant/tools.ts` which cause extra loop iterations and intermediate array memory allocations.
+**Action:** Use `.reduce()` or single `for...of` loops to combine filtering and mapping into a single pass. For simple iterable-to-array transformations, use the second argument of `Array.from(iterable, mapFn)` instead of `Array.from(iterable).map()`. This pattern should be consistently applied across the codebase.
