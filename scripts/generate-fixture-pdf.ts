@@ -39,6 +39,14 @@ function carrierHeader(carrier: ExtractedBill['carrier']): CarrierHeader {
       return { display: 'AT&T Business Mobility', banner: 'AT&T' };
     case 'tmobile':
       return { display: 'T-Mobile for Business', banner: 'T-Mobile' };
+    case 'uscellular':
+      return { display: 'U.S. Cellular Business', banner: 'U.S. Cellular' };
+    case 'spectrum':
+      return { display: 'Spectrum Mobile', banner: 'Spectrum Mobile' };
+    case 'xfinity':
+      return { display: 'Xfinity Mobile', banner: 'Xfinity Mobile' };
+    case 'cricket':
+      return { display: 'Cricket Wireless', banner: 'Cricket Wireless' };
     case 'unknown':
       return { display: 'Wireless Bill', banner: 'wireless' };
   }
@@ -133,10 +141,9 @@ function renderLine(w: PdfWriter, line: ExtractedLine, idx: number): void {
   if (usage.length > 0) w.text(`Usage: ${usage.join(', ')}`, { indent: 24 });
 
   for (const f of line.features) {
-    w.text(
-      `Feature: ${f.name} [category=${f.category}] - ${formatCents(f.monthly_cents)}/mo`,
-      { indent: 24 },
-    );
+    w.text(`Feature: ${f.name} [category=${f.category}] - ${formatCents(f.monthly_cents)}/mo`, {
+      indent: 24,
+    });
   }
   for (const c of line.credits) {
     const exp = c.expires_on ? `, expires ${c.expires_on}` : '';
@@ -150,10 +157,9 @@ function renderLine(w: PdfWriter, line: ExtractedLine, idx: number): void {
       d.remaining_payments !== null && d.total_payments !== null
         ? ` (${d.total_payments - d.remaining_payments} of ${d.total_payments} paid, ${d.remaining_payments} remaining)`
         : '';
-    w.text(
-      `Device Payment: ${d.device} - ${formatCents(d.monthly_cents)}/mo${remaining}`,
-      { indent: 24 },
-    );
+    w.text(`Device Payment: ${d.device} - ${formatCents(d.monthly_cents)}/mo${remaining}`, {
+      indent: 24,
+    });
   }
   w.blank();
 }
@@ -169,10 +175,9 @@ function renderAccount(w: PdfWriter, account: ExtractedAccount, idx: number): vo
   for (const c of account.account_level_credits) {
     const exp = c.expires_on ? `, expires ${c.expires_on}` : '';
     const promo = c.is_promo ? ', promotional' : '';
-    w.text(
-      `Account Credit: ${c.name} - ${formatCents(c.monthly_cents)}/mo${exp}${promo}`,
-      { indent: 12 },
-    );
+    w.text(`Account Credit: ${c.name} - ${formatCents(c.monthly_cents)}/mo${exp}${promo}`, {
+      indent: 12,
+    });
   }
   w.blank();
   account.lines.forEach((line, i) => renderLine(w, line, i));

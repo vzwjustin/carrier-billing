@@ -15,6 +15,7 @@ import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { ReactElement } from 'react';
 
 import { formatCents } from '@/lib/utils';
+import { formatIsoDateDisplay, formatIsoDatePeriod } from '@/lib/dates';
 import { FindingCard } from '@/reports/pdf/finding-card';
 import type { ReportData, Finding, Severity } from '@/reports/types';
 
@@ -252,22 +253,6 @@ function carrierName(carrier: string | null): string {
   return CARRIER_NAMES[carrier] ?? carrier;
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start && !end) return '—';
-  return `${formatDate(start)} – ${formatDate(end)}`;
-}
-
 function pluralize(n: number, singular: string, plural?: string): string {
   if (n === 1) return `${n} ${singular}`;
   return `${n} ${plural ?? `${singular}s`}`;
@@ -279,11 +264,7 @@ function PageFooter({ auditId }: { auditId: string }): ReactElement {
   return (
     <View style={styles.footer} fixed>
       <Text>CarrierAudit · {auditId.slice(0, 8)}</Text>
-      <Text
-        render={({ pageNumber, totalPages }) =>
-          `Page ${pageNumber} of ${totalPages}`
-        }
-      />
+      <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   );
 }
@@ -296,7 +277,7 @@ function CoverPage({ report }: { report: ReportData }): ReactElement {
   // than substituting "today" — `completed_at` is set by the worker on
   // success, and `created_at` is not currently plumbed through ReportData.
   const generatedOn = report.audit.completed_at
-    ? formatDate(report.audit.completed_at)
+    ? formatIsoDateDisplay(report.audit.completed_at)
     : '—';
 
   return (
@@ -316,14 +297,12 @@ function CoverPage({ report }: { report: ReportData }): ReactElement {
             </View>
             <View style={styles.coverMetaItem}>
               <Text style={styles.coverMetaLabel}>Carrier</Text>
-              <Text style={styles.coverMetaValue}>
-                {carrierName(report.audit.carrier)}
-              </Text>
+              <Text style={styles.coverMetaValue}>{carrierName(report.audit.carrier)}</Text>
             </View>
             <View style={styles.coverMetaItem}>
               <Text style={styles.coverMetaLabel}>Billing period</Text>
               <Text style={styles.coverMetaValue}>
-                {formatPeriod(
+                {formatIsoDatePeriod(
                   report.audit.billing_period_start,
                   report.audit.billing_period_end,
                 )}
@@ -338,8 +317,8 @@ function CoverPage({ report }: { report: ReportData }): ReactElement {
 
         <View>
           <Text style={styles.coverFootnote}>
-            Confidential — prepared for the bill owner. Not affiliated with
-            Verizon, AT&amp;T, or T-Mobile.
+            Confidential — prepared for the bill owner. Not affiliated with Verizon, AT&amp;T, or
+            T-Mobile.
           </Text>
         </View>
       </View>
@@ -348,11 +327,7 @@ function CoverPage({ report }: { report: ReportData }): ReactElement {
   );
 }
 
-function ExecutiveSummaryPage({
-  report,
-}: {
-  report: ReportData;
-}): ReactElement {
+function ExecutiveSummaryPage({ report }: { report: ReportData }): ReactElement {
   const { audit } = report;
   return (
     <Page size="A4" style={styles.page}>
@@ -369,9 +344,7 @@ function ExecutiveSummaryPage({
             <Text style={styles.statValueXL}>
               {formatCents(audit.estimated_monthly_savings_cents)}
             </Text>
-            <Text style={styles.statHelp}>
-              Across {pluralize(audit.finding_count, 'finding')}
-            </Text>
+            <Text style={styles.statHelp}>Across {pluralize(audit.finding_count, 'finding')}</Text>
           </View>
         </View>
         <View style={[styles.statCol, styles.statColHalf]}>
@@ -380,9 +353,7 @@ function ExecutiveSummaryPage({
             <Text style={styles.statValueXL}>
               {formatCents(audit.estimated_annual_savings_cents)}
             </Text>
-            <Text style={styles.statHelp}>
-              Assumes recommended actions taken
-            </Text>
+            <Text style={styles.statHelp}>Assumes recommended actions taken</Text>
           </View>
         </View>
       </View>
@@ -404,9 +375,7 @@ function ExecutiveSummaryPage({
         <View style={[styles.statCol, styles.statColThird]}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Total bill charges</Text>
-            <Text style={styles.statValueLG}>
-              {formatCents(audit.total_charges_cents ?? 0)}
-            </Text>
+            <Text style={styles.statValueLG}>{formatCents(audit.total_charges_cents ?? 0)}</Text>
           </View>
         </View>
       </View>
@@ -438,20 +407,14 @@ function ExecutiveSummaryPage({
                 <View style={styles.findingHeaderLeft}>
                   <Text style={styles.findingTitleSmall}>
                     {acc.label ?? 'Account'}
-                    {acc.account_number_masked
-                      ? ` · …${acc.account_number_masked}`
-                      : ''}
+                    {acc.account_number_masked ? ` · …${acc.account_number_masked}` : ''}
                   </Text>
                 </View>
-                <Text style={styles.savingsSmall}>
-                  {formatCents(acc.total_charges_cents ?? 0)}
-                </Text>
+                <Text style={styles.savingsSmall}>{formatCents(acc.total_charges_cents ?? 0)}</Text>
               </View>
               <View style={styles.metaRow}>
                 <View style={styles.chip}>
-                  <Text style={styles.chipText}>
-                    {pluralize(acc.lineCount, 'line')}
-                  </Text>
+                  <Text style={styles.chipText}>{pluralize(acc.lineCount, 'line')}</Text>
                 </View>
               </View>
             </View>
@@ -511,41 +474,34 @@ function MethodologyPage({ auditId }: { auditId: string }): ReactElement {
 
       <Text style={styles.groupHeading}>How we audit</Text>
       <Text style={styles.paragraph}>
-        CarrierAudit reads the uploaded business wireless bill, normalizes the
-        charges into a structured representation of accounts, lines, plans,
-        features, credits, and device-payment installments, and then applies
-        a curated rule set built from years of telecom-billing audit
-        experience. Each rule independently inspects the bill for a known
-        waste pattern — such as expired promotional credits, completed device
-        payments still being billed, orphaned insurance on suspended lines, or
-        unused features — and surfaces a finding when its conditions are met.
-        Findings are ranked by severity (high, medium, low, info) and sorted
+        CarrierAudit reads the uploaded business wireless bill, normalizes the charges into a
+        structured representation of accounts, lines, plans, features, credits, and device-payment
+        installments, and then applies a curated rule set built from years of telecom-billing audit
+        experience. Each rule independently inspects the bill for a known waste pattern — such as
+        expired promotional credits, completed device payments still being billed, orphaned
+        insurance on suspended lines, or unused features — and surfaces a finding when its
+        conditions are met. Findings are ranked by severity (high, medium, low, info) and sorted
         within each tier by their estimated monthly savings.
       </Text>
 
       <Text style={styles.groupHeading}>Estimated savings</Text>
       <Text style={styles.paragraph}>
-        Every finding includes an estimated monthly savings figure derived
-        directly from the line items on your bill. The annual savings figure
-        on the executive summary is twelve times the monthly total. Savings
-        are estimates, not guarantees, and assume no offsetting changes to
+        Every finding includes an estimated monthly savings figure derived directly from the line
+        items on your bill. The annual savings figure on the executive summary is twelve times the
+        monthly total. Savings are estimates, not guarantees, and assume no offsetting changes to
         your plan, taxes, or surcharges.
       </Text>
 
       <Text style={styles.groupHeading}>Disclaimer</Text>
       <Text style={styles.paragraph}>
-        This report is informational only. Savings estimates assume the
-        recommended action is taken successfully and rates remain stable.
-        Verify all recommendations with your carrier representative before
-        acting. CarrierAudit is not affiliated with Verizon, AT&amp;T, or
-        T-Mobile, and the use of those names is solely to identify the
-        carrier of the audited bill.
+        This report is informational only. Savings estimates assume the recommended action is taken
+        successfully and rates remain stable. Verify all recommendations with your carrier
+        representative before acting. CarrierAudit is not affiliated with Verizon, AT&amp;T, or
+        T-Mobile, and the use of those names is solely to identify the carrier of the audited bill.
       </Text>
 
       <View style={styles.hr} />
-      <Text style={styles.small}>
-        Report ID {auditId} · Generated by CarrierAudit
-      </Text>
+      <Text style={styles.small}>Report ID {auditId} · Generated by CarrierAudit</Text>
 
       <PageFooter auditId={auditId} />
     </Page>
@@ -554,11 +510,7 @@ function MethodologyPage({ auditId }: { auditId: string }): ReactElement {
 
 // -- Public document --------------------------------------------------------
 
-export function ReportDocument({
-  report,
-}: {
-  report: ReportData;
-}): ReactElement {
+export function ReportDocument({ report }: { report: ReportData }): ReactElement {
   return (
     <Document
       title={`CarrierAudit Report ${report.audit.id.slice(0, 8)}`}

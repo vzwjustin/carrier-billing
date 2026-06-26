@@ -9,11 +9,7 @@
  * raw to the DB leaks Stripe internals through the schema and into the UI
  * (`settings/billing` renders the status string directly).
  */
-export type NormalizedSubscriptionStatus =
-  | 'active'
-  | 'trialing'
-  | 'past_due'
-  | 'canceled';
+export type NormalizedSubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled';
 
 /**
  * Coerce any Stripe subscription status string into our small normalized set.
@@ -23,9 +19,7 @@ export type NormalizedSubscriptionStatus =
  * the new state. Better to inconvenience a paying user than to grant access
  * on an unrecognized state.
  */
-export function normalizeSubscriptionStatus(
-  status: string,
-): NormalizedSubscriptionStatus {
+export function normalizeSubscriptionStatus(status: string): NormalizedSubscriptionStatus {
   switch (status) {
     case 'active':
       return 'active';

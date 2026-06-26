@@ -3,7 +3,9 @@ import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { assertCanRunAudit } from '@/lib/access/gate';
-import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
+import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
+import { scrubString } from '@/lib/observability/redact';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -38,9 +40,17 @@ async function refundConsumedCredit(
   surface: string,
 ): Promise<void> {
   try {
-    const { error } = await admin.rpc('increment_audit_credits', {
-      profile_id: userId,
-      delta: 1,
+    // Use the row-anchored, idempotent `refund_orphan_audit` RPC rather than a
+    // bare `increment_audit_credits(+1)`. It flips `credit_consumed` true→false
+    // AND increments the balance in one atomic statement, gated on
+    // (status='pending' AND credit_consumed=true). That gate makes a second
+    // call (e.g. the orphan-cleanup cron, or a request retry) a no-op on the
+    // credit, so it can never double-refund — which is why the caller refunds
+    // BEFORE deleting the row (the row must still exist for the RPC to match).
+    const { error } = await admin.rpc('refund_orphan_audit', {
+      p_audit_id: auditId,
+      p_user_id: userId,
+      p_reason: 'create_rollback',
     });
     if (error) {
       throw new Error(error.message);
@@ -53,18 +63,22 @@ async function refundConsumedCredit(
   }
 }
 
-async function markCreditConsumed(
+async function deleteAuditRowBestEffort(
   admin: ReturnType<typeof getAdminClient>,
-  auditId: string,
   userId: string,
+  auditId: string,
+  surface: string,
 ): Promise<void> {
-  const { error } = await admin
-    .from('audits')
-    .update({ credit_consumed: true })
-    .eq('id', auditId)
-    .eq('user_id', userId);
-  if (error) {
-    throw new Error(`credit marker failed: ${error.message}`);
+  try {
+    const { error } = await admin.from('audits').delete().eq('id', auditId);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { auditId, userId },
+    });
   }
 }
 
@@ -177,7 +191,7 @@ export async function POST(request: Request): Promise<Response> {
     const admin = getAdminClient();
 
     let creditConsumed = false;
-    const { error: insertError } = await admin.from('audits').insert({
+    const auditRow: Record<string, unknown> = {
       id: auditId,
       user_id: user.id,
       status: 'pending',
@@ -185,50 +199,89 @@ export async function POST(request: Request): Promise<Response> {
       storage_path: storagePath,
       original_filename: filename,
       file_size_bytes: fileSize,
-    });
+    };
+    let { error: insertError } = await admin.from('audits').insert(auditRow);
+
+    // Dev-only safety: migration 0016 adds `audits.credit_consumed`. If that
+    // migration hasn't been applied yet, PostgREST returns PGRST204 ("column
+    // not found in schema cache") and Postgres direct returns 42703. Retry
+    // once without the field so local dev can keep moving; production keeps
+    // the strict error path so a real schema drift surfaces — unless the
+    // operator opts in via ALLOW_PARTIAL_SCHEMA=1 (demo environments).
+    const allowPartialSchema =
+      process.env.NODE_ENV !== 'production' || process.env.ALLOW_PARTIAL_SCHEMA === '1';
+    if (
+      insertError &&
+      allowPartialSchema &&
+      String((insertError as { message?: string }).message ?? '').includes('credit_consumed') &&
+      ((insertError as { code?: string }).code === '42703' ||
+        (insertError as { code?: string }).code === 'PGRST204')
+    ) {
+      console.warn(
+        '[audits.create] `audits.credit_consumed` column missing — retrying insert ' +
+          'without it (dev only). Apply migration 0016 to restore strict mode.',
+      );
+      const { credit_consumed: _omit, ...withoutFlag } = auditRow;
+      void _omit;
+      const retry = await admin.from('audits').insert(withoutFlag);
+      insertError = retry.error;
+    }
 
     if (insertError) {
+      console.error('[audits.create] insert failed:', {
+        code: (insertError as { code?: string }).code,
+        message: scrubString((insertError as { message?: string }).message ?? 'unknown'),
+        details: scrubString((insertError as { details?: string }).details ?? 'unknown'),
+      });
       return NextResponse.json({ error: 'Failed to create audit.' }, { status: 500 });
     }
 
-    // NOTE: spec wanted decrement on first state change; we decrement on
-    // creation for stricter race-free accounting. The gate already approved
-    // this user, but the RPC is the atomic source of truth — if a concurrent
-    // creation drained the credits between the gate read and now, the RPC
-    // throws `no_credits` and we roll back the audit row below.
+    // H4: atomic-once decrement anchored to this audit row. The RPC flips
+    // `audits.credit_consumed: false → true` AND decrements profiles in a
+    // single statement. If the RPC committed server-side but the client
+    // never saw the response, a retry finds credit_consumed=true and is
+    // returned `idempotent=true` instead of throwing — no lost credits.
+    //
+    // The gate at L118 already approved the user, but the RPC is the
+    // atomic source of truth — if a concurrent request drained credits
+    // between the gate read and now, the RPC throws `no_credits` and we
+    // roll back the audit row below.
     if (gate.reason === 'credit') {
       try {
-        await decrementAuditCreditAtomically(user.id);
+        await consumeAuditCreditForAudit(user.id, auditId);
         creditConsumed = true;
-        await markCreditConsumed(admin, auditId, user.id);
       } catch (decrementErr) {
+        const isDefinitiveRefusal =
+          decrementErr instanceof Error && decrementErr.message === 'no_credits';
         Sentry.captureException(decrementErr, {
-          tags: { surface: 'audits.create.decrement', transient: 'true' },
-          extra: { userId: user.id },
+          tags: {
+            surface: 'audits.create.decrement',
+            transient: isDefinitiveRefusal ? 'false' : 'true',
+          },
+          extra: { userId: user.id, auditId },
         });
-        try {
-          await admin.from('audits').delete().eq('id', auditId);
-        } catch (rollbackErr) {
-          Sentry.captureException(rollbackErr, {
-            tags: { surface: 'audits.create.rollback_orphan' },
-            extra: { auditId, userId: user.id },
-          });
-        }
-        if (creditConsumed) {
-          await refundConsumedCredit(
-            admin,
-            user.id,
-            auditId,
-            'audits.create.decrement_refund',
+        if (isDefinitiveRefusal) {
+          // The RPC ran and definitively refused — user has 0 credits,
+          // or audit row state was wrong. Roll back the audit row; no
+          // credit was decremented so no refund is needed.
+          await deleteAuditRowBestEffort(admin, user.id, auditId, 'audits.create.rollback_orphan');
+          return NextResponse.json(
+            {
+              error: 'no_plan',
+              message: 'No active plan or audit credits.',
+              upgrade_url: '/pricing',
+            },
+            { status: 402 },
           );
         }
+        // Transient RPC failure — leave the pending row for orphan cleanup.
         return NextResponse.json(
           {
-            error: 'no_plan',
-            message: 'No active plan or audit credits.',
-            upgrade_url: '/pricing',
+            error: 'credit_pending',
+            message:
+              'Your audit was created but credit confirmation is still processing. Wait a few minutes and retry upload, or contact support if this persists.',
           },
-          { status: 402 },
+          { status: 503 },
         );
       }
     }
@@ -248,29 +301,45 @@ export async function POST(request: Request): Promise<Response> {
       .createSignedUploadUrl(storagePath, signedUploadOptions);
 
     if (signError || !signed) {
-      // Clean up the orphaned audit row so the user can retry cleanly.
-      // R2-F11 — match the decrement-rollback pattern at L121-141 so a
-      // failed rollback surfaces in Sentry instead of being silently lost.
-      try {
-        await admin.from('audits').delete().eq('id', auditId);
-      } catch (rollbackErr) {
-        Sentry.captureException(rollbackErr, {
-          tags: { surface: 'audits.create.rollback_signed_url_orphan' },
-          extra: { auditId, userId: user.id },
-        });
-      }
-      // If we consumed a credit on this request, refund it. The orphan-cleanup
-      // cron only sees rows that survive — since we just deleted the row, the
-      // credit would otherwise be lost. Subscription users never spent a
-      // credit, so nothing to refund there.
+      console.error('[audits.create] signed URL failed:', {
+        code: (signError as { code?: string } | null)?.code,
+        message: scrubString((signError as { message?: string } | null)?.message ?? 'unknown'),
+        name: scrubString((signError as { name?: string } | null)?.name ?? 'unknown'),
+      });
+      // Refund FIRST, while the row still exists, so the idempotent
+      // `refund_orphan_audit` RPC can match it (status='pending' AND
+      // credit_consumed=true) and atomically flip the flag + restore the
+      // credit. Doing this before the delete closes the crash-window leak:
+      // previously a crash between delete and refund lost the credit, and
+      // reordering naively with a bare increment would risk a double-refund
+      // from the orphan-cleanup cron — the flag-gated RPC avoids both.
+      // Subscription users never spent a credit, so nothing to refund there.
       if (creditConsumed) {
         await refundConsumedCredit(admin, user.id, auditId, 'audits.create.refund');
       }
-      return NextResponse.json(
-        { error: 'Failed to create upload URL.' },
-        { status: 500 },
+      // Then clean up the orphaned row so the user can retry cleanly.
+      // R2-F11 — best-effort delete surfaces failures in Sentry rather than
+      // silently losing them. If this delete is the step that crashes, the row
+      // lingers as status='failed' with credit_consumed=false, which the
+      // orphan-cleanup cron ignores (it targets stale 'pending' rows) — no
+      // leak, no double-refund.
+      await deleteAuditRowBestEffort(
+        admin,
+        user.id,
+        auditId,
+        'audits.create.rollback_signed_url_orphan',
       );
+      return NextResponse.json({ error: 'Failed to create upload URL.' }, { status: 500 });
     }
+
+    await logTrailEvent({
+      userId: user.id,
+      eventType: 'audit_uploaded',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: { source: 'pdf', file_size_bytes: fileSize },
+      actorEmail: user.email ?? null,
+    });
 
     return NextResponse.json({
       auditId,
@@ -279,6 +348,10 @@ export async function POST(request: Request): Promise<Response> {
       token: signed.token,
     });
   } catch (err) {
+    console.error(
+      '[audits.create] caught:',
+      scrubString(err instanceof Error ? err.message : String(err)),
+    );
     // L — surface unhandled errors instead of swallowing. Tag the surface so
     // /api/audits noise is filterable from the rest of the audits namespace.
     Sentry.captureException(err, { tags: { surface: 'audits.create' } });

@@ -63,9 +63,7 @@ export function UpdatePasswordForm() {
           disabled={isPending}
           {...register('password')}
         />
-        {errors.password ? (
-          <p className="text-xs text-red-600">{errors.password.message}</p>
-        ) : null}
+        {errors.password ? <p className="text-xs text-red-600">{errors.password.message}</p> : null}
       </div>
       <div className="space-y-2">
         <Label htmlFor="confirm">Confirm new password</Label>
@@ -76,9 +74,7 @@ export function UpdatePasswordForm() {
           disabled={isPending}
           {...register('confirm')}
         />
-        {errors.confirm ? (
-          <p className="text-xs text-red-600">{errors.confirm.message}</p>
-        ) : null}
+        {errors.confirm ? <p className="text-xs text-red-600">{errors.confirm.message}</p> : null}
       </div>
       {serverError ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

@@ -3,21 +3,27 @@ import { createHmac } from 'node:crypto';
 
 // ─── Mocks (must be set up before importing the route) ─────────────────────
 
+type MutationResult = { data: null; error: { message: string } | null };
+
 const inboundEventsInsertMock =
   vi.fn<
     (row: unknown) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>
   >();
 const inboundEventsUpdateEqMock = vi.fn(async () => ({ data: null, error: null }));
-const inboundEventsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
+const inboundEventsDeleteEqMock = vi.fn<() => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const profilesSelectMock = vi.fn();
 const auditsInsertMock = vi.fn(async (_row: unknown) => ({ data: null, error: null }));
-const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
-const auditsUpdateEqMock = vi.fn<
-  () => Promise<{ data: unknown; error: { message: string } | null }>
->(async () => ({ data: null, error: null }));
-const rpcMock = vi.fn<
-  (fn: string, args: unknown) => Promise<{ data: unknown; error: { message: string } | null }>
->(async (_fn: string, _args: unknown) => ({ data: 1, error: null }));
+const auditsDeleteEqMock = vi.fn<() => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
+const auditsUpdateEqMock = vi.fn<() => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const storageUploadMock = vi.fn<
   (
     path: string,
@@ -28,9 +34,16 @@ const storageUploadMock = vi.fn<
   data: null,
   error: null,
 }));
-const storageRemoveMock = vi.fn(async (_paths: string[]) => ({ data: null, error: null }));
+const storageRemoveMock = vi.fn<(_paths: string[]) => Promise<MutationResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const inngestSendMock = vi.fn(async (..._args: unknown[]) => ({}));
-const decrementMock = vi.fn(async (_uid: string) => ({ remaining: 0 }));
+const decrementMock = vi.fn(async (_uid: string, _auditId: string) => ({
+  remaining: 0,
+  idempotent: false,
+}));
+const rpcMock = vi.fn(async (_fn: string, _args: unknown) => ({ data: null, error: null }));
 const gateMock = vi.fn<
   (
     uid: string,
@@ -95,7 +108,7 @@ vi.mock('@/lib/access/gate', () => ({
 }));
 
 vi.mock('@/lib/access/decrement', () => ({
-  decrementAuditCreditAtomically: (uid: string) => decrementMock(uid),
+  consumeAuditCreditForAudit: (uid: string, auditId: string) => decrementMock(uid, auditId),
 }));
 
 vi.mock('@/lib/security/rate-limit', () => ({
@@ -109,9 +122,14 @@ vi.mock('@/env', () => ({
   },
 }));
 
+const { captureExceptionMock, captureMessageMock } = vi.hoisted(() => ({
+  captureExceptionMock: vi.fn(),
+  captureMessageMock: vi.fn(),
+}));
+
 vi.mock('@sentry/nextjs', () => ({
-  captureMessage: vi.fn(),
-  captureException: vi.fn(),
+  captureMessage: captureMessageMock,
+  captureException: captureExceptionMock,
 }));
 
 // Import after mocks. The real `@/lib/inbound/token` is intentionally not
@@ -165,11 +183,14 @@ beforeEach(() => {
   storageRemoveMock.mockClear();
   inngestSendMock.mockClear();
   decrementMock.mockClear();
+  rpcMock.mockClear();
+  rpcMock.mockResolvedValue({ data: null, error: null });
   gateMock.mockClear();
   gateMock.mockResolvedValue({ ok: true, reason: 'subscription' });
   consumeRateLimitMock.mockClear();
   consumeRateLimitMock.mockResolvedValue({ ok: true, resetAt: new Date() });
-  vi.mocked(Sentry.captureException).mockClear();
+  captureExceptionMock.mockClear();
+  captureMessageMock.mockClear();
 });
 
 describe('POST /api/inbound/email — dedupe stability', () => {
@@ -316,6 +337,52 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(inboundEventsInsertMock).not.toHaveBeenCalled();
   });
 
+  it('skips malformed base64 attachments before creating audit state', async () => {
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: '%%%not-base64%%%',
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('invalid_attachment');
+    expect(gateMock).not.toHaveBeenCalled();
+    expect(auditsInsertMock).not.toHaveBeenCalled();
+    expect(inboundEventsInsertMock).not.toHaveBeenCalled();
+    expect(storageUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('skips attachments that claim to be PDF but do not have PDF magic bytes', async () => {
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: Buffer.from('not a pdf', 'utf8').toString('base64'),
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('non_pdf_attachment');
+    expect(gateMock).not.toHaveBeenCalled();
+    expect(auditsInsertMock).not.toHaveBeenCalled();
+    expect(inboundEventsInsertMock).not.toHaveBeenCalled();
+    expect(storageUploadMock).not.toHaveBeenCalled();
+  });
+
   it('returns provider-ack 200 when inbound rate limit denies', async () => {
     const pdfBytes = Buffer.from('%PDF-1.4 rate-limit', 'utf8');
     const payload: InboundPayload = {
@@ -335,51 +402,6 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true, skipped: 'rate_limited' });
     expect(inboundEventsInsertMock).not.toHaveBeenCalled();
-  });
-
-  it('preserves audit, storage, and dedupe evidence when credit marker refund fails', async () => {
-    const pdfBytes = Buffer.from('%PDF-1.4 marker-refund-fail', 'utf8');
-    const payload: InboundPayload = {
-      to: `bills+${TOKEN}@inbound.example.com`,
-      attachments: [
-        {
-          filename: 'bill.pdf',
-          content_type: 'application/pdf',
-          content_base64: pdfBytes.toString('base64'),
-        },
-      ],
-    };
-    gateMock.mockResolvedValueOnce({ ok: true, reason: 'credit' });
-    auditsUpdateEqMock.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'marker write failed' },
-    });
-    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'refund failed' } });
-
-    const res = await POST(makeRequest(payload));
-
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toMatchObject({ ok: true, skipped: 'internal_error' });
-    expect(decrementMock).toHaveBeenCalledTimes(1);
-    expect(rpcMock).toHaveBeenCalledWith('increment_audit_credits', {
-      profile_id: 'user-uuid-1',
-      delta: 1,
-    });
-    expect(auditsDeleteEqMock).not.toHaveBeenCalled();
-    expect(storageRemoveMock).not.toHaveBeenCalled();
-    expect(inboundEventsDeleteEqMock).not.toHaveBeenCalled();
-    expect(Sentry.captureException).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({
-        level: 'fatal',
-        tags: expect.objectContaining({
-          surface: 'inbound.email.credit_marker_refund',
-          severity: 'high',
-        }),
-        extra: { userId: 'user-uuid-1', auditId: expect.any(String) },
-      }),
-    );
-    expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
   it('releases dedupe claim when downstream storage upload fails', async () => {
@@ -404,6 +426,108 @@ describe('POST /api/inbound/email — dedupe stability', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { skipped?: string };
     expect(body.skipped).toBe('internal_error');
+    expect(inboundEventsDeleteEqMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports returned audit-delete errors while cleaning up failed storage uploads', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 storage-fail-delete-error', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    storageUploadMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'storage offline' },
+    });
+    auditsDeleteEqMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'delete failed' },
+    });
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    const cleanupCall = captureExceptionMock.mock.calls.find(
+      ([_err, ctx]) =>
+        (ctx as { tags?: Record<string, unknown> } | undefined)?.tags?.['surface'] ===
+        'inbound.email.rollback_storage_upload_failed',
+    );
+    expect(cleanupCall).toBeTruthy();
+    expect((cleanupCall?.[0] as Error).message).toBe('delete failed');
+  });
+
+  it('refunds/fails and releases the dedupe claim when credit decrement is transient', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 decrement-transient', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    gateMock.mockResolvedValueOnce({ ok: true, reason: 'credit' });
+    decrementMock.mockRejectedValueOnce(new Error('network reset'));
+
+    const res = await POST(makeRequest(payload));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('decrement_transient');
+    expect(inngestSendMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledWith('refund_orphan_audit', {
+      p_audit_id: expect.any(String),
+      p_user_id: 'user-uuid-1',
+      p_reason: 'inbound-credit-decrement-failed',
+    });
+    expect(storageRemoveMock).toHaveBeenCalledTimes(1);
+    expect(inboundEventsDeleteEqMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refunds via refund_orphan_audit BEFORE deleting the row when bill.uploaded dispatch fails', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 dispatch-fail', 'utf8');
+    const payload: InboundPayload = {
+      to: `bills+${TOKEN}@inbound.example.com`,
+      attachments: [
+        {
+          filename: 'bill.pdf',
+          content_type: 'application/pdf',
+          content_base64: pdfBytes.toString('base64'),
+        },
+      ],
+    };
+    gateMock.mockResolvedValueOnce({ ok: true, reason: 'credit' });
+    inngestSendMock.mockRejectedValueOnce(new Error('inngest down'));
+
+    const res = await POST(makeRequest(payload));
+
+    // The rethrown sendErr is swallowed by the outer catch → 200 so the email
+    // provider doesn't retry; orphan-cleanup would catch any half-created row.
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped?: string };
+    expect(body.skipped).toBe('internal_error');
+    // Refund via the idempotent, row-anchored RPC (not a bare increment), so a
+    // retry / the orphan-cleanup cron can't double-refund.
+    expect(rpcMock).toHaveBeenCalledWith('refund_orphan_audit', {
+      p_audit_id: expect.any(String),
+      p_user_id: 'user-uuid-1',
+      p_reason: 'inbound-dispatch-failed',
+    });
+    // Refund must run BEFORE the audit-row delete (the RPC has to match the
+    // still-present pending row) — this is the crash-window leak fix.
+    const refundIdx = rpcMock.mock.calls.findIndex(([fn]) => fn === 'refund_orphan_audit');
+    expect(refundIdx).toBeGreaterThanOrEqual(0);
+    expect(rpcMock.mock.invocationCallOrder[refundIdx]!).toBeLessThan(
+      auditsDeleteEqMock.mock.invocationCallOrder[0]!,
+    );
     expect(inboundEventsDeleteEqMock).toHaveBeenCalledTimes(1);
   });
 });

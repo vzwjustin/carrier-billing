@@ -2,21 +2,25 @@ import { randomUUID } from 'node:crypto';
 
 import { inngest } from '../client';
 import { getAdminClient } from '@/lib/supabase/admin';
+import { MAX_PDF_BYTES, runExtractionPipeline, PipelineError } from '@/extraction/pipeline';
 import {
-  runExtractionPipeline,
-  PipelineError,
-} from '@/extraction/pipeline';
-import { runEdi811Pipeline, Edi811PipelineError } from '@/extraction/edi811/pipeline';
+  MAX_EDI_BYTES,
+  isLikelyEdi811Buffer,
+  runEdi811Pipeline,
+  Edi811PipelineError,
+} from '@/extraction/edi811/pipeline';
 import { ExtractionError, redactDetails } from '@/extraction/llm';
-import type {
-  ExtractedBill,
-  ExtractedAccount,
-  ExtractedLine,
-} from '@/extraction/schema';
+import type { ExtractedBill, ExtractedAccount, ExtractedLine } from '@/extraction/schema';
+import {
+  translateLineIndexes,
+  type IndexTranslationStats,
+} from '@/lib/findings/translate-line-indexes';
 import { runRules } from '@/rules/runner';
 import { ALL_RULES } from '@/rules/registry';
 import type { Finding, RuleContext, Severity } from '@/rules/types';
-import { trackServer } from '@/lib/analytics/events';
+import type { ContractWithTerms } from '@/contracts/schema';
+import { dispatchAuditCompletedSideEffects } from '@/lib/audits/completed-side-effects';
+import { loadParsedContractsForUser } from '@/lib/audits/load-parsed-contracts';
 import { BillUploadedDataSchema, parseEventData } from '../events';
 
 /**
@@ -110,10 +114,7 @@ function deriveFailureReason(err: unknown): string {
         // Redaction must never crash the failure path — drop the suffix.
       }
     }
-    return truncate(
-      `extraction:${stepLabel}: ${err.message}${detailSuffix}`,
-      FAILURE_REASON_MAX,
-    );
+    return truncate(`extraction:${stepLabel}: ${err.message}${detailSuffix}`, FAILURE_REASON_MAX);
   }
   if (err instanceof ExtractionError) {
     let detailSuffix = '';
@@ -140,11 +141,7 @@ function deriveFailureReason(err: unknown): string {
  * Race a promise against a timer. Used to wall the extraction step so a hung
  * OCR / LLM call cannot eat the whole 15-minute Inngest deadline.
  */
-function withTimeout<T>(
-  task: Promise<T>,
-  ms: number,
-  label: string,
-): Promise<T> {
+function withTimeout<T>(task: Promise<T>, ms: number, label: string): Promise<T> {
   let handle: ReturnType<typeof setTimeout> | undefined;
   const timer = new Promise<never>((_resolve, reject) => {
     handle = setTimeout(() => {
@@ -168,8 +165,17 @@ function withTimeout<T>(
   ]).catch((err: unknown) => {
     // Tag the timeout origin so the failure reason is unambiguous in logs.
     if (err instanceof ExtractionTimeoutError) {
+      // M7: preserve the original error's stack + chain via `.cause` so
+      // Sentry breadcrumbs keep the deep frame. Allocating a fresh
+      // `ExtractionTimeoutError` lets us prefix the label without
+      // mutating the shared original error (which Promise.race could
+      // surface to multiple callers).
       const tagged = new ExtractionTimeoutError(err.afterMs);
       tagged.message = `${label}: ${tagged.message}`;
+      if (err.stack) {
+        tagged.stack = err.stack;
+      }
+      (tagged as { cause?: unknown }).cause = err;
       throw tagged;
     }
     throw err;
@@ -192,6 +198,31 @@ function isNotAWirelessBill(err: unknown): boolean {
     return true;
   }
   return /not[_ ]a[_ ]wireless[_ ]bill/i.test(err.message);
+}
+
+/**
+ * H3: classify a failure for credit-refund purposes.
+ *
+ * User-fault failures (the bill itself was unprocessable for reasons the
+ * user is best positioned to fix) do NOT refund the credit:
+ *   - `not_a_wireless_bill` — uploaded something we can't audit.
+ *   - `encrypted-pdf` — locked PDF; user must re-export an unlocked copy.
+ *
+ * System-fault failures (transient OCR/LLM/storage errors, timeouts,
+ * empty-extraction edge cases) DO refund — the user should not pay for
+ * the system's inability to complete the audit.
+ *
+ * `failure_reason` is the canonical input: it is the same redacted string
+ * that lands in `audits.failure_reason`. Matching on it keeps the rule
+ * surface narrow and easy to reason about.
+ */
+function isUserFaultFailure(failureReason: string): boolean {
+  if (failureReason.startsWith('encrypted-pdf')) return true;
+  if (failureReason === 'no lines extracted') return true;
+  if (/Document does not appear to be a US business wireless bill/i.test(failureReason)) {
+    return true;
+  }
+  return false;
 }
 
 type ExtractionStepResult = {
@@ -249,6 +280,41 @@ type RuleStepResult = {
   errors: Array<{ rule_id: string; message: string }>;
 };
 
+type InngestStepRunner = {
+  run: (name: string, fn: () => Promise<unknown>) => Promise<unknown>;
+};
+
+type SideEffectsLogger = {
+  error: (message: string, ctx?: Record<string, unknown>) => void;
+};
+
+/**
+ * Post-completion side effects shared by the normal completion path and the
+ * C1 downstream-only recovery path (worker crashed after mark-completed
+ * committed but before the step result was persisted).
+ */
+async function emitCompletedAuditSideEffects(opts: {
+  auditId: string;
+  userId: string;
+  carrier: string | null;
+  findingCount: number;
+  highSeverityCount: number;
+  monthlySavingsCents: number;
+  step: InngestStepRunner;
+  logger: SideEffectsLogger;
+}): Promise<void> {
+  await dispatchAuditCompletedSideEffects({
+    auditId: opts.auditId,
+    userId: opts.userId,
+    carrier: opts.carrier,
+    findingCount: opts.findingCount,
+    highSeverityCount: opts.highSeverityCount,
+    monthlySavingsCents: opts.monthlySavingsCents,
+    logger: opts.logger,
+    runInStep: (name, fn) => opts.step.run(name, fn),
+  });
+}
+
 export const processBillFn = inngest.createFunction(
   {
     id: 'process-bill',
@@ -262,7 +328,7 @@ export const processBillFn = inngest.createFunction(
     // Inngest gives a TS-typed view but no runtime guarantee — a misshapen
     // payload from a replay tool or future SDK rev would otherwise crash
     // deep in the pipeline with a `Cannot read property` error.
-    const { auditId, userId, storagePath } = parseEventData(
+    const { auditId, userId, storagePath, retryCount } = parseEventData(
       'bill.uploaded',
       event.data,
       BillUploadedDataSchema,
@@ -272,6 +338,7 @@ export const processBillFn = inngest.createFunction(
       auditId,
       userId,
       runId: event.id,
+      retryCount,
     });
 
     try {
@@ -297,8 +364,11 @@ export const processBillFn = inngest.createFunction(
       // ─────────────────────────────────────────────────────────────────────
       type MarkExtractingResult =
         | { proceed: true }
+        | { proceed: 'downstream-only' }
         | { proceed: false; reason: 'not-found' }
         | { proceed: false; reason: 'ownership-mismatch' }
+        | { proceed: false; reason: 'ownership-mismatch-race' }
+        | { proceed: false; reason: 'stale-retry' }
         | { proceed: false; reason: 'already-advanced'; observedStatus: string };
 
       const markResult = (await step.run(
@@ -307,22 +377,33 @@ export const processBillFn = inngest.createFunction(
           const supabase = getAdminClient();
 
           // 1. Fetch the row (no filters except id) so we can distinguish
-          //    "not found" / "wrong owner" / "already advanced" from each
-          //    other for accurate failure reasons.
+          //    "not found" / "wrong owner" / "already advanced" / "self-
+          //    replay" from each other for accurate failure reasons.
+          //    `inngest_run_id` is selected so the bail branch can detect
+          //    an Inngest step-replay (this run already committed but the
+          //    step result wasn't persisted before the worker crashed).
           const { data: rowData, error: fetchErr } = await supabase
             .from('audits')
-            .select('id, user_id, status')
+            .select('id, user_id, status, inngest_run_id, retry_count')
             .eq('id', auditId)
             .maybeSingle();
           if (fetchErr) {
-            throw new Error(
-              `audits select (mark-extracting) failed: ${fetchErr.message}`,
-            );
+            throw new Error(`audits select (mark-extracting) failed: ${fetchErr.message}`);
           }
           if (!rowData) {
             return { proceed: false, reason: 'not-found' };
           }
-          const row = rowData as { id: string; user_id: string; status: string };
+          const row = rowData as {
+            id: string;
+            user_id: string;
+            status: string;
+            inngest_run_id: string | null;
+            retry_count: number;
+          };
+
+          if (row.retry_count !== retryCount) {
+            return { proceed: false, reason: 'stale-retry' };
+          }
 
           // 2. (I1) Ownership re-check. If the event payload's userId does
           //    not match the audit's owner, the event is bad — flip the row
@@ -330,18 +411,22 @@ export const processBillFn = inngest.createFunction(
           //    return ownership info to the caller, so this is purely
           //    defense-in-depth on top of the route-level check.
           if (row.user_id !== userId) {
-            const { error: ownErr } = await supabase
+            const { data: ownRows, error: ownErr } = await supabase
               .from('audits')
               .update({
                 status: 'failed',
                 failure_reason: 'ownership-mismatch',
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', auditId);
+              .eq('id', auditId)
+              .eq('status', 'pending')
+              .eq('retry_count', retryCount)
+              .select('id');
             if (ownErr) {
-              throw new Error(
-                `audits update (ownership-mismatch) failed: ${ownErr.message}`,
-              );
+              throw new Error(`audits update (ownership-mismatch) failed: ${ownErr.message}`);
+            }
+            if ((ownRows ?? []).length !== 1) {
+              return { proceed: false, reason: 'ownership-mismatch-race' };
             }
             return { proceed: false, reason: 'ownership-mismatch' };
           }
@@ -358,14 +443,38 @@ export const processBillFn = inngest.createFunction(
             })
             .eq('id', auditId)
             .eq('status', 'pending')
+            .eq('retry_count', retryCount)
             .select('id');
           if (updErr) {
-            throw new Error(
-              `audits update (mark-extracting) failed: ${updErr.message}`,
-            );
+            throw new Error(`audits update (mark-extracting) failed: ${updErr.message}`);
           }
           const affected = (updatedRows ?? []).length;
           if (affected === 0) {
+            // C1: Inngest step-replay self-recognition. If this run already
+            // stamped its run id on the row (a prior body execution committed
+            // the UPDATE but the step result wasn't persisted before the
+            // worker crashed), treat the bail as success — downstream steps
+            // will replay their own cached results or re-converge via their
+            // own self-replay checks. Without this branch, a rare worker
+            // crash between DB commit and Inngest result-write strands the
+            // audit in `extracting` forever.
+            //
+            // When the row is already `completed`, only the post-completion
+            // side effects (email + analytics) may need recovery — do NOT
+            // re-run extraction.
+            if (event.id && row.inngest_run_id === event.id) {
+              if (row.status === 'completed') {
+                return { proceed: 'downstream-only' };
+              }
+              if (row.status === 'failed') {
+                return {
+                  proceed: false,
+                  reason: 'already-advanced',
+                  observedStatus: row.status,
+                };
+              }
+              return { proceed: true };
+            }
             return {
               proceed: false,
               reason: 'already-advanced',
@@ -376,7 +485,57 @@ export const processBillFn = inngest.createFunction(
         },
       )) as MarkExtractingResult;
 
-      if (!markResult.proceed) {
+      if (markResult.proceed === 'downstream-only') {
+        const supabase = getAdminClient();
+        const { data: auditRow, error: loadErr } = await supabase
+          .from('audits')
+          .select(
+            'status, carrier, finding_count, high_severity_count, estimated_monthly_savings_cents',
+          )
+          .eq('id', auditId)
+          .maybeSingle();
+        if (loadErr) {
+          throw new Error(`audits select (downstream-recovery) failed: ${loadErr.message}`);
+        }
+        const row = auditRow as {
+          status: string;
+          carrier: string | null;
+          finding_count: number | null;
+          high_severity_count: number | null;
+          estimated_monthly_savings_cents: number | null;
+        } | null;
+        if (!row || row.status !== 'completed') {
+          logger.warn('processBill: downstream-only recovery but audit not completed', {
+            auditId,
+            observedStatus: row?.status ?? 'missing',
+          });
+          return {
+            auditId,
+            skipped: true,
+            reason: 'downstream-recovery-mismatch',
+          };
+        }
+        logger.info('processBill: downstream-only recovery (skip re-extract)', {
+          auditId,
+        });
+        await emitCompletedAuditSideEffects({
+          auditId,
+          userId,
+          carrier: row.carrier,
+          findingCount: row.finding_count ?? 0,
+          highSeverityCount: row.high_severity_count ?? 0,
+          monthlySavingsCents: row.estimated_monthly_savings_cents ?? 0,
+          step,
+          logger,
+        });
+        return {
+          auditId,
+          findingCount: row.finding_count ?? 0,
+          status: 'downstream-recovery',
+        };
+      }
+
+      if (markResult.proceed !== true) {
         // Bail out gracefully — another runner has it, or ownership/route
         // safety already handled this audit. We log enough to triage but
         // never re-throw, so Inngest does not retry.
@@ -395,13 +554,9 @@ export const processBillFn = inngest.createFunction(
       // ─────────────────────────────────────────────────────────────────────
       const extractResult = (await step.run('extract', async () => {
         const supabase = getAdminClient();
-        const download = await supabase.storage
-          .from('bills')
-          .download(storagePath);
+        const download = await supabase.storage.from('bills').download(storagePath);
         if (download.error || !download.data) {
-          throw new Error(
-            `storage download failed: ${download.error?.message ?? 'no data'}`,
-          );
+          throw new Error(`storage download failed: ${download.error?.message ?? 'no data'}`);
         }
         const arrayBuffer = await download.data.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -415,7 +570,13 @@ export const processBillFn = inngest.createFunction(
         // outer error handler could mark the audit failed. On expiry we
         // throw an ExtractionTimeoutError, which deriveFailureReason maps to
         // `extraction-timeout: <ms>ms` in `audits.failure_reason`.
-        if (isEdi811Buffer(buffer)) {
+        if (isLikelyEdi811Buffer(buffer)) {
+          if (buffer.byteLength > MAX_EDI_BYTES) {
+            throw new Edi811PipelineError(
+              `EDI exceeds ${MAX_EDI_BYTES} byte limit (got ${buffer.byteLength})`,
+              'decode',
+            );
+          }
           const pipeline = await withTimeout(
             runEdi811Pipeline({ buffer }),
             EXTRACTION_TIMEOUT_MS,
@@ -431,6 +592,12 @@ export const processBillFn = inngest.createFunction(
             source: 'edi811',
           };
           return result;
+        }
+        if (buffer.byteLength > MAX_PDF_BYTES) {
+          throw new PipelineError(
+            `PDF exceeds ${MAX_PDF_BYTES} byte limit (got ${buffer.byteLength} bytes)`,
+            'size_check',
+          );
         }
         const pipeline = await withTimeout(
           runExtractionPipeline({ buffer }),
@@ -480,38 +647,111 @@ export const processBillFn = inngest.createFunction(
       // try to mark the audit `failed` and clobber a successful terminal
       // state. A 0-rows-affected outcome means "lost the race", not "broken".
       // ─────────────────────────────────────────────────────────────────────
-      type MarkAnalyzingResult =
-        | { ok: true }
-        | { ok: false; reason: 'status-guard' };
+      type MarkAnalyzingResult = { ok: true } | { ok: false; reason: 'status-guard' };
       const analyzingResult = (await step.run(
         'mark-analyzing',
         async (): Promise<MarkAnalyzingResult> => {
           const supabase = getAdminClient();
-          const { data: rows, error } = await supabase
+          const baseUpdate = {
+            status: 'analyzing',
+            carrier: bill.carrier,
+            billing_period_start: bill.billing_period_start,
+            billing_period_end: bill.billing_period_end,
+            total_charges_cents: bill.total_charges_cents,
+            account_count: bill.accounts.length,
+            line_count: lineCount,
+            page_count: pageCount,
+            file_size_bytes: sizeBytes,
+            source_format: source === 'edi811' ? 'edi_811' : 'pdf',
+            // Persist the bill-level extraction confidence (migration 0037).
+            // Absent ⇒ 'high' — the schema marks it optional and treats a
+            // missing value as high confidence (see schema.ts BillConfidence).
+            extraction_confidence: bill.confidence ?? 'high',
+            updated_at: new Date().toISOString(),
+          };
+          let markAnalyzingQuery = supabase
             .from('audits')
-            .update({
-              status: 'analyzing',
-              carrier: bill.carrier,
-              billing_period_start: bill.billing_period_start,
-              billing_period_end: bill.billing_period_end,
-              total_charges_cents: bill.total_charges_cents,
-              account_count: bill.accounts.length,
-              line_count: lineCount,
-              page_count: pageCount,
-              file_size_bytes: sizeBytes,
-              source_format: source === 'edi811' ? 'edi_811' : 'pdf',
-              updated_at: new Date().toISOString(),
-            })
+            .update(baseUpdate)
             .eq('id', auditId)
             .eq('status', 'extracting')
-            .select('id');
-          if (error) {
-            throw new Error(
-              `audits update (mark-analyzing) failed: ${error.message}`,
+            .eq('retry_count', retryCount);
+          markAnalyzingQuery = event.id
+            ? markAnalyzingQuery.eq('inngest_run_id', event.id)
+            : markAnalyzingQuery.is('inngest_run_id', null);
+          let { data: rows, error } = await markAnalyzingQuery.select('id');
+
+          // Dev-only: migrations 0010+ add columns like `source_format`,
+          // `page_count`, `file_size_bytes`. Retry without those if PostgREST
+          // says they don't exist. Production keeps the strict error path
+          // unless the operator opts in via ALLOW_PARTIAL_SCHEMA=1 (demo).
+          if (
+            error &&
+            (process.env.NODE_ENV !== 'production' || process.env.ALLOW_PARTIAL_SCHEMA === '1') &&
+            ((error as { code?: string }).code === 'PGRST204' ||
+              (error as { code?: string }).code === '42703')
+          ) {
+            const msg = String((error as { message?: string }).message ?? '');
+            const candidateCols = [
+              'source_format',
+              'page_count',
+              'file_size_bytes',
+              'account_count',
+              'line_count',
+              'extraction_confidence',
+            ];
+            const stripped: Record<string, unknown> = { ...baseUpdate };
+            for (const col of candidateCols) {
+              if (msg.includes(col)) {
+                delete stripped[col];
+              }
+            }
+            console.warn(
+              `[process-bill] mark-analyzing missing column(s) — retrying without ${candidateCols
+                .filter((c) => msg.includes(c))
+                .join(', ')} (dev only).`,
             );
+            let retryQuery = supabase
+              .from('audits')
+              .update(stripped)
+              .eq('id', auditId)
+              .eq('status', 'extracting')
+              .eq('retry_count', retryCount);
+            retryQuery = event.id
+              ? retryQuery.eq('inngest_run_id', event.id)
+              : retryQuery.is('inngest_run_id', null);
+            const retry = await retryQuery.select('id');
+            rows = retry.data;
+            error = retry.error;
+          }
+
+          if (error) {
+            throw new Error(`audits update (mark-analyzing) failed: ${error.message}`);
           }
           const affected = (rows ?? []).length;
           if (affected === 0) {
+            // C1: distinguish Inngest step-replay (this run already
+            // advanced the row past 'extracting') from a real status
+            // race. The UPDATE matched 0 rows because the row is no
+            // longer 'extracting' — fetch its current state and check
+            // ownership. If WE wrote the run id and the row sits at our
+            // target ('analyzing') or a downstream terminal state
+            // ('completed'), accept the step as already done.
+            const { data: probeData } = await supabase
+              .from('audits')
+              .select('status, inngest_run_id')
+              .eq('id', auditId)
+              .maybeSingle();
+            const probe = probeData as { status: string; inngest_run_id: string | null } | null;
+            if (
+              probe &&
+              event.id &&
+              probe.inngest_run_id === event.id &&
+              (probe.status === 'extracting' ||
+                probe.status === 'analyzing' ||
+                probe.status === 'completed')
+            ) {
+              return { ok: true };
+            }
             // Lost the status race. Drop a Sentry breadcrumb so the divergence
             // is visible during triage but never throw — a stale retry losing
             // the race is not an error condition.
@@ -555,6 +795,18 @@ export const processBillFn = inngest.createFunction(
         return result;
       })) as PersistBillResult;
 
+      // Step 4b: load-contracts. Migration 0025 adds a `contracts` library;
+      // the contract_rate_mismatch rule joins bill lines against the user's
+      // parsed contracts. Loaded BEFORE run-rules so rules stay pure (no
+      // I/O). Best-effort: if the table is missing in a stale DB or the
+      // query fails, we log and proceed with an empty array so the rest of
+      // the rules engine still runs.
+      const loadedContracts = (await step.run('load-contracts', async () => {
+        return loadParsedContractsForUser(userId, {
+          warn: (message, ctx) => logger.warn(message, { auditId, ...ctx }),
+        });
+      })) as ContractWithTerms[];
+
       // ─────────────────────────────────────────────────────────────────────
       // Step 5: run-rules — pure function over the in-memory ExtractedBill.
       // The `bill` is already in scope from `extract`, so this step is
@@ -566,6 +818,7 @@ export const processBillFn = inngest.createFunction(
           bill,
           today: new Date(),
           carrier: bill.carrier,
+          contracts: loadedContracts,
         };
         const out = await runRules(ctx, ALL_RULES);
         const r: RuleStepResult = {
@@ -626,10 +879,7 @@ export const processBillFn = inngest.createFunction(
         // operation.
         try {
           const Sentry = await import('@sentry/nextjs');
-          if (
-            indexStats.droppedLineIndexes > 0 ||
-            indexStats.findingsWithDroppedAccount > 0
-          ) {
+          if (indexStats.droppedLineIndexes > 0 || indexStats.findingsWithDroppedAccount > 0) {
             Sentry.addBreadcrumb({
               category: 'rules',
               level: 'warning',
@@ -637,8 +887,7 @@ export const processBillFn = inngest.createFunction(
               data: {
                 auditId,
                 droppedLineIndexes: indexStats.droppedLineIndexes,
-                findingsWithDroppedAccount:
-                  indexStats.findingsWithDroppedAccount,
+                findingsWithDroppedAccount: indexStats.findingsWithDroppedAccount,
                 findingCount: findings.length,
               },
             });
@@ -680,7 +929,7 @@ export const processBillFn = inngest.createFunction(
       // affected means we lost the race — bail without throwing so Inngest
       // does not treat the retry as a failure.
       // ─────────────────────────────────────────────────────────────────────
-      await step.run('mark-completed', async () => {
+      const markCompletedResult = await step.run('mark-completed', async () => {
         const findingCount = findings.length;
         const highSeverityCount = findings.filter(
           (f) => f.severity === ('high' as Severity),
@@ -693,7 +942,7 @@ export const processBillFn = inngest.createFunction(
         const now = new Date().toISOString();
 
         const supabase = getAdminClient();
-        const { data: rows, error } = await supabase
+        let markCompletedQuery = supabase
           .from('audits')
           .update({
             status: 'completed',
@@ -706,89 +955,80 @@ export const processBillFn = inngest.createFunction(
           })
           .eq('id', auditId)
           .eq('status', 'analyzing')
-          .select('id');
+          .eq('retry_count', retryCount);
+        markCompletedQuery = event.id
+          ? markCompletedQuery.eq('inngest_run_id', event.id)
+          : markCompletedQuery.is('inngest_run_id', null);
+        const { data: rows, error } = await markCompletedQuery.select('id');
         if (error) {
-          throw new Error(
-            `audits update (mark-completed) failed: ${error.message}`,
-          );
+          throw new Error(`audits update (mark-completed) failed: ${error.message}`);
         }
         if ((rows ?? []).length === 0) {
+          // C1: same self-replay detection as mark-analyzing. If WE
+          // stamped the run id and the row already sits at 'completed',
+          // treat the step as already done so downstream analytics +
+          // Inngest dispatch can run (both are dedupe-keyed and safe to
+          // re-fire). Without this, a worker crash after committing
+          // mark-completed but before persisting the step result would
+          // strand the audit at `completed` but skip the email dispatch.
+          const { data: probeData } = await supabase
+            .from('audits')
+            .select('status, inngest_run_id')
+            .eq('id', auditId)
+            .maybeSingle();
+          const probe = probeData as { status: string; inngest_run_id: string | null } | null;
+          if (
+            probe &&
+            event.id &&
+            probe.inngest_run_id === event.id &&
+            probe.status === 'completed'
+          ) {
+            return { ok: true as const };
+          }
           // Lost the status race — another runner already completed or failed
           // this audit. Do not throw; the audit is in a terminal state.
-          return { ok: false, reason: 'status-guard' };
+          return { ok: false as const, reason: 'status-guard' as const };
         }
-        return { ok: true };
+        return { ok: true as const };
       });
+
+      // M5: if mark-completed lost the status race, another runner already
+      // owns the completion (and therefore the downstream PostHog event +
+      // `audit.completed` Inngest send). Short-circuit so we don't double-
+      // emit analytics. The send-trigger step is still safe under retry
+      // (dedupe key `${auditId}-completed`), but PostHog has no such guard.
+      if (markCompletedResult.ok === false) {
+        logger.info('processBill: mark-completed lost race; skipping downstream', {
+          auditId,
+        });
+        return {
+          auditId,
+          carrier: bill.carrier,
+          accountCount: bill.accounts.length,
+          lineCount,
+          findingCount: findings.length,
+          status: 'already-completed',
+        };
+      }
 
       logger.info('processBill: phase 2 complete (status=completed)', {
         auditId,
         findingCount: findings.length,
       });
 
-      // Phase 5 analytics: fire `audit_completed`. Wrapped + try/catch so a
-      // PostHog outage cannot fail an already-completed audit. trackServer is
-      // already defensive but we belt-and-suspenders here.
-      try {
-        const monthlySavings = findings.reduce<number>(
+      await emitCompletedAuditSideEffects({
+        auditId,
+        userId,
+        carrier: bill.carrier,
+        findingCount: findings.length,
+        highSeverityCount: findings.filter((f) => f.severity === ('high' as Severity)).length,
+        monthlySavingsCents: findings.reduce<number>(
           (sum, f) => sum + (f.estimated_monthly_savings_cents ?? 0),
           0,
-        );
-        const highSeverityCount = findings.filter(
-          (f) => f.severity === ('high' as Severity),
-        ).length;
-        await trackServer(
-          {
-            name: 'audit_completed',
-            properties: {
-              auditId,
-              carrier: bill.carrier,
-              finding_count: findings.length,
-              high_severity_count: highSeverityCount,
-              estimated_monthly_savings_cents: monthlySavings,
-            },
-          },
-          userId,
-        );
-      } catch (analyticsErr) {
-        logger.error('processBill: trackServer failed (audit still completed)', {
-          auditId,
-          message:
-            analyticsErr instanceof Error
-              ? analyticsErr.message
-              : 'unknown analytics error',
-        });
-      }
-
-      // ─────────────────────────────────────────────────────────────────────
-      // Phase 3: send-trigger — fire `audit.completed` so the email pipeline
-      // can deliver the report. Wrapped in try/catch + step.run so:
-      //   - the audit is already 'completed' before this runs (email is
-      //     best-effort and must not regress the audit's status), and
-      //   - Inngest gives us retry isolation + dedupe via step.run.
-      // ─────────────────────────────────────────────────────────────────────
-      try {
-        await step.run('send-trigger', async () => {
-          // (H5) Stable idempotency key — Inngest dedupes events by `id`, so
-          // a retried `send-trigger` step (or a retried outer function that
-          // re-enters this block) cannot fire `audit.completed` twice and
-          // double-send the report email. The same pattern is used at the
-          // upload site (`${auditId}-uploaded`) — keep the convention.
-          await inngest.send({
-            id: `${auditId}-completed`,
-            name: 'audit.completed',
-            data: { auditId, userId },
-          });
-          return { ok: true };
-        });
-      } catch (sendErr) {
-        // Email is best-effort — never fail a completed audit because of it.
-        logger.error('processBill: send-trigger failed (audit still completed)', {
-          auditId,
-          userId,
-          message:
-            sendErr instanceof Error ? sendErr.message : 'unknown send error',
-        });
-      }
+        ),
+        step,
+        logger,
+      });
 
       return {
         auditId,
@@ -835,13 +1075,36 @@ export const processBillFn = inngest.createFunction(
         // refuse to touch it. We log the divergence at debug level so we
         // can spot a runaway error path, but never throw — throwing here
         // would make Inngest retry the catch handler indefinitely.
-        const allowedStatuses = [
-          'pending',
-          'extracting',
-          'analyzing',
-          'failed',
-        ] as const;
-        const { data: rows, error } = await supabase
+        const allowedStatuses = ['pending', 'extracting', 'analyzing', 'failed'] as const;
+        const { data: currentRow, error: currentErr } = await supabase
+          .from('audits')
+          .select('status, retry_count, inngest_run_id')
+          .eq('id', auditId)
+          .maybeSingle();
+        if (currentErr) {
+          throw new Error(`audits select (mark-failed) failed: ${currentErr.message}`);
+        }
+        const current = currentRow as {
+          status: string;
+          retry_count: number;
+          inngest_run_id: string | null;
+        } | null;
+        const canFail =
+          current !== null &&
+          current.retry_count === retryCount &&
+          (allowedStatuses as readonly string[]).includes(current.status) &&
+          (current.status === 'pending' ||
+            (event.id ? current.inngest_run_id === event.id : current.inngest_run_id === null));
+
+        if (!canFail) {
+          logger.warn('processBill: mark-failed skipped — audit no longer belongs to this run', {
+            auditId,
+            observedStatus: current?.status,
+          });
+          return { ok: true, affected: 0, refunded: false };
+        }
+
+        let markFailedQuery = supabase
           .from('audits')
           .update({
             status: 'failed',
@@ -849,24 +1112,65 @@ export const processBillFn = inngest.createFunction(
             updated_at: new Date().toISOString(),
           })
           .eq('id', auditId)
-          .in('status', allowedStatuses as unknown as string[])
-          .select('id');
+          .eq('retry_count', retryCount)
+          .eq('status', current.status);
+        if (current.status !== 'pending') {
+          markFailedQuery = event.id
+            ? markFailedQuery.eq('inngest_run_id', event.id)
+            : markFailedQuery.is('inngest_run_id', null);
+        }
+        const { data: rows, error } = await markFailedQuery.select('id');
         if (error) {
           // Don't shadow the original failure — just surface this too.
-          throw new Error(
-            `audits update (mark-failed) failed: ${error.message}`,
-          );
+          throw new Error(`audits update (mark-failed) failed: ${error.message}`);
         }
         const affected = (rows ?? []).length;
         if (affected === 0) {
-          logger.warn(
-            'processBill: mark-failed skipped — audit no longer in a failable state',
-            {
-              auditId,
-            },
-          );
+          logger.warn('processBill: mark-failed skipped — audit no longer in a failable state', {
+            auditId,
+          });
+          return { ok: true, affected, refunded: false };
         }
-        return { ok: true, affected };
+
+        // H3: refund the credit when the failure is system-side. The
+        // `refund_failed_audit` RPC is idempotent — its WHERE clause
+        // gates on `credit_consumed=true AND status='failed'`, so a
+        // retry of this same catch block will find credit_consumed=false
+        // and no-op without double-refunding.
+        //
+        // Subscription users have credit_consumed=false from creation
+        // (per /api/audits insert), so the RPC naturally no-ops for them
+        // too. We don't even need to gate at the call site.
+        let refunded = false;
+        if (!isUserFaultFailure(reason)) {
+          const { data: refundOk, error: refundErr } = await supabase.rpc('refund_failed_audit', {
+            p_audit_id: auditId,
+            p_user_id: userId,
+          });
+          if (refundErr) {
+            // Surface to Sentry but do not throw — failing the refund
+            // must not bury the original audit failure. The orphan-
+            // cleanup cron will not catch this (status is already
+            // 'failed'), so the alert is the recovery signal.
+            try {
+              const Sentry = await import('@sentry/nextjs');
+              Sentry.captureException(refundErr, {
+                tags: { surface: 'process-bill.refund_failed_audit' },
+                extra: { auditId, userId, reason },
+              });
+            } catch {
+              // Sentry optional.
+            }
+          } else if (refundOk === true) {
+            refunded = true;
+            logger.info('processBill: refunded credit on system failure', {
+              auditId,
+              userId,
+              reason,
+            });
+          }
+        }
+        return { ok: true, affected, refunded };
       });
 
       throw err;
@@ -884,10 +1188,7 @@ export const processBillFn = inngest.createFunction(
  * the same input produces the same end state — the property Inngest needs
  * for safe retries.
  */
-async function persistBill(
-  auditId: string,
-  bill: ExtractedBill,
-): Promise<PersistBillResult> {
+async function persistBill(auditId: string, bill: ExtractedBill): Promise<PersistBillResult> {
   const supabase = getAdminClient();
 
   // Delete in dependency order. bill_features / bill_credits / bill_dpp_installments
@@ -901,10 +1202,7 @@ async function persistBill(
     'bill_lines',
     'bill_accounts',
   ] as const) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('audit_id', auditId);
+    const { error } = await supabase.from(table).delete().eq('audit_id', auditId);
     if (error) {
       throw new Error(`delete ${table} failed: ${error.message}`);
     }
@@ -926,9 +1224,7 @@ async function persistBill(
   bill.accounts.forEach((account, accountIndex) => {
     const accountId = insertedAccounts[accountIndex];
     if (!accountId) {
-      throw new Error(
-        `internal: missing inserted account id at index ${accountIndex}`,
-      );
+      throw new Error(`internal: missing inserted account id at index ${accountIndex}`);
     }
     account.lines.forEach((line, lineIndex) => {
       allLineRows.push(withGeneratedId(lineToRow(auditId, accountId, line)));
@@ -1016,18 +1312,14 @@ async function persistBill(
     }
   }
   if (dppRows.length > 0) {
-    const { error } = await supabase
-      .from('bill_dpp_installments')
-      .insert(dppRows);
+    const { error } = await supabase.from('bill_dpp_installments').insert(dppRows);
     if (error) {
       throw new Error(`insert bill_dpp_installments failed: ${error.message}`);
     }
   }
 
   // Build the per-account nested line id list. Walk lineOrigin in-order.
-  const lineIds: string[][] = bill.accounts.map((a) =>
-    new Array<string>(a.lines.length),
-  );
+  const lineIds: string[][] = bill.accounts.map((a) => new Array<string>(a.lines.length));
   insertedLineIds.forEach((id, idx) => {
     const origin = lineOrigin[idx];
     if (!origin) return;
@@ -1061,10 +1353,7 @@ async function persistFindings(
   const supabase = getAdminClient();
 
   // Always clear first so retries don't double-insert.
-  const { error: delErr } = await supabase
-    .from('findings')
-    .delete()
-    .eq('audit_id', auditId);
+  const { error: delErr } = await supabase.from('findings').delete().eq('audit_id', auditId);
   if (delErr) {
     throw new Error(`delete findings failed: ${delErr.message}`);
   }
@@ -1123,11 +1412,7 @@ function accountToRow(auditId: string, account: ExtractedAccount) {
   };
 }
 
-function lineToRow(
-  auditId: string,
-  accountId: string,
-  line: ExtractedLine,
-) {
+function lineToRow(auditId: string, accountId: string, line: ExtractedLine) {
   return {
     audit_id: auditId,
     account_id: accountId,
@@ -1145,126 +1430,8 @@ function lineToRow(
   };
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// (B1) Per-account → global line index translation
-// ───────────────────────────────────────────────────────────────────────────
-
-/**
- * Logger surface required by translateLineIndexes. Matches the subset of
- * Inngest's `logger` we actually use, so tests can pass a plain object.
- */
-type IndexTranslationLogger = {
-  warn: (message: string, ctx?: Record<string, unknown>) => void;
-};
-
-type IndexTranslationOptions = {
-  auditId: string;
-  warn: IndexTranslationLogger['warn'];
-};
-
-export type IndexTranslationStats = {
-  /** Number of (finding, localIdx) pairs dropped because the local index was
-   *  outside the account's line range. Each drop also emits a warn log. */
-  droppedLineIndexes: number;
-  /** Number of findings whose entire affected_line_indexes array was wiped
-   *  due to a bad account index. Distinct from droppedLineIndexes. */
-  findingsWithDroppedAccount: number;
-};
-
-/**
- * Translate each finding's `affected_line_indexes` from per-account-local
- * positions (what every rule under `src/rules/definitions` actually emits)
- * to globally-flat positions inside `bill.accounts.flatMap(a => a.lines)`
- * — the layout `persistFindings` expects when it indexes `flatLineIds`.
- *
- * This is the (B1) bug-class fix. The contract documented in
- * `src/rules/types.ts` says affected_line_indexes are "positions inside the
- * flattened ctx.bill.accounts[].lines[]", but every concrete rule emits
- * the inner-loop `lineIndex` from its `account.lines.forEach((line, lineIndex) => …)`
- * — i.e. local to the account. Without translation, on any multi-account
- * bill the wrong UUID gets stamped on findings.
- *
- * Returns a NEW array (does not mutate input findings). H5: also populates
- * an out-parameter with drop counts so the caller can surface aggregate
- * visibility (a finding that was dropped silently looks like a rule bug to
- * support — it produces a "Potential saving" report row with no affected
- * lines listed).
- */
-export function translateLineIndexes(
-  findings: Finding[],
-  bill: ExtractedBill,
-  opts: IndexTranslationOptions,
-  stats?: IndexTranslationStats,
-): Finding[] {
-  const accountLineCounts = bill.accounts.map((a) => a.lines.length);
-  const accountStartOffsets: number[] = [];
-  let running = 0;
-  for (const n of accountLineCounts) {
-    accountStartOffsets.push(running);
-    running += n;
-  }
-  const totalLineCount = running;
-
-  return findings.map((f) => {
-    if (f.affected_line_indexes.length === 0) {
-      // No line indexes to translate — account indexes flow through.
-      return f;
-    }
-    const accountIdx = f.affected_account_indexes[0];
-    if (typeof accountIdx !== 'number') {
-      opts.warn(
-        'processBill: finding has line indexes but no account index — dropping line indexes',
-        { auditId: opts.auditId, rule_id: f.rule_id },
-      );
-      if (stats) stats.findingsWithDroppedAccount += 1;
-      return { ...f, affected_line_indexes: [] };
-    }
-    if (accountIdx < 0 || accountIdx >= accountLineCounts.length) {
-      opts.warn(
-        'processBill: finding affected_account_indexes[0] out of range — dropping line indexes',
-        {
-          auditId: opts.auditId,
-          rule_id: f.rule_id,
-          accountIdx,
-          accountCount: accountLineCounts.length,
-        },
-      );
-      if (stats) stats.findingsWithDroppedAccount += 1;
-      return { ...f, affected_line_indexes: [] };
-    }
-    const accountSize = accountLineCounts[accountIdx] ?? 0;
-    const offset = accountStartOffsets[accountIdx] ?? 0;
-    const globalIndexes: number[] = [];
-    for (const localIdx of f.affected_line_indexes) {
-      if (
-        typeof localIdx !== 'number' ||
-        localIdx < 0 ||
-        localIdx >= accountSize
-      ) {
-        opts.warn(
-          'processBill: finding has out-of-range per-account line index — dropping that index only',
-          {
-            auditId: opts.auditId,
-            rule_id: f.rule_id,
-            accountIdx,
-            localIdx,
-            accountSize,
-          },
-        );
-        if (stats) stats.droppedLineIndexes += 1;
-        continue;
-      }
-      const globalIdx = offset + localIdx;
-      if (globalIdx >= totalLineCount) {
-        // Should be unreachable given the size check above, but bail out
-        // rather than emit a corrupt index.
-        continue;
-      }
-      globalIndexes.push(globalIdx);
-    }
-    return { ...f, affected_line_indexes: globalIndexes };
-  });
-}
+export type { IndexTranslationStats } from '@/lib/findings/translate-line-indexes';
+export { translateLineIndexes } from '@/lib/findings/translate-line-indexes';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test-only exports
@@ -1285,11 +1452,12 @@ export const __testables = {
   isEdi811Buffer,
   assertSupportedUploadBuffer,
   withGeneratedId,
+  isUserFaultFailure,
+  emitCompletedAuditSideEffects,
+  isLikelyEdi811Buffer,
 };
 
-function withGeneratedId<T extends Record<string, unknown>>(
-  row: T,
-): T & { id: string } {
+function withGeneratedId<T extends Record<string, unknown>>(row: T): T & { id: string } {
   return { ...row, id: randomUUID() };
 }
 

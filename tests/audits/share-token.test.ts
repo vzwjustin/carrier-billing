@@ -61,44 +61,42 @@ interface AuditRow {
 type MaybeSingleResult =
   | { data: AuditRow; error: null }
   | { data: null; error: null }
-  | { data: null; error: { message: string } };
+  | { data: null; error: { code?: string; message: string } };
 
 type ListResult = { data: unknown[]; error: null };
+type EqProxy = Promise<ListResult> & {
+  eq: (_col: string, _val: string) => EqProxy;
+  maybeSingle: () => Promise<MaybeSingleResult>;
+};
 
 const auditMaybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
 
 // admin.from('audits').select(...).eq('share_token', token).maybeSingle()
 // admin.from('findings'|'bill_*').select(...).eq('audit_id', id) → list
 function makeAdminTableBuilder(table: string) {
+  const makeEqProxy = (): EqProxy => {
+    const listPromise = Promise.resolve<ListResult>({
+      data: [],
+      error: null,
+    });
+    const proxy = Object.assign(listPromise, {
+      eq: (_col: string, _val: string) => proxy,
+      maybeSingle: (): Promise<MaybeSingleResult> => {
+        if (table !== 'audits') {
+          return Promise.resolve<MaybeSingleResult>({
+            data: null,
+            error: null,
+          });
+        }
+        return auditMaybeSingleMock();
+      },
+    });
+    return proxy;
+  };
+
   return {
     select: (_cols: string) => ({
-      eq: (
-        _col: string,
-        _val: string,
-      ): Promise<ListResult> & {
-        maybeSingle: () => Promise<MaybeSingleResult>;
-      } => {
-        const listPromise = Promise.resolve<ListResult>({
-          data: [],
-          error: null,
-        });
-        // The chained `.eq().maybeSingle()` is only used on the audits lookup.
-        // Other tables are awaited directly as list reads.
-        const proxy = Object.assign(listPromise, {
-          maybeSingle: (): Promise<MaybeSingleResult> => {
-            if (table !== 'audits') {
-              return Promise.resolve<MaybeSingleResult>({
-                data: null,
-                error: null,
-              });
-            }
-            return auditMaybeSingleMock();
-          },
-        });
-        return proxy as unknown as Promise<ListResult> & {
-          maybeSingle: () => Promise<MaybeSingleResult>;
-        };
-      },
+      eq: (_col: string, _val: string): EqProxy => makeEqProxy(),
     }),
   };
 }
@@ -126,18 +124,18 @@ vi.mock('@/env', () => ({
 
 // Stub the heavy ReportView so we don't have to render every child component.
 vi.mock('@/components/audits/report-view', () => ({
-  ReportView: ({ isPublic, publicToken }: { isPublic?: boolean; publicToken?: string }) => ({
-    type: reportViewMock({ isPublic, publicToken }) ?? 'div',
+  ReportView: ({ isPublic, shareToken }: { isPublic?: boolean; shareToken?: string }) => ({
+    type: reportViewMock({ isPublic, shareToken }) ?? 'div',
     props: {
       'data-testid': 'report-view',
       'data-public': isPublic ? 'true' : 'false',
-      'data-public-token': publicToken,
+      'data-public-token': shareToken,
     },
   }),
 }));
 
 // Import after the mocks above.
-import ShareReportPage from '@/app/share/[token]/page';
+import ShareReportPage, { generateMetadata } from '@/app/share/[token]/page';
 
 const VALID_AUDIT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -187,20 +185,20 @@ describe('GET /share/[token] page handler', () => {
     expect(element).toBeDefined();
     // The audits lookup must have been issued.
     expect(adminFromMock).toHaveBeenCalledWith('audits');
-    function findPublicToken(node: unknown): unknown {
+    function findShareToken(node: unknown): unknown {
       if (typeof node !== 'object' || node === null) return undefined;
       const props = (node as { props?: Record<string, unknown> }).props;
-      if (props?.['publicToken']) return props['publicToken'];
+      if (props?.['shareToken']) return props['shareToken'];
       const children = props?.['children'];
       if (Array.isArray(children)) {
         for (const child of children) {
-          const found = findPublicToken(child);
+          const found = findShareToken(child);
           if (found) return found;
         }
       }
-      return findPublicToken(children);
+      return findShareToken(children);
     }
-    expect(findPublicToken(element)).toBe(VALID_TOKEN_32);
+    expect(findShareToken(element)).toBe(VALID_TOKEN_32);
   });
 
   it('(b) unknown token → notFound() is invoked', async () => {
@@ -292,15 +290,61 @@ describe('GET /share/[token] page handler', () => {
     ).rejects.toThrowError(NextNotFoundError);
   });
 
-  it('(f) audit found with NULL expiry (grandfathered share) → renders normally', async () => {
+  it('(f) audit found with NULL expiry when column exists → notFound() (H11)', async () => {
     auditMaybeSingleMock.mockResolvedValueOnce({
       data: makeAudit({ share_token_expires_at: null }),
       error: null,
     });
 
+    await expect(
+      ShareReportPage({
+        params: Promise.resolve({ token: VALID_TOKEN_32 }),
+      }),
+    ).rejects.toThrowError(NextNotFoundError);
+  });
+
+  it('(g) retries without share_token_expires_at when PostgREST schema cache is stale', async () => {
+    auditMaybeSingleMock
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'PGRST204', message: 'column share_token_expires_at not found' },
+      })
+      .mockResolvedValueOnce({
+        data: makeAudit({ share_token_expires_at: null }),
+        error: null,
+      });
+
     const element = await ShareReportPage({
       params: Promise.resolve({ token: VALID_TOKEN_32 }),
     });
+
     expect(element).toBeDefined();
+    expect(auditMaybeSingleMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('(h) metadata retries without share_token_expires_at when PostgREST schema cache is stale', async () => {
+    auditMaybeSingleMock
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: 'PGRST204',
+          message: 'column share_token_expires_at not found',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: makeAudit({
+          estimated_annual_savings_cents: 1_234_500,
+          finding_count: 2,
+          share_token_expires_at: null,
+        }),
+        error: null,
+      });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ token: VALID_TOKEN_32 }),
+    });
+
+    expect(metadata.title).toBe('Verizon bill audit — $12.3k/yr in potential savings');
+    expect(auditMaybeSingleMock).toHaveBeenCalledTimes(2);
   });
 });

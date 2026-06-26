@@ -6,10 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { generateInboundToken } from '@/lib/inbound/token';
-import {
-  assertPublicHttpsTarget,
-  SsrfBlockedError,
-} from '@/lib/security/ssrf-guard';
+import { assertPublicHttpsTarget, SsrfBlockedError } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -18,36 +15,27 @@ const ProfileSchema = z.object({
   company_name: z.string().trim().max(120).optional().nullable(),
 });
 
-export type UpdateProfileResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type UpdateProfileResult = { ok: true } | { ok: false; error: string };
 
 const WebhookSchema = z.object({
   outbound_webhook_url: z
     .string()
     .trim()
     .max(2048)
-    .refine(
-      (v) => v === '' || /^https:\/\//i.test(v),
-      'URL must start with https://',
-    ),
+    .refine((v) => v === '' || /^https:\/\//i.test(v), 'URL must start with https://'),
 });
 
-export type UpdateWebhookResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type UpdateWebhookResult = { ok: true } | { ok: false; error: string };
 
-export type CopyWebhookSecretResult =
-  | { ok: true; secret: string }
-  | { ok: false; error: string };
+export type CopyWebhookSecretResult = { ok: true; secret: string } | { ok: false; error: string };
 
-export type RotateInboundTokenResult =
-  | { ok: true; token: string }
-  | { ok: false; error: string };
+export type RotateInboundTokenResult = { ok: true; token: string } | { ok: false; error: string };
 
-export async function updateProfileAction(
-  input: unknown,
-): Promise<UpdateProfileResult> {
+function matchedExactlyOneProfile(data: unknown): boolean {
+  return Array.isArray(data) && data.length === 1;
+}
+
+export async function updateProfileAction(input: unknown): Promise<UpdateProfileResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -62,18 +50,17 @@ export async function updateProfileAction(
   }
 
   const admin = getAdminClient();
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('profiles')
     .update({
       full_name: parsed.data.full_name?.length ? parsed.data.full_name : null,
-      company_name: parsed.data.company_name?.length
-        ? parsed.data.company_name
-        : null,
+      company_name: parsed.data.company_name?.length ? parsed.data.company_name : null,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
-  if (error) {
+  if (error || !matchedExactlyOneProfile(updated)) {
     return { ok: false, error: 'Could not save profile. Please try again.' };
   }
 
@@ -81,9 +68,7 @@ export async function updateProfileAction(
   return { ok: true };
 }
 
-export async function updateOutboundWebhookAction(
-  input: unknown,
-): Promise<UpdateWebhookResult> {
+export async function updateOutboundWebhookAction(input: unknown): Promise<UpdateWebhookResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -101,15 +86,18 @@ export async function updateOutboundWebhookAction(
 
   if (url === '') {
     // Clear webhook config + secret entirely.
-    const { error } = await admin
+    const { data: updated, error } = await admin
       .from('profiles')
       .update({
         outbound_webhook_url: null,
         outbound_webhook_secret: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
-    if (error) return { ok: false, error: 'Could not save webhook.' };
+      .eq('id', user.id)
+      .select('id');
+    if (error || !matchedExactlyOneProfile(updated)) {
+      return { ok: false, error: 'Could not save webhook.' };
+    }
     revalidatePath('/settings');
     return { ok: true };
   }
@@ -140,24 +128,28 @@ export async function updateOutboundWebhookAction(
     .select('outbound_webhook_secret')
     .eq('id', user.id)
     .maybeSingle();
-  const currentSecret = (
-    existing.data as { outbound_webhook_secret?: string | null } | null
-  )?.outbound_webhook_secret;
+  if (existing.error) return { ok: false, error: 'Could not save webhook.' };
+
+  const currentSecret = (existing.data as { outbound_webhook_secret?: string | null } | null)
+    ?.outbound_webhook_secret;
   const secret =
     typeof currentSecret === 'string' && currentSecret.length > 0
       ? currentSecret
       : `whs_${randomBytes(24).toString('hex')}`;
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('profiles')
     .update({
       outbound_webhook_url: url,
       outbound_webhook_secret: secret,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
-  if (error) return { ok: false, error: 'Could not save webhook.' };
+  if (error || !matchedExactlyOneProfile(updated)) {
+    return { ok: false, error: 'Could not save webhook.' };
+  }
   revalidatePath('/settings');
   return { ok: true };
 }
@@ -203,12 +195,57 @@ export async function copyOutboundWebhookSecretAction(): Promise<CopyWebhookSecr
     }
   }
 
-  await admin
+  const { data: updated, error: revealError } = await admin
     .from('profiles')
     .update({ last_secret_reveal_at: new Date().toISOString() })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
+
+  if (revealError || !matchedExactlyOneProfile(updated)) {
+    return { ok: false, error: 'Could not retrieve secret.' };
+  }
 
   return { ok: true, secret };
+}
+
+export type DeleteAccountResult = { ok: true } | { ok: false; error: string };
+
+const DeleteAccountSchema = z.object({
+  confirm_email: z.string().trim().min(1).max(320),
+});
+
+export async function deleteAccountAction(input: unknown): Promise<DeleteAccountResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+
+  const parsed = DeleteAccountSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: 'Invalid confirmation.' };
+  }
+
+  // Require the user to type their own email exactly. Scoped strictly to the
+  // signed-in user's own account — never deletes anyone else.
+  const expected = (user.email ?? '').trim().toLowerCase();
+  if (expected.length === 0 || parsed.data.confirm_email.toLowerCase() !== expected) {
+    return {
+      ok: false,
+      error: 'The email you typed does not match your account email.',
+    };
+  }
+
+  const admin = getAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(user.id);
+  if (error) {
+    return { ok: false, error: 'Could not delete account. Please try again.' };
+  }
+
+  // Session cookies now reference a deleted user; clear them so the browser
+  // isn't left in a half-authenticated state.
+  await supabase.auth.signOut();
+  return { ok: true };
 }
 
 export async function rotateInboundTokenAction(): Promise<RotateInboundTokenResult> {
@@ -224,20 +261,21 @@ export async function rotateInboundTokenAction(): Promise<RotateInboundTokenResu
   // but we'd rather fail loud + retry than corrupt the user's token.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const fresh = generateInboundToken();
-    const { error } = await admin
+    const { data: updated, error } = await admin
       .from('profiles')
       .update({
         inbound_email_token: fresh,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq('id', user.id)
+      .select('id');
 
-    if (!error) {
+    if (!error && matchedExactlyOneProfile(updated)) {
       revalidatePath('/settings');
       return { ok: true, token: fresh };
     }
 
-    if ((error as { code?: string }).code !== '23505') {
+    if ((error as { code?: string } | null)?.code !== '23505') {
       return { ok: false, error: 'Could not rotate token.' };
     }
     // 23505 → token collision; loop for another attempt.

@@ -14,9 +14,7 @@ describe('hashTokenForAnalytics', () => {
   });
 
   it('produces different outputs for different inputs', () => {
-    expect(hashTokenForAnalytics('token-a')).not.toBe(
-      hashTokenForAnalytics('token-b'),
-    );
+    expect(hashTokenForAnalytics('token-a')).not.toBe(hashTokenForAnalytics('token-b'));
   });
 
   it('never contains the original token substring', () => {

@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   runEdi811Pipeline,
   Edi811PipelineError,
+  isLikelyEdi811Buffer,
   MAX_EDI_BYTES,
 } from '@/extraction/edi811/pipeline';
 import { MAX_EDI_SEGMENTS } from '@/extraction/edi811/parser';
@@ -26,14 +27,21 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
     // Subscriber #1
     'HL*2*1*B~',
     'REF*MN*5551234567~',
+    'REF*EM*John Smith~',
     'PID*F****iPhone 15~',
     'IT1**1*EA*60.00**VP*Business Unlimited Pro 2.0~',
     buildSac({ indicator: 'A', code: 'F050', amount: '10.00', description: 'Q1 promo credit' }),
-    buildSac({ indicator: 'C', code: 'B660', amount: '15.00', description: 'Total Mobile Protection' }),
+    buildSac({
+      indicator: 'C',
+      code: 'B660',
+      amount: '15.00',
+      description: 'Total Mobile Protection',
+    }),
     'QTY*DG*22~',
     // Subscriber #2
     'HL*3*1*B~',
     'REF*MN*5559876543~',
+    'REF*EM*Store 42~',
     'PID*F****iPhone 14~',
     'IT1**1*EA*45.00**VP*Business Unlimited Plus 2.0~',
     buildSac({ indicator: 'C', code: 'F305', amount: '6.00', description: 'Verizon Cloud' }),
@@ -55,6 +63,29 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
     expect(() => ExtractedBillSchema.parse(result.bill)).not.toThrow();
   });
 
+  it('detects raw, BOM-prefixed, and whitespace-prefixed EDI buffers', () => {
+    expect(isLikelyEdi811Buffer(bufferOf(interchange))).toBe(true);
+    expect(isLikelyEdi811Buffer(bufferOf(`\uFEFF${interchange}`))).toBe(true);
+    expect(isLikelyEdi811Buffer(bufferOf(` \r\n\t${interchange}`))).toBe(true);
+  });
+
+  it('does not classify PDFs or prose starting with ISA letters as EDI', () => {
+    expect(isLikelyEdi811Buffer(Buffer.from('%PDF-1.7\n', 'utf8'))).toBe(false);
+    expect(isLikelyEdi811Buffer(Buffer.from('  ISABELLA is not an envelope', 'utf8'))).toBe(false);
+  });
+
+  it('runs the EDI pipeline for BOM-prefixed and whitespace-prefixed interchanges', async () => {
+    const bomResult = await runEdi811Pipeline({
+      buffer: bufferOf(`\uFEFF${interchange}`),
+    });
+    const whitespaceResult = await runEdi811Pipeline({
+      buffer: bufferOf(` \r\n\t${interchange}`),
+    });
+
+    expect(bomResult.detectedCarrier).toBe('verizon');
+    expect(whitespaceResult.detectedCarrier).toBe('verizon');
+  });
+
   it('captures billing period from DTM 150/151', async () => {
     const { bill } = await runEdi811Pipeline({ buffer: bufferOf(interchange) });
     expect(bill.billing_period_start).toBe('2026-03-01');
@@ -70,12 +101,14 @@ describe('runEdi811Pipeline — Verizon fixture', () => {
 
     const [line1, line2] = account.lines;
     expect(line1!.mdn_last4).toBe('4567');
+    expect(line1!.user_label).toBeNull();
     expect(line1!.device).toBe('iPhone 15');
     expect(line1!.plan_name).toBe('Business Unlimited Pro 2.0');
     expect(line1!.plan_base_cents).toBe(6_000);
     expect(line1!.data_used_gb).toBe(22);
 
     expect(line2!.mdn_last4).toBe('6543');
+    expect(line2!.user_label).toBe('Store 42');
     expect(line2!.plan_name).toBe('Business Unlimited Plus 2.0');
     expect(line2!.plan_base_cents).toBe(4_500);
   });
@@ -112,8 +145,18 @@ describe('runEdi811Pipeline — AT&T fixture', () => {
     'REF*MN*5550001111~',
     'PID*F****Samsung Galaxy S24~',
     'IT1**1*EA*70.00**VP*Business Unlimited Premium~',
-    buildSac({ indicator: 'C', code: 'B610', amount: '12.00', description: 'AT&T Mobile Insurance' }),
-    buildSac({ indicator: 'C', code: 'F210', amount: '10.00', description: 'International Day Pass' }),
+    buildSac({
+      indicator: 'C',
+      code: 'B610',
+      amount: '12.00',
+      description: 'AT&T Mobile Insurance',
+    }),
+    buildSac({
+      indicator: 'C',
+      code: 'F210',
+      amount: '10.00',
+      description: 'International Day Pass',
+    }),
     buildSac({
       indicator: 'C',
       code: 'D830',
@@ -236,10 +279,7 @@ describe('runEdi811Pipeline — failure modes', () => {
     // (~480 KB) so the byte cap won't fire first.
     const isa = buildIsa({ senderId: 'VZW', receiverId: 'ACME' });
     const gs = buildGs('VZWBILLING');
-    const stuffer = Array.from(
-      { length: MAX_EDI_SEGMENTS + 5 },
-      () => 'N1*RE*X~',
-    ).join('');
+    const stuffer = Array.from({ length: MAX_EDI_SEGMENTS + 5 }, () => 'N1*RE*X~').join('');
     const body = `ST*811*0001~${stuffer}SE*${MAX_EDI_SEGMENTS + 7}*0001~`;
     const interchange = buildInterchange({ isa, gs, body });
 
@@ -374,6 +414,94 @@ describe('runEdi811Pipeline — failure modes', () => {
     });
     expect(bill.billing_period_start).toBe('2026-03-01');
     expect(bill.billing_period_end).toBe('2026-03-31');
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (Finding E) A $0 SAC device installment (D830) is a valid DPP row — the
+  // schema allows monthly_cents: 0 (nonnegative). It must be RETAINED so
+  // device binding for DPP / contract-rate rules still works.
+  // ───────────────────────────────────────────────────────────────────────
+  it('retains a $0 SAC device installment in dpp_installments', async () => {
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-DPP0~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*150*20260301~',
+      'DTM*151*20260331~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'PID*F****iPhone 15 Pro~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      buildSac({
+        indicator: 'C',
+        code: 'D830',
+        amount: '0.00',
+        description: 'iPhone 15 Pro Installment (paid off)',
+        remainingPayments: 0,
+        totalPayments: 24,
+      }),
+      'TDS*4000~',
+      'CTT*1~',
+      'SE*14*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const { bill } = await runEdi811Pipeline({ buffer: bufferOf(interchange) });
+    const line = bill.accounts[0]!.lines[0]!;
+    expect(line.dpp_installments).toHaveLength(1);
+    expect(line.dpp_installments[0]!.monthly_cents).toBe(0);
+    expect(line.dpp_installments[0]!.total_payments).toBe(24);
+    expect(() => ExtractedBillSchema.parse(bill)).not.toThrow();
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // (Finding F) An arithmetically-negative account subtotal is clamped to 0
+  // so the schema's nonnegative() doesn't reject the bill, but the clamp must
+  // be observable (console.warn with account last4 + the negative subtotal),
+  // not silent — silent clamping masks an extraction error.
+  // ───────────────────────────────────────────────────────────────────────
+  it('warns (and clamps) when an account subtotal computes negative', async () => {
+    // Account-level credit (-$50) outweighs the only line's base ($40): the
+    // raw subtotal is -$10, which sumAccountTotal clamps to 0 with a warning.
+    const body = [
+      'ST*811*0001~',
+      'BIG*20260401*INV-NEG~',
+      'N1*RE*ACME Mobile Co~',
+      'DTM*150*20260301~',
+      'DTM*151*20260331~',
+      'HL*1**A~',
+      'REF*9V*1234567890~',
+      // Account-level allowance (no current line yet) → account_level_credits.
+      buildSac({ indicator: 'A', code: 'F050', amount: '50.00', description: 'Loyalty credit' }),
+      'HL*2*1*B~',
+      'REF*MN*5551234567~',
+      'IT1**1*EA*40.00**VP*Generic Plan~',
+      'TDS*4000~',
+      'CTT*1~',
+      'SE*13*0001~',
+    ].join('');
+    const interchange = buildInterchange({
+      isa: buildIsa({ senderId: 'GENERIC', receiverId: 'ACME' }),
+      gs: buildGs('GENERICEDI'),
+      body,
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { bill } = await runEdi811Pipeline({ buffer: bufferOf(interchange) });
+      expect(() => ExtractedBillSchema.parse(bill)).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const msg = warnSpy.mock.calls[0]![0] as string;
+      // Observability: surfaces the account last4 and the negative subtotal.
+      expect(msg).toContain('7890');
+      expect(msg).toContain('-1000');
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('accepts an unknown carrier and emits notes through the validated bill', async () => {

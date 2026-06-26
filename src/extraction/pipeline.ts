@@ -5,6 +5,10 @@ import { extractTextWithOCR, hasAwsCredentials } from '@/extraction/ocr';
 import { normalize as normalizeVerizon } from '@/extraction/carriers/verizon';
 import { normalize as normalizeAtt } from '@/extraction/carriers/att';
 import { normalize as normalizeTmobile } from '@/extraction/carriers/tmobile';
+import { normalize as normalizeUsCellular } from '@/extraction/carriers/uscellular';
+import { normalize as normalizeSpectrum } from '@/extraction/carriers/spectrum';
+import { normalize as normalizeXfinity } from '@/extraction/carriers/xfinity';
+import { normalize as normalizeCricket } from '@/extraction/carriers/cricket';
 import type { Carrier, ExtractedBill } from '@/extraction/schema';
 
 /** Below this length we assume the PDF is image-only and route to OCR. */
@@ -87,11 +91,7 @@ export async function runExtractionPipeline({
     // collapse it into a user-friendly `encrypted-pdf` reason instead of
     // the generic `extraction:extract_text:` label.
     if (isEncryptedPdfError(err)) {
-      throw new PipelineError(
-        'Encrypted PDF — cannot extract text',
-        'encrypted_pdf',
-        err,
-      );
+      throw new PipelineError('Encrypted PDF — cannot extract text', 'encrypted_pdf', err);
     }
     throw new PipelineError('Failed to read PDF text', 'extract_text', err);
   }
@@ -101,7 +101,7 @@ export async function runExtractionPipeline({
   if (rawText.trim().length < OCR_TEXT_THRESHOLD && hasAwsCredentials()) {
     neededOcr = true;
     try {
-      const ocrText = await extractTextWithOCR(buffer);
+      const ocrText = await extractTextWithOCR(buffer, { pageCount });
       // Prefer the longer of the two — if OCR was empty, keep whatever pdf-parse gave us.
       if (ocrText.length > rawText.length) {
         rawText = ocrText;
@@ -116,11 +116,7 @@ export async function runExtractionPipeline({
   try {
     detectedCarrier = detectCarrier(rawText);
   } catch (err) {
-    throw new PipelineError(
-      'Carrier detection failed',
-      'detect_carrier',
-      err,
-    );
+    throw new PipelineError('Carrier detection failed', 'detect_carrier', err);
   }
 
   // 4. LLM extraction.
@@ -173,6 +169,14 @@ function applyCarrierNormalization(bill: ExtractedBill): ExtractedBill {
       return normalizeAtt(bill);
     case 'tmobile':
       return normalizeTmobile(bill);
+    case 'uscellular':
+      return normalizeUsCellular(bill);
+    case 'spectrum':
+      return normalizeSpectrum(bill);
+    case 'xfinity':
+      return normalizeXfinity(bill);
+    case 'cricket':
+      return normalizeCricket(bill);
     case 'unknown':
       return bill;
   }

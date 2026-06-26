@@ -52,9 +52,7 @@ interface ResolvedTarget {
  * requiring full DNS-rebinding resistance need a transport-level custom lookup
  * that preserves the original hostname for TLS/SNI.
  */
-export async function assertPublicHttpsTarget(
-  url: string,
-): Promise<ResolvedTarget> {
+export async function assertPublicHttpsTarget(url: string): Promise<ResolvedTarget> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -74,9 +72,7 @@ export async function assertPublicHttpsTarget(
   // URL.hostname returns IPv6 wrapped in brackets (`[::1]`); strip them
   // before passing to isIP / isBlockedAddress, which expect bare addresses.
   const rawHost =
-    hostname.startsWith('[') && hostname.endsWith(']')
-      ? hostname.slice(1, -1)
-      : hostname;
+    hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 
   // If the URL is already a literal IP, validate that directly — no DNS
   // lookup needed (and `dns.lookup` would echo it back anyway on most stacks).
@@ -143,6 +139,18 @@ function isBlockedV4(addr: string): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true;
   // 192.168.0.0/16 — RFC1918 private.
   if (a === 192 && b === 168) return true;
+  // 192.0.0.0/24 — IETF protocol assignments, not general public hosts.
+  if (a === 192 && b === 0 && parts[2] === 0) return true;
+  // 192.0.2.0/24 — TEST-NET-1 documentation range.
+  if (a === 192 && b === 0 && parts[2] === 2) return true;
+  // 192.88.99.0/24 — deprecated 6to4 relay anycast.
+  if (a === 192 && b === 88 && parts[2] === 99) return true;
+  // 198.18.0.0/15 — benchmarking/interconnect testing.
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  // 198.51.100.0/24 — TEST-NET-2 documentation range.
+  if (a === 198 && b === 51 && parts[2] === 100) return true;
+  // 203.0.113.0/24 — TEST-NET-3 documentation range.
+  if (a === 203 && b === 0 && parts[2] === 113) return true;
   // 100.64.0.0/10 — CGNAT (RFC6598).
   if (a === 100 && b >= 64 && b <= 127) return true;
   // 224.0.0.0/4 — multicast.
@@ -201,6 +209,10 @@ function isBlockedV6(addrIn: string): boolean {
   if ((first & 0xffc0) === 0xfe80) return true;
   // ff00::/8 — multicast.
   if ((first & 0xff00) === 0xff00) return true;
+  // 2001:db8::/32 — documentation range.
+  if (first === 0x2001 && hextets[1] === 0x0db8) return true;
+  // 2001:2::/48 — benchmarking range.
+  if (first === 0x2001 && hextets[1] === 0x0002 && hextets[2] === 0) return true;
 
   // R2-F1 fix: 6to4 prefix (2002::/16, RFC 3056). hextets[1..2] hold the
   // embedded IPv4. An attacker supplying `2002:7f00:0001::` reaches a host
@@ -210,8 +222,7 @@ function isBlockedV6(addrIn: string): boolean {
   if ((first & 0xffff) === 0x2002) {
     const h1 = hextets[1]!;
     const h2 = hextets[2]!;
-    const embedded =
-      `${(h1 >> 8) & 0xff}.${h1 & 0xff}.${(h2 >> 8) & 0xff}.${h2 & 0xff}`;
+    const embedded = `${(h1 >> 8) & 0xff}.${h1 & 0xff}.${(h2 >> 8) & 0xff}.${h2 & 0xff}`;
     return isBlockedV4(embedded);
   }
 

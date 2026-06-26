@@ -19,9 +19,7 @@ import { readdir } from 'node:fs/promises';
  * bootstrap output need to know they're missing migrations rather than
  * silently deploying against an outdated list.
  */
-export async function listMigrationFiles(
-  migrationsDir: string,
-): Promise<string[]> {
+export async function listMigrationFiles(migrationsDir: string): Promise<string[]> {
   const entries = await readdir(migrationsDir);
   return entries.filter((f) => f.endsWith('.sql')).sort();
 }

@@ -29,9 +29,7 @@ const SECURITY_HEADERS = [
 // When two header entries match the same path and set the same key, the later
 // entry wins, so this overrides Referrer-Policy from SECURITY_HEADERS for these
 // routes only.
-const NO_REFERRER_HEADER = [
-  { key: 'Referrer-Policy', value: 'no-referrer' },
-];
+const NO_REFERRER_HEADER = [{ key: 'Referrer-Policy', value: 'no-referrer' }];
 
 export const headersConfig = [
   {
@@ -91,9 +89,12 @@ export default withSentryConfig(nextConfig, {
     finalize: sentryUploadEnabled,
   },
   widenClientFileUpload: true,
-  reactComponentAnnotation: { enabled: true },
   tunnelRoute: '/monitoring',
-  hideSourceMaps: true,
-  disableLogger: true,
-  automaticVercelMonitors: false,
+  // v10 moved the three options below under `webpack` (legacy top-level keys are
+  // deprecated; per Sentry types `widenClientFileUpload`/`tunnelRoute` stay top-level).
+  webpack: {
+    reactComponentAnnotation: { enabled: true },
+    treeshake: { removeDebugLogging: true },
+    automaticVercelMonitors: false,
+  },
 });

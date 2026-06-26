@@ -3,6 +3,33 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
+ * Inbound HTTP webhook token utilities (separate surface from the
+ * `inbound_email_token` above). These tokens authenticate external callers
+ * (Slack bots, Linear automations, etc.) POSTing to
+ * `/api/inbound/finding-status`.
+ *
+ * Format: 32-char base64url (`randomBytes(24).toString('base64url')` → 24
+ * bytes = 192 bits of entropy, encoded as 32 chars in [A-Za-z0-9_-]). The DB
+ * CHECK constraint in `0029_inbound_finding_webhook.sql` enforces the shape.
+ *
+ * Tokens are minted lazily (operator clicks "Generate" in the settings UI)
+ * and revoked by setting the column to NULL. Rotation = revoke + mint.
+ */
+
+const INBOUND_WEBHOOK_TOKEN_BYTES = 24;
+export const INBOUND_WEBHOOK_TOKEN_LENGTH = 32;
+
+export function generateInboundWebhookToken(): string {
+  return randomBytes(INBOUND_WEBHOOK_TOKEN_BYTES).toString('base64url');
+}
+
+const INBOUND_WEBHOOK_TOKEN_RE = /^[A-Za-z0-9_-]{32}$/;
+
+export function isInboundWebhookTokenShape(value: unknown): value is string {
+  return typeof value === 'string' && INBOUND_WEBHOOK_TOKEN_RE.test(value);
+}
+
+/**
  * Inbound email token utilities.
  *
  * Each user gets an opaque 16-char base32 token stored on `profiles`. The
@@ -51,8 +78,7 @@ export async function getOrCreateInboundToken(
     throw new Error(`profile read failed: ${error.message}`);
   }
 
-  const existing = (data as { inbound_email_token?: string | null } | null)
-    ?.inbound_email_token;
+  const existing = (data as { inbound_email_token?: string | null } | null)?.inbound_email_token;
   if (typeof existing === 'string' && existing.length > 0) {
     return existing;
   }
@@ -96,9 +122,11 @@ export async function getOrCreateInboundToken(
       .select('inbound_email_token')
       .eq('id', userId)
       .maybeSingle();
-    const persisted = (
-      reread.data as { inbound_email_token?: string | null } | null
-    )?.inbound_email_token;
+    if (reread.error) {
+      throw new Error(`inbound token reread failed: ${reread.error.message}`);
+    }
+    const persisted = (reread.data as { inbound_email_token?: string | null } | null)
+      ?.inbound_email_token;
     if (typeof persisted === 'string' && persisted.length > 0) {
       return persisted;
     }
@@ -120,11 +148,7 @@ const BASE64_SHA256_RE = /^(sha256=)?[A-Za-z0-9+/_-]{43}=?$/;
  * base64-encoded signatures (standard or URL-safe) — try hex first, fall back
  * to base64 on length mismatch / decode failure.
  */
-export function verifyHmac(
-  body: string,
-  signatureHex: string,
-  secret: string,
-): boolean {
+export function verifyHmac(body: string, signatureHex: string, secret: string): boolean {
   if (typeof signatureHex !== 'string') return false;
   const stripped = signatureHex.replace(/^sha256=/, '');
   const expected = createHmac('sha256', secret).update(body).digest();
@@ -171,9 +195,7 @@ const RECIPIENT_RE = new RegExp(
   'i',
 );
 
-export function parseInboundRecipient(
-  to: string,
-): { token: string; domain: string } | null {
+export function parseInboundRecipient(to: string): { token: string; domain: string } | null {
   const match = to.match(RECIPIENT_RE);
   if (!match) return null;
   const [, token, domain] = match;

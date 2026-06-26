@@ -10,9 +10,7 @@ export interface SavingsHeroProps {
 export function SavingsHero({ audit }: SavingsHeroProps): React.JSX.Element {
   const monthly = audit.estimated_monthly_savings_cents;
   const annual =
-    audit.estimated_annual_savings_cents > 0
-      ? audit.estimated_annual_savings_cents
-      : monthly * 12;
+    audit.estimated_annual_savings_cents > 0 ? audit.estimated_annual_savings_cents : monthly * 12;
   const findings = audit.finding_count;
   const highSeverity = audit.high_severity_count;
   const positive = monthly > 0;
@@ -29,8 +27,8 @@ export function SavingsHero({ audit }: SavingsHeroProps): React.JSX.Element {
       <p
         className={
           positive
-            ? 'text-xs font-medium uppercase tracking-wider text-emerald-700'
-            : 'text-xs font-medium uppercase tracking-wider text-neutral-600'
+            ? 'text-xs font-medium tracking-wider text-emerald-700 uppercase'
+            : 'text-xs font-medium tracking-wider text-neutral-600 uppercase'
         }
       >
         Estimated savings
@@ -50,9 +48,7 @@ export function SavingsHero({ audit }: SavingsHeroProps): React.JSX.Element {
             </p>
             <p
               className={
-                positive
-                  ? 'mt-1 text-sm text-emerald-800'
-                  : 'mt-1 text-sm text-neutral-600'
+                positive ? 'mt-1 text-sm text-emerald-800' : 'mt-1 text-sm text-neutral-600'
               }
             >
               per month
@@ -70,9 +66,7 @@ export function SavingsHero({ audit }: SavingsHeroProps): React.JSX.Element {
             </p>
             <p
               className={
-                positive
-                  ? 'mt-1 text-sm text-emerald-800'
-                  : 'mt-1 text-sm text-neutral-600'
+                positive ? 'mt-1 text-sm text-emerald-800' : 'mt-1 text-sm text-neutral-600'
               }
             >
               per year
@@ -81,11 +75,7 @@ export function SavingsHero({ audit }: SavingsHeroProps): React.JSX.Element {
         </div>
 
         <div className="flex flex-row gap-4 sm:gap-6">
-          <FindingStat
-            label="Findings"
-            value={findings}
-            tone={positive ? 'emerald' : 'neutral'}
-          />
+          <FindingStat label="Findings" value={findings} tone={positive ? 'emerald' : 'neutral'} />
           <FindingStat
             label="High severity"
             value={highSeverity}
@@ -122,9 +112,7 @@ function FindingStat({
 }): React.JSX.Element {
   return (
     <div className="rounded-lg border border-white/40 bg-white/60 px-4 py-3 backdrop-blur-sm">
-      <p className={`text-xs font-medium uppercase tracking-wider ${TONE_LABEL[tone]}`}>
-        {label}
-      </p>
+      <p className={`text-xs font-medium tracking-wider uppercase ${TONE_LABEL[tone]}`}>{label}</p>
       <p className={`mt-1 text-2xl font-semibold ${TONE_VALUE[tone]}`}>{value}</p>
     </div>
   );

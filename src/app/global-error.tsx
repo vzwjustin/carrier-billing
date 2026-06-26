@@ -29,8 +29,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             justifyContent: 'center',
             minHeight: '100vh',
             padding: '1.5rem',
-            fontFamily:
-              'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
             textAlign: 'center',
           }}
         >

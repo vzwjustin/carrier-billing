@@ -6,6 +6,7 @@ import { inngest } from '@/inngest/client';
 import { trackServer } from '@/lib/analytics/events';
 import { scrubString } from '@/lib/observability/redact';
 import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
+import { isSubscriptionStatus, type SubscriptionStatus } from '@/types/db-enums';
 
 /**
  * Stripe event handler. Branches on `event.type` and applies the corresponding
@@ -14,14 +15,15 @@ import { normalizeSubscriptionStatus } from '@/lib/stripe/status';
  * Idempotency contract: callers (the webhook route + the replay cron) gate
  * this function on the `billing_events.stripe_event_id` unique constraint so
  * that the same Stripe event id is never persisted twice. On retry, callers
- * pass `previousStatus` in the context so non-idempotent mutations (the
- * credit grant in checkout.session.completed) can short-circuit and avoid
- * double-effects.
+ * pass `previousStatus` in the context, but it is now informational-only — no
+ * remaining mutation gates on it. The atomic `grant_credit_once` RPC is the
+ * durable idempotency guard for settled one-time checkout credit grants.
  *
  * Throwing from here surfaces a 5xx out of the webhook route so Stripe
  * automatically retries (H8). Each branch is written to be safe under retry:
  * subscription updates are timestamp-guarded upserts, the past_due update is
- * idempotent, and the credit grant is gated on `previousStatus === null`.
+ * idempotent, and the credit grant is keyed to `billingEventId` through
+ * `grant_credit_once`.
  */
 export type HandlerContext = {
   /** processed_status of the billing_events row at the start of this attempt. */
@@ -48,7 +50,20 @@ export async function handleStripeEvent(
         event.data.object as Stripe.Checkout.Session,
         supabase,
         context,
+        // #13: pass event.created so the subscription_id write can refuse to
+        // resurrect an id a newer subscription.deleted already cleared.
+        event.created,
       );
+      return;
+    case 'checkout.session.async_payment_succeeded':
+      await onCheckoutSessionAsyncPaymentSucceeded(
+        event.data.object as Stripe.Checkout.Session,
+        supabase,
+        context,
+      );
+      return;
+    case 'checkout.session.async_payment_failed':
+      await onCheckoutSessionAsyncPaymentFailed(event.data.object as Stripe.Checkout.Session);
       return;
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
@@ -72,11 +87,7 @@ export async function handleStripeEvent(
       // H2: pass event.created so the past_due flip honors the same
       // ordering guard subscription events use (a delayed payment_failed
       // arriving after a recovery must NOT resurrect past_due).
-      await onInvoicePaymentFailed(
-        event.data.object as Stripe.Invoice,
-        supabase,
-        event.created,
-      );
+      await onInvoicePaymentFailed(event.data.object as Stripe.Invoice, supabase, event.created);
       return;
     default:
       // Not a handled event type — no-op. The webhook still persisted the
@@ -91,60 +102,21 @@ async function onCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
   supabase: SupabaseClient,
   context: HandlerContext,
+  eventCreated: number,
 ): Promise<void> {
   const userId = readUserIdFromSession(session);
   if (!userId) {
-    Sentry.captureMessage(
-      'checkout.session.completed without resolvable userId',
-      { level: 'warning', extra: { session_id: session.id } },
-    );
+    Sentry.captureMessage('checkout.session.completed without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
     return;
   }
 
   const customerId = readCustomerId(session.customer);
 
   if (session.mode === 'payment') {
-    // C1: atomic grant-once via `grant_credit_once(event_id, profile_id, delta)`.
-    // The RPC flips `billing_events.credit_granted` from false→true and
-    // increments `profiles.audit_credits` in a single transaction. Returns
-    // true if this call performed the grant, false if a prior call already
-    // did. Both branches mean "credit is now applied" — only the boolean
-    // tells us whether this attempt mutated state.
-    //
-    // This replaces the old previousStatus-gated approach which lost the
-    // credit permanently if the very first RPC call failed before bookkeeping
-    // could land. Retries (Stripe delivery + replay cron) now safely re-attempt
-    // until credit_granted=true.
-    if (!context.billingEventId) {
-      throw new Error(
-        'onCheckoutSessionCompleted: missing billingEventId in context (caller must pass it)',
-      );
-    }
-    const { data: granted, error: rpcError } = await supabase.rpc(
-      'grant_credit_once',
-      {
-        p_event_id: context.billingEventId,
-        p_profile_id: userId,
-        p_delta: 1,
-      },
-    );
-    if (rpcError) {
-      throw new Error(`grant_credit_once failed: ${rpcError.message}`);
-    }
-    if (granted === false) {
-      Sentry.addBreadcrumb({
-        category: 'stripe',
-        message: 'checkout.session.completed: credit already granted (idempotent retry)',
-        level: 'info',
-        data: { userId, billingEventId: context.billingEventId },
-      });
-    }
-
-    if (customerId) {
-      await updateProfile(supabase, userId, {
-        stripe_customer_id: customerId,
-      });
-    }
+    await settleOneTimeCheckoutCredit(session, supabase, context);
     await trackCheckoutCompleted('one_time', userId);
     return;
   }
@@ -159,9 +131,30 @@ async function onCheckoutSessionCompleted(
     // We still record the subscription_id and link the customer id so the
     // profile is wired up before the subscription event lands.
     const subscriptionId = readSubscriptionId(session.subscription);
-    const patch: ProfilePatch = { subscription_id: subscriptionId };
-    if (customerId) patch.stripe_customer_id = customerId;
-    await updateProfile(supabase, userId, patch);
+    // stripe_customer_id is the profile↔customer link; it is never cleared, so
+    // write it unconditionally (keyed by userId) to wire up the profile.
+    if (customerId) {
+      await updateProfile(supabase, userId, { stripe_customer_id: customerId });
+    }
+    // #13: guard the subscription_id write. Previously this was an unconditional
+    // updateProfile, so a delayed/replayed checkout.session.completed running
+    // AFTER a customer.subscription.deleted (which cleared subscription_id to
+    // null via the ordering guard) would resurrect the stale id. Only write
+    // when no newer subscription event has been recorded. We intentionally do
+    // NOT bump subscription_event_at here — that column stays the authority of
+    // the subscription.* events so subscription.created can still set
+    // subscription_status (the H11 invariant above).
+    const eventCreatedAt = new Date(eventCreated * 1000).toISOString();
+    const { error: subIdErr } = await supabase
+      .from('profiles')
+      .update({ subscription_id: subscriptionId, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`);
+    if (subIdErr) {
+      throw new Error(
+        `onCheckoutSessionCompleted: subscription_id write failed: ${subIdErr.message}`,
+      );
+    }
     await trackCheckoutCompleted('subscription', userId);
     return;
   }
@@ -169,12 +162,101 @@ async function onCheckoutSessionCompleted(
   // session.mode === 'setup' or other — not used by our checkout, ignore.
 }
 
+async function onCheckoutSessionAsyncPaymentSucceeded(
+  session: Stripe.Checkout.Session,
+  supabase: SupabaseClient,
+  context: HandlerContext,
+): Promise<void> {
+  if (session.mode !== 'payment') return;
+  await settleOneTimeCheckoutCredit(session, supabase, context);
+}
+
+async function onCheckoutSessionAsyncPaymentFailed(
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  if (session.mode !== 'payment') return;
+
+  const userId = readUserIdFromSession(session);
+  if (!userId) {
+    Sentry.captureMessage('checkout.session.async_payment_failed without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
+  }
+}
+
+async function settleOneTimeCheckoutCredit(
+  session: Stripe.Checkout.Session,
+  supabase: SupabaseClient,
+  context: HandlerContext,
+): Promise<void> {
+  const userId = readUserIdFromSession(session);
+  if (!userId) {
+    Sentry.captureMessage('one-time checkout session without resolvable userId', {
+      level: 'warning',
+      extra: { session_id: session.id },
+    });
+    return;
+  }
+
+  if (!isSettledPaymentSession(session)) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'one-time checkout session not settled; credit grant skipped',
+      level: 'info',
+      data: {
+        session_id: session.id,
+        payment_status: session.payment_status,
+        userId,
+      },
+    });
+    return;
+  }
+
+  // C1: atomic grant-once via `grant_credit_once(event_id, profile_id, delta)`.
+  // The RPC flips `billing_events.credit_granted` from false→true and
+  // increments `profiles.audit_credits` in a single transaction. Returns
+  // true if this call performed the grant, false if a prior call already
+  // did. Both branches mean "credit is now applied" — only the boolean
+  // tells us whether this attempt mutated state.
+  if (!context.billingEventId) {
+    throw new Error(
+      'settleOneTimeCheckoutCredit: missing billingEventId in context (caller must pass it)',
+    );
+  }
+  const { data: granted, error: rpcError } = await supabase.rpc('grant_credit_once', {
+    p_event_id: context.billingEventId,
+    p_profile_id: userId,
+    p_delta: 1,
+  });
+  if (rpcError) {
+    throw new Error(`grant_credit_once failed: ${rpcError.message}`);
+  }
+  if (granted === false) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'one-time checkout session: credit already granted (idempotent retry)',
+      level: 'info',
+      data: { userId, billingEventId: context.billingEventId },
+    });
+  }
+
+  const customerId = readCustomerId(session.customer);
+  if (customerId) {
+    await updateProfile(supabase, userId, {
+      stripe_customer_id: customerId,
+    });
+  }
+}
+
+function isSettledPaymentSession(session: Stripe.Checkout.Session): boolean {
+  return session.payment_status === 'paid' || session.payment_status === 'no_payment_required';
+}
+
 async function onSubscriptionUpserted(
   subscription: Stripe.Subscription,
   supabase: SupabaseClient,
-  eventType:
-    | 'customer.subscription.created'
-    | 'customer.subscription.updated',
+  eventType: 'customer.subscription.created' | 'customer.subscription.updated',
   eventCreated: number,
 ): Promise<void> {
   // C4 — observability breadcrumb so Sentry traces show which Stripe event
@@ -192,13 +274,10 @@ async function onSubscriptionUpserted(
 
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'subscription event without customer id',
-      {
-        level: 'warning',
-        extra: { subscription_id: subscription.id, event_type: eventType },
-      },
-    );
+    Sentry.captureMessage('subscription event without customer id', {
+      level: 'warning',
+      extra: { subscription_id: subscription.id, event_type: eventType },
+    });
     return;
   }
 
@@ -206,12 +285,10 @@ async function onSubscriptionUpserted(
   // can render "your access ends on <date>" instead of leaving the user
   // guessing whether their cancellation went through.
   const cancelAtPeriodEnd =
-    typeof (subscription as { cancel_at_period_end?: unknown })
-      .cancel_at_period_end === 'boolean'
+    typeof (subscription as { cancel_at_period_end?: unknown }).cancel_at_period_end === 'boolean'
       ? Boolean((subscription as { cancel_at_period_end: boolean }).cancel_at_period_end)
       : false;
-  const periodEndUnix = (subscription as { current_period_end?: unknown })
-    .current_period_end;
+  const periodEndUnix = (subscription as { current_period_end?: unknown }).current_period_end;
   const currentPeriodEnd =
     typeof periodEndUnix === 'number' && periodEndUnix > 0
       ? new Date(periodEndUnix * 1000).toISOString()
@@ -341,10 +418,10 @@ async function onSubscriptionDeleted(
 ): Promise<void> {
   const customerId = readCustomerId(subscription.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'subscription.deleted without customer id',
-      { level: 'warning', extra: { subscription_id: subscription.id } },
-    );
+    Sentry.captureMessage('subscription.deleted without customer id', {
+      level: 'warning',
+      extra: { subscription_id: subscription.id },
+    });
     return;
   }
 
@@ -451,9 +528,7 @@ async function applySubscriptionPatchWithOrderGuard(
       updated_at: new Date().toISOString(),
     })
     .eq('id', matched.id)
-    .or(
-      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
-    )
+    .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`)
     .select('id');
 
   if (updateErr) {
@@ -483,10 +558,10 @@ async function onInvoicePaymentFailed(
 ): Promise<void> {
   const customerId = readCustomerId(invoice.customer);
   if (!customerId) {
-    Sentry.captureMessage(
-      'invoice.payment_failed without customer id',
-      { level: 'warning', extra: { invoice_id: invoice.id } },
-    );
+    Sentry.captureMessage('invoice.payment_failed without customer id', {
+      level: 'warning',
+      extra: { invoice_id: invoice.id },
+    });
     return;
   }
 
@@ -507,7 +582,7 @@ async function onInvoicePaymentFailed(
 
   const { data: profiles, error: selectErr } = await supabase
     .from('profiles')
-    .select('id, subscription_event_at')
+    .select('id, subscription_event_at, subscription_status')
     .eq('stripe_customer_id', customerId);
 
   if (selectErr) {
@@ -515,12 +590,41 @@ async function onInvoicePaymentFailed(
   }
 
   const matchedForGuard = assertExactlyOneProfileMatched(
-    profiles as Array<{ id: string; subscription_event_at?: string | null }> | null,
+    profiles as Array<{
+      id: string;
+      subscription_event_at?: string | null;
+      subscription_status?: string | null;
+    }> | null,
     customerId,
     'invoice.payment_failed',
   );
   // H11: account was already deleted locally; no past_due flip, no email.
   if (matchedForGuard === NO_MATCH) return;
+
+  const previousStatus = matchedForGuard.subscription_status ?? null;
+
+  // Terminal subscription states must not be resurrected to past_due by a
+  // late invoice.payment_failed (common after customer.subscription.deleted
+  // when Stripe retries the final invoice).
+  const NON_REVIVABLE = new Set<SubscriptionStatus>([
+    'canceled',
+    'incomplete',
+    'incomplete_expired',
+    'unpaid',
+  ]);
+  if (
+    previousStatus !== null &&
+    isSubscriptionStatus(previousStatus) &&
+    NON_REVIVABLE.has(previousStatus)
+  ) {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'invoice.payment_failed: profile in terminal status, skipping past_due flip',
+      level: 'info',
+      data: { customerId, previousStatus, userId: matchedForGuard.id },
+    });
+    return;
+  }
 
   const currentEventAt = matchedForGuard.subscription_event_at ?? null;
   if (currentEventAt !== null && currentEventAt >= eventCreatedAt) {
@@ -545,9 +649,7 @@ async function onInvoicePaymentFailed(
       updated_at: new Date().toISOString(),
     })
     .eq('id', matchedForGuard.id)
-    .or(
-      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
-    )
+    .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`)
     .select('id, email');
 
   if (updateErr) {
@@ -569,6 +671,26 @@ async function onInvoicePaymentFailed(
   const profile = rows[0]!;
   const customerEmail = profile.email ?? null;
 
+  // H1: only dispatch the past-due email when the subscription_status
+  // actually transitioned INTO past_due. Stripe sends a fresh
+  // invoice.payment_failed event on every dunning retry (default schedule
+  // is 1 retry then 3/5/7 days), each carrying a newer `created` timestamp
+  // that passes the CAS guard above — without this gate, one declined card
+  // produced 3–4 separate emails over a week. The previous status is read
+  // from the SELECT above (pre-UPDATE), so the comparison is reliable. If
+  // the profile was already past_due (set by a prior invoice.payment_failed
+  // or a subscription.updated→past_due that crossed the wire first), skip
+  // the email; the user has already been notified about this dunning cycle.
+  if (previousStatus === 'past_due') {
+    Sentry.addBreadcrumb({
+      category: 'stripe',
+      message: 'invoice.payment_failed: profile already past_due, suppressing duplicate email',
+      level: 'info',
+      data: { customerId, userId: profile.id },
+    });
+    return;
+  }
+
   if (!customerEmail) {
     Sentry.captureMessage('payment_failed: profile has no email', {
       level: 'warning',
@@ -589,8 +711,7 @@ async function onInvoicePaymentFailed(
         userId: profile.id,
         stripeCustomerId: customerId,
         invoiceId: invoice.id ?? null,
-        amountDueCents:
-          typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
+        amountDueCents: typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
       },
     });
   } catch (sendErr) {
@@ -619,10 +740,7 @@ async function trackCheckoutCompleted(
   userId: string,
 ): Promise<void> {
   try {
-    await trackServer(
-      { name: 'checkout_completed', properties: { mode } },
-      userId,
-    );
+    await trackServer({ name: 'checkout_completed', properties: { mode } }, userId);
   } catch {
     // Analytics must never break a webhook handler.
   }
@@ -675,8 +793,7 @@ function assertExactlyOneProfileMatched<T extends { id: string }>(
       Sentry.addBreadcrumb({
         category: 'stripe',
         level: 'info',
-        message:
-          'stripe webhook 0-row match on terminal event (profile likely deleted) — no-op',
+        message: 'stripe webhook 0-row match on terminal event (profile likely deleted) — no-op',
         data: { customerId, eventType },
       });
       return NO_MATCH;
@@ -685,18 +802,13 @@ function assertExactlyOneProfileMatched<T extends { id: string }>(
       level: 'warning',
       extra: { customerId, eventType },
     });
-    throw new Error(
-      `profile lookup by stripe_customer_id matched 0 rows (${eventType})`,
-    );
+    throw new Error(`profile lookup by stripe_customer_id matched 0 rows (${eventType})`);
   }
   if (matched.length > 1) {
-    Sentry.captureMessage(
-      'stripe webhook matched multiple profiles by customer id',
-      {
-        level: 'error',
-        extra: { customerId, eventType, matchCount: matched.length },
-      },
-    );
+    Sentry.captureMessage('stripe webhook matched multiple profiles by customer id', {
+      level: 'error',
+      extra: { customerId, eventType, matchCount: matched.length },
+    });
     throw new Error(
       `profile lookup by stripe_customer_id matched ${matched.length} rows (${eventType}) — data corruption`,
     );
@@ -730,13 +842,8 @@ async function updateProfile(
   }
 }
 
-function readUserIdFromSession(
-  session: Stripe.Checkout.Session,
-): string | null {
-  if (
-    typeof session.client_reference_id === 'string' &&
-    session.client_reference_id.length > 0
-  ) {
+function readUserIdFromSession(session: Stripe.Checkout.Session): string | null {
+  if (typeof session.client_reference_id === 'string' && session.client_reference_id.length > 0) {
     return session.client_reference_id;
   }
   const md = session.metadata;
@@ -760,9 +867,7 @@ function readCustomerId(
   return null;
 }
 
-function readSubscriptionId(
-  sub: string | Stripe.Subscription | null | undefined,
-): string | null {
+function readSubscriptionId(sub: string | Stripe.Subscription | null | undefined): string | null {
   if (typeof sub === 'string' && sub.length > 0) return sub;
   if (sub && typeof sub === 'object' && 'id' in sub) {
     const id = (sub as { id: unknown }).id;

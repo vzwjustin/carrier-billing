@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { MobileNav } from '@/components/app-nav/mobile-nav';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
@@ -9,7 +10,14 @@ import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/roadmap', label: 'Roadmap' },
+  { href: '/carriers', label: 'Carriers' },
+  { href: '/carriers/bills', label: 'Bill editor' },
+  { href: '/inventory', label: 'Inventory' },
   { href: '/audits/new', label: 'New audit' },
+  { href: '/contracts', label: 'Contracts' },
+  { href: '/renewal-advisor', label: 'Renewal Advisor' },
+  { href: '/assistant', label: 'Assistant' },
   { href: '/settings', label: 'Settings' },
   { href: '/settings/billing', label: 'Billing' },
 ] as const;
@@ -17,6 +25,7 @@ const NAV_ITEMS = [
 interface ProfileRow {
   audit_credits: number | null;
   subscription_status: string | null;
+  role: string | null;
 }
 
 function isProfileRow(value: unknown): value is ProfileRow {
@@ -24,8 +33,8 @@ function isProfileRow(value: unknown): value is ProfileRow {
   const v = value as Record<string, unknown>;
   return (
     (v.audit_credits === null || typeof v.audit_credits === 'number') &&
-    (v.subscription_status === null ||
-      typeof v.subscription_status === 'string')
+    (v.subscription_status === null || typeof v.subscription_status === 'string') &&
+    (v.role === null || typeof v.role === 'string')
   );
 }
 
@@ -67,11 +76,7 @@ function getBadgeState(profile: ProfileRow | null): BadgeState {
   };
 }
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -81,32 +86,47 @@ export default async function AppLayout({
     redirect('/login');
   }
 
-  const { data: profileData } = await supabase
+  const { data: profileData, error: profileError } = await supabase
     .from('profiles')
-    .select('audit_credits,subscription_status')
+    .select('audit_credits,subscription_status,role')
     .eq('id', user.id)
     .maybeSingle();
+  if (profileError) {
+    throw new Error(`Failed to load profile navigation state: ${profileError.message}`);
+  }
 
   const profile = isProfileRow(profileData) ? profileData : null;
   const badge = getBadgeState(profile);
+  const navItems =
+    profile?.role === 'admin' ? [...NAV_ITEMS, { href: '/admin', label: 'Admin' }] : NAV_ITEMS;
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50">
-      <header className="relative border-b border-neutral-200 bg-white">
+    <div className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-950">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:outline-none"
+      >
+        Skip to main content
+      </a>
+      <header className="relative border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-6">
             <Link
               href="/dashboard"
-              className="text-base font-semibold tracking-tight text-neutral-900"
+              aria-label="CarrierAudit dashboard"
+              className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-neutral-100"
             >
               CarrierAudit
             </Link>
-            <nav className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex">
-              {NAV_ITEMS.map((item) => (
+            <nav
+              aria-label="Primary navigation"
+              className="hidden items-center gap-4 text-sm text-neutral-600 sm:flex dark:text-neutral-400"
+            >
+              {navItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="hover:text-neutral-900"
+                  className="rounded-md px-1 py-0.5 transition-colors hover:text-neutral-900 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:hover:text-neutral-100"
                 >
                   {item.label}
                 </Link>
@@ -114,6 +134,9 @@ export default async function AppLayout({
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
             {badge.href ? (
               <Link
                 href={badge.href}
@@ -135,19 +158,17 @@ export default async function AppLayout({
                 {badge.label}
               </span>
             )}
-            <span className="hidden text-sm text-neutral-500 lg:inline">
-              {user.email}
-            </span>
+            <span className="hidden text-sm text-neutral-500 lg:inline">{user.email}</span>
             <form action="/auth/signout" method="post" className="hidden sm:block">
               <Button type="submit" variant="outline" size="sm">
                 Sign out
               </Button>
             </form>
-            <MobileNav items={NAV_ITEMS} email={user.email ?? null} />
+            <MobileNav items={navItems} email={user.email ?? null} />
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main id="main-content" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         {profile?.subscription_status === 'past_due' ? (
           <div className="mb-6">
             <Banner

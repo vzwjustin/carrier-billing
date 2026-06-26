@@ -27,23 +27,26 @@ type AuditFullRow = {
   estimated_annual_savings_cents: number | null;
   completed_at: string | null;
   share_token: string | null;
+  share_token_expires_at: string | null;
 };
 
 type MaybeSingleResult =
   | { data: AuditFullRow; error: null }
   | { data: null; error: null }
-  | { data: null; error: { message: string } };
+  | { data: null; error: { code?: string; message: string } };
 
 type GetUserResult = {
   data: { user: { id: string; email?: string } | null };
   error: null;
 };
 
-type DownloadResult =
-  | { data: Blob; error: null }
+type DownloadResult = { data: Blob; error: null } | { data: null; error: { message: string } };
+
+type UploadResult =
+  | { data: { path: string }; error: null }
   | { data: null; error: { message: string } };
 
-type UploadResult = { data: { path: string } | null; error: null };
+type RemoveResult = { data: null; error: null | { message: string } };
 
 type SelectListResult = { data: unknown[]; error: null };
 
@@ -73,6 +76,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 // Admin-client mocks
 const adminMaybeSingleMock = vi.fn<() => Promise<MaybeSingleResult>>();
+const adminSelectColumns: string[] = [];
 
 // The result of admin.from(table).select(cols).eq(col, val):
 //   - awaited directly  →  resolves to { data, error } (list reads)
@@ -102,15 +106,20 @@ const adminSelectMock = vi.fn(() => ({
 }));
 
 const adminFromMock = vi.fn(() => ({
-  select: (_cols: string) => adminSelectMock(),
+  select: (cols: string) => {
+    adminSelectColumns.push(cols);
+    return adminSelectMock();
+  },
 }));
 
 const downloadMock = vi.fn<() => Promise<DownloadResult>>();
 const uploadMock = vi.fn<() => Promise<UploadResult>>();
+const removeMock = vi.fn<() => Promise<RemoveResult>>();
 
 const adminStorageFromMock = vi.fn(() => ({
   download: (_path: string) => downloadMock(),
   upload: (_path: string, _body: Uint8Array, _opts: unknown) => uploadMock(),
+  remove: (_paths: string[]) => removeMock(),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -157,6 +166,11 @@ vi.mock('@/env', () => ({
   },
 }));
 
+const sentryCaptureMock = vi.fn();
+vi.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => sentryCaptureMock(...args),
+}));
+
 // Import the route AFTER the mocks above are registered.
 import { GET } from '@/app/api/audits/[id]/report.pdf/route';
 
@@ -169,15 +183,17 @@ function makeContext(id: string): { params: Promise<{ id: string }> } {
 }
 
 function makeRequest(opts: { token?: string } = {}): Request {
-  const url = new URL(
-    `http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`,
-  );
+  const url = new URL(`http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`);
   if (opts.token) url.searchParams.set('token', opts.token);
   return new Request(url);
 }
 
+function futureShareExpiry(): string {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function makeAudit(overrides: Partial<AuditFullRow> = {}): AuditFullRow {
-  return {
+  const row: AuditFullRow = {
     id: VALID_AUDIT_ID,
     user_id: 'user-uuid-1',
     status: 'completed',
@@ -193,8 +209,13 @@ function makeAudit(overrides: Partial<AuditFullRow> = {}): AuditFullRow {
     estimated_annual_savings_cents: 0,
     completed_at: '2026-05-01T00:00:00Z',
     share_token: null,
+    share_token_expires_at: null,
     ...overrides,
   };
+  if (row.share_token && row.share_token_expires_at === null) {
+    return { ...row, share_token_expires_at: futureShareExpiry() };
+  }
+  return row;
 }
 
 beforeEach(() => {
@@ -204,13 +225,16 @@ beforeEach(() => {
   serverSelectMock.mockClear();
   serverFromMock.mockClear();
   adminMaybeSingleMock.mockReset();
+  adminSelectColumns.length = 0;
   adminSelectMock.mockClear();
   adminFromMock.mockClear();
   adminStorageFromMock.mockClear();
   downloadMock.mockReset();
   uploadMock.mockReset();
+  removeMock.mockReset();
   renderReportPdfMock.mockReset();
   buildReportDataMock.mockClear();
+  sentryCaptureMock.mockReset();
 
   getUserMock.mockResolvedValue({
     data: { user: { id: 'user-uuid-1' } },
@@ -220,6 +244,7 @@ beforeEach(() => {
     data: { path: 'reports/x.pdf' },
     error: null,
   });
+  removeMock.mockResolvedValue({ data: null, error: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -271,9 +296,7 @@ describe('GET /api/audits/[id]/report.pdf', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
-    expect(res.headers.get('content-disposition')).toContain(
-      'inline; filename="carrieraudit-',
-    );
+    expect(res.headers.get('content-disposition')).toContain('inline; filename="carrieraudit-');
     // Render must NOT be called when we have a cache hit.
     expect(renderReportPdfMock).not.toHaveBeenCalled();
     expect(uploadMock).not.toHaveBeenCalled();
@@ -331,6 +354,37 @@ describe('GET /api/audits/[id]/report.pdf', () => {
     expect(buf[0]).toBe(0x25);
   });
 
+  it('reports returned cache-scrub errors after failed cache writes', async () => {
+    serverMaybeSingleMock.mockResolvedValueOnce({
+      data: makeAudit(),
+      error: null,
+    });
+    downloadMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'not found' },
+    });
+    renderReportPdfMock.mockResolvedValueOnce(Buffer.from([0x25, 0x50, 0x44, 0x46]));
+    uploadMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'upload failed' },
+    });
+    removeMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'remove failed' },
+    });
+
+    const res = await GET(makeRequest(), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(200);
+    expect(removeMock).toHaveBeenCalledTimes(1);
+    const scrubCall = sentryCaptureMock.mock.calls.find(
+      ([, ctx]) =>
+        (ctx as { tags?: { surface?: string } } | undefined)?.tags?.surface === 'pdf.cache_scrub',
+    );
+    expect(scrubCall).toBeTruthy();
+    expect((scrubCall?.[0] as { message?: string }).message).toBe('remove failed');
+  });
+
   it('allows access via a valid share_token without authentication', async () => {
     // Even if no user is signed in, share_token mode should succeed.
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
@@ -346,14 +400,43 @@ describe('GET /api/audits/[id]/report.pdf', () => {
     };
     downloadMock.mockResolvedValueOnce({ data: fakeBlob as unknown as Blob, error: null });
 
-    const res = await GET(
-      makeRequest({ token: SHARE_TOKEN }),
-      makeContext(VALID_AUDIT_ID),
-    );
+    const res = await GET(makeRequest({ token: SHARE_TOKEN }), makeContext(VALID_AUDIT_ID));
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
     // Token path should NOT touch the server (auth) client.
     expect(serverFromMock).not.toHaveBeenCalled();
+  });
+
+  it('retries public token lookup without share_token_expires_at when the schema cache is stale', async () => {
+    getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
+
+    adminMaybeSingleMock
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: 'PGRST204',
+          message: 'column share_token_expires_at not found',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: makeAudit({ share_token: SHARE_TOKEN }),
+        error: null,
+      });
+    const cachedBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    const fakeBlob = {
+      arrayBuffer: () => Promise.resolve(cachedBytes.buffer.slice(0)),
+      type: 'application/pdf',
+    };
+    downloadMock.mockResolvedValueOnce({
+      data: fakeBlob as unknown as Blob,
+      error: null,
+    });
+
+    const res = await GET(makeRequest({ token: SHARE_TOKEN }), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(200);
+    expect(adminSelectColumns[0]).toContain('share_token_expires_at');
+    expect(adminSelectColumns[1]).not.toContain('share_token_expires_at');
   });
 });

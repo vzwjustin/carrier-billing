@@ -67,7 +67,7 @@ describe('account_level_promo_about_to_expire rule', () => {
     expect(findings).toHaveLength(0);
   });
 
-  it('fires at the 31-day boundary (start of this rule\'s window)', async () => {
+  it("fires at the 31-day boundary (start of this rule's window)", async () => {
     const c = ctx({
       accounts: [
         makeAccount({
@@ -90,7 +90,7 @@ describe('account_level_promo_about_to_expire rule', () => {
     expect(evidence.days_until_expiry).toBe(31);
   });
 
-  it('FIRES at exactly day 60 (end of this rule\'s window, inclusive)', async () => {
+  it("FIRES at exactly day 60 (end of this rule's window, inclusive)", async () => {
     // TEST_TODAY = 2026-05-08; day 60 = 2026-07-07.
     const c = ctx({
       accounts: [
@@ -114,7 +114,7 @@ describe('account_level_promo_about_to_expire rule', () => {
     expect(evidence.days_until_expiry).toBe(60);
   });
 
-  it('does NOT fire at exactly day 61 (one day past the rule\'s window)', async () => {
+  it("does NOT fire at exactly day 61 (one day past the rule's window)", async () => {
     // TEST_TODAY = 2026-05-08; day 61 = 2026-07-08.
     const c = ctx({
       accounts: [

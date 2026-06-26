@@ -40,7 +40,7 @@ import { z } from 'zod';
 
 import { env } from '@/env';
 import { inngest } from '@/inngest/client';
-import { decrementAuditCreditAtomically } from '@/lib/access/decrement';
+import { consumeAuditCreditForAudit } from '@/lib/access/decrement';
 import { assertCanRunAudit } from '@/lib/access/gate';
 import { parseInboundRecipient, verifyHmac } from '@/lib/inbound/token';
 import { consumeRateLimit } from '@/lib/security/rate-limit';
@@ -53,6 +53,7 @@ const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB — same cap as /api/audits
 // Allow base64 overhead (~33%) plus JSON/headers slack on top of the PDF cap.
 // Anything larger than this in raw bytes is rejected before we even read it.
 const MAX_REQUEST_BYTES = 40 * 1024 * 1024;
+const PDF_MAGIC = Buffer.from('%PDF', 'ascii');
 
 const InboundAttachmentSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -102,6 +103,20 @@ function isPdfAttachment(att: { content_type: string; filename: string }): boole
   return att.filename.toLowerCase().endsWith('.pdf');
 }
 
+function decodeBase64Attachment(value: string): Buffer | null {
+  const normalized = value.replace(/\s/g, '');
+  if (normalized.length === 0) return Buffer.alloc(0);
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) return null;
+  const remainder = normalized.length % 4;
+  if (remainder === 1) return null;
+  const padded = remainder === 0 ? normalized : `${normalized}${'='.repeat(4 - remainder)}`;
+  return Buffer.from(padded, 'base64');
+}
+
+function hasPdfMagic(bytes: Buffer): boolean {
+  return bytes.length >= PDF_MAGIC.length && bytes.subarray(0, PDF_MAGIC.length).equals(PDF_MAGIC);
+}
+
 /**
  * Stable dedupe hash over the *PDF content* (not the wrapping email payload).
  * Hashing the raw HTTP body would let a forger flip a whitespace byte to
@@ -134,14 +149,64 @@ async function releaseDedupeClaim(eventHash: string): Promise<void> {
   }
 }
 
-async function refundAuditCredit(userId: string): Promise<void> {
-  const admin = getAdminClient();
-  const { error } = await admin.rpc('increment_audit_credits', {
-    profile_id: userId,
-    delta: 1,
+async function failPendingAuditAndRefundIfNeeded(
+  admin: ReturnType<typeof getAdminClient>,
+  {
+    auditId,
+    userId,
+    reason,
+  }: {
+    auditId: string;
+    userId: string;
+    reason: string;
+  },
+): Promise<void> {
+  const { error } = await admin.rpc('refund_orphan_audit', {
+    p_audit_id: auditId,
+    p_user_id: userId,
+    p_reason: reason,
   });
   if (error) {
-    throw new Error(`increment_audit_credits refund failed: ${error.message}`);
+    throw new Error(`refund_orphan_audit failed: ${error.message}`);
+  }
+}
+
+async function deleteAuditRowBestEffort(
+  admin: ReturnType<typeof getAdminClient>,
+  auditId: string,
+  userId: string,
+  surface: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.from('audits').delete().eq('id', auditId);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { auditId, userId },
+    });
+  }
+}
+
+async function removeBillObjectBestEffort(
+  admin: ReturnType<typeof getAdminClient>,
+  storagePath: string,
+  auditId: string,
+  userId: string,
+  surface: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.storage.from('bills').remove([storagePath]);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface },
+      extra: { auditId, userId },
+    });
   }
 }
 
@@ -258,12 +323,18 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ ok: true, skipped: 'no_pdf' });
     }
 
-    const bytes = Buffer.from(pdf.content_base64, 'base64');
+    const bytes = decodeBase64Attachment(pdf.content_base64);
+    if (!bytes) {
+      return NextResponse.json({ ok: true, skipped: 'invalid_attachment' });
+    }
     if (bytes.length === 0) {
       return NextResponse.json({ ok: true, skipped: 'empty_attachment' });
     }
     if (bytes.length > MAX_PDF_BYTES) {
       return NextResponse.json({ ok: true, skipped: 'attachment_too_large' });
+    }
+    if (!hasPdfMagic(bytes)) {
+      return NextResponse.json({ ok: true, skipped: 'non_pdf_attachment' });
     }
 
     // Gate the user. past_due / no_plan → log + skip rather than ingest a
@@ -283,32 +354,22 @@ export async function POST(request: Request): Promise<Response> {
     // bill?" question.
     const eventHash = computeEventHash(userId, bytes, pdf.filename);
 
-    // Insert the dedupe row BEFORE storage upload so a duplicate forward
-    // doesn't leave behind an orphaned object. On 23505 the row already
-    // exists — short-circuit.
-    const dedupeInsert = await admin.from('inbound_email_events').insert({
-      event_hash: eventHash,
-      user_id: userId,
-    });
-    if (dedupeInsert.error) {
-      if (isUniqueViolation(dedupeInsert.error)) {
-        return NextResponse.json({ ok: true, deduped: true });
-      }
-      throw new Error(`inbound dedupe insert failed: ${dedupeInsert.error.message}`);
-    }
-
-    claimedDedupeHash = eventHash;
+    // L3: pre-generate the auditId so the dedupe row can be inserted with
+    // its `audit_id` already populated. The previous flow inserted the
+    // dedupe row with NULL `audit_id`, inserted the audit, then UPDATEd
+    // the dedupe row — leaving a window where a concurrent duplicate
+    // request found the dedupe row but couldn't observe the audit_id.
+    //
+    // Order:
+    //   1. Insert the audits row (no storage yet — cheap to roll back).
+    //   2. Insert the dedupe row WITH audit_id (FK valid). 23505 here
+    //      means a concurrent duplicate beat us: roll back the audits row
+    //      and short-circuit.
+    //   3. Upload to storage.
+    // Storage upload is last so a 23505 cannot orphan an object.
     const auditId = crypto.randomUUID();
     const cleanName = safeFilename(pdf.filename);
     const storagePath = `${userId}/${auditId}/${cleanName}`;
-
-    const { error: uploadErr } = await admin.storage.from('bills').upload(storagePath, bytes, {
-      contentType: 'application/pdf',
-      upsert: false,
-    });
-    if (uploadErr) {
-      throw new Error(`storage upload failed: ${uploadErr.message}`);
-    }
 
     const { error: insertErr } = await admin.from('audits').insert({
       id: auditId,
@@ -320,75 +381,163 @@ export async function POST(request: Request): Promise<Response> {
       file_size_bytes: bytes.length,
     });
     if (insertErr) {
-      // Roll back the storage upload so we don't leak orphaned objects.
-      await admin.storage.from('bills').remove([storagePath]);
       throw new Error(`audit insert failed: ${insertErr.message}`);
     }
 
-    const dedupeUpdate = await admin
-      .from('inbound_email_events')
-      .update({ audit_id: auditId })
-      .eq('event_hash', eventHash);
-    if (dedupeUpdate.error) {
-      Sentry.captureException(dedupeUpdate.error, {
-        tags: { surface: 'inbound.email.dedupe_update' },
-        extra: { userId, auditId },
-      });
+    const dedupeInsert = await admin.from('inbound_email_events').insert({
+      event_hash: eventHash,
+      user_id: userId,
+      audit_id: auditId,
+    });
+    if (dedupeInsert.error) {
+      if (isUniqueViolation(dedupeInsert.error)) {
+        // Concurrent duplicate beat us. Roll back the audits row we just
+        // created — no storage object exists yet so nothing else to clean.
+        await deleteAuditRowBestEffort(
+          admin,
+          auditId,
+          userId,
+          'inbound.email.rollback_orphan_audit',
+        );
+        return NextResponse.json({ ok: true, deduped: true });
+      }
+      // Non-23505: roll back and surface to outer catch.
+      await deleteAuditRowBestEffort(
+        admin,
+        auditId,
+        userId,
+        'inbound.email.rollback_dedupe_insert_failed',
+      );
+      throw new Error(`inbound dedupe insert failed: ${dedupeInsert.error.message}`);
+    }
+
+    claimedDedupeHash = eventHash;
+
+    const { error: uploadErr } = await admin.storage.from('bills').upload(storagePath, bytes, {
+      contentType: 'application/pdf',
+      upsert: false,
+    });
+    if (uploadErr) {
+      // Roll back audit row; releaseDedupeClaim in the outer catch frees
+      // the dedupe row.
+      await deleteAuditRowBestEffort(
+        admin,
+        auditId,
+        userId,
+        'inbound.email.rollback_storage_upload_failed',
+      );
+      throw new Error(`storage upload failed: ${uploadErr.message}`);
     }
 
     if (gate.reason === 'credit') {
       try {
-        await decrementAuditCreditAtomically(userId);
+        await consumeAuditCreditForAudit(userId, auditId);
       } catch (decErr) {
-        // Race lost: someone else drained credits between gate + decrement.
-        // Roll the audit row back so the user can retry without waste.
-        await admin.from('audits').delete().eq('id', auditId);
-        await admin.storage.from('bills').remove([storagePath]);
-        await releaseDedupeClaim(eventHash);
-        claimedDedupeHash = null;
+        // H4: distinguish definitive refusal (`no_credits` from the RPC,
+        // meaning the user actually has 0 credits or the audit row is in
+        // the wrong state) from transient errors (network drop between
+        // RPC commit and client response). Only roll back / release the
+        // dedupe claim for definitive refusal. Transient errors leave
+        // the row pending so orphan-cleanup can refund if the RPC did
+        // commit server-side.
+        const isDefinitiveRefusal = decErr instanceof Error && decErr.message === 'no_credits';
         Sentry.captureException(decErr, {
-          tags: { surface: 'inbound.email.decrement' },
-          extra: { userId },
-        });
-        return NextResponse.json({ ok: true, skipped: 'credit_race' });
-      }
-      const { error: creditMarkerErr } = await admin
-        .from('audits')
-        .update({ credit_consumed: true })
-        .eq('id', auditId);
-      if (creditMarkerErr) {
-        try {
-          await refundAuditCredit(userId);
-        } catch (refundErr) {
-          claimedDedupeHash = null;
-          Sentry.captureException(refundErr, {
-            level: 'fatal',
-            tags: {
-              surface: 'inbound.email.credit_marker_refund',
-              severity: 'high',
-            },
-            extra: { userId, auditId },
-          });
-          return NextResponse.json({ ok: true, skipped: 'internal_error' });
-        }
-
-        await admin.from('audits').delete().eq('id', auditId);
-        await admin.storage.from('bills').remove([storagePath]);
-        await releaseDedupeClaim(eventHash);
-        claimedDedupeHash = null;
-        Sentry.captureException(new Error(`credit marker failed: ${creditMarkerErr.message}`), {
-          tags: { surface: 'inbound.email.credit_marker' },
+          tags: {
+            surface: 'inbound.email.decrement',
+            transient: isDefinitiveRefusal ? 'false' : 'true',
+          },
           extra: { userId, auditId },
         });
-        return NextResponse.json({ ok: true, skipped: 'internal_error' });
+        if (isDefinitiveRefusal) {
+          await deleteAuditRowBestEffort(
+            admin,
+            auditId,
+            userId,
+            'inbound.email.rollback_credit_race_audit',
+          );
+          await removeBillObjectBestEffort(
+            admin,
+            storagePath,
+            auditId,
+            userId,
+            'inbound.email.rollback_credit_race_storage',
+          );
+          await releaseDedupeClaim(eventHash);
+          claimedDedupeHash = null;
+          return NextResponse.json({ ok: true, skipped: 'credit_race' });
+        }
+        // Transient / unknown: do not keep the dedupe claim without
+        // dispatching work. Atomically fail the pending audit and refund if
+        // the credit RPC committed, then remove storage and release the
+        // content hash so the user can forward the same bill again.
+        await failPendingAuditAndRefundIfNeeded(admin, {
+          auditId,
+          userId,
+          reason: 'inbound-credit-decrement-failed',
+        });
+        await removeBillObjectBestEffort(
+          admin,
+          storagePath,
+          auditId,
+          userId,
+          'inbound.email.rollback_decrement_transient_storage',
+        );
+        await releaseDedupeClaim(eventHash);
+        claimedDedupeHash = null;
+        return NextResponse.json({ ok: true, skipped: 'decrement_transient' });
       }
     }
 
-    await inngest.send({
-      id: `${auditId}-uploaded`,
-      name: 'bill.uploaded',
-      data: { auditId, userId, storagePath },
-    });
+    // H2: wrap inngest.send so a dispatch failure rolls back everything
+    // we just created (audit row, storage object, decremented credit,
+    // dedupe claim). Without this, a transient Inngest outage stranded
+    // the user with a pending audit + a spent credit that orphan-cleanup
+    // only refunds after 30 minutes (and only while the row stays
+    // pending — it cannot recover post-extract).
+    try {
+      await inngest.send({
+        id: `${auditId}-uploaded`,
+        name: 'bill.uploaded',
+        data: { auditId, userId, storagePath, retryCount: 0 },
+      });
+    } catch (sendErr) {
+      // Roll back. Refund FIRST (while the audit row still exists) via the
+      // idempotent, row-anchored refund_orphan_audit RPC — same pattern as the
+      // decrement-transient path above. Doing this before the delete closes
+      // the crash-window credit leak, and the RPC's (status='pending' AND
+      // credit_consumed=true) gate makes a repeat call (request retry / the
+      // orphan-cleanup cron) a no-op on the credit, so it can't double-refund.
+      // Best-effort: never mask the original sendErr.
+      if (gate.reason === 'credit') {
+        try {
+          await failPendingAuditAndRefundIfNeeded(admin, {
+            auditId,
+            userId,
+            reason: 'inbound-dispatch-failed',
+          });
+        } catch (refundErr) {
+          Sentry.captureException(refundErr, {
+            tags: { surface: 'inbound.email.dispatch_refund' },
+            extra: { userId, auditId },
+          });
+        }
+      }
+      await deleteAuditRowBestEffort(
+        admin,
+        auditId,
+        userId,
+        'inbound.email.rollback_dispatch_audit',
+      );
+      await removeBillObjectBestEffort(
+        admin,
+        storagePath,
+        auditId,
+        userId,
+        'inbound.email.rollback_dispatch_storage',
+      );
+      // Free the dedupe claim so the user can re-forward the same bill.
+      throw sendErr;
+    }
     claimedDedupeHash = null;
 
     return NextResponse.json({ ok: true, auditId });

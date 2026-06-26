@@ -1,24 +1,57 @@
 import Link from 'next/link';
 
-export default function ShareLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function ShareLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:outline-none"
+      >
+        Skip to main content
+      </a>
       <header className="border-b border-neutral-200 bg-white">
         <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4">
           <Link
             href="/"
-            className="text-base font-semibold tracking-tight text-neutral-900"
+            aria-label="CarrierAudit home"
+            className="rounded-md text-base font-semibold tracking-tight text-neutral-900 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             CarrierAudit
           </Link>
-          <span className="text-xs text-neutral-500">Shared report</span>
+          <div className="flex items-center gap-4 text-xs">
+            <span className="hidden text-neutral-500 sm:inline">Shared report</span>
+            <Link
+              href="/signup"
+              className="inline-flex items-center rounded-full bg-emerald-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              Audit your bill
+            </Link>
+          </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">{children}</main>
+      <main id="main-content" className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
+        {children}
+      </main>
+      {/* Lead-gen footer banner — every shared report is a sales surface. */}
+      <section className="border-t border-neutral-200 bg-white">
+        <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-3 px-4 py-8 text-center sm:flex-row sm:justify-between sm:text-left">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900">
+              Want a report like this for your bill?
+            </h2>
+            <p className="text-sm text-neutral-600">
+              Upload your most recent statement. Findings in under 5 minutes. Money-back guarantee
+              if we don&apos;t find savings.
+            </p>
+          </div>
+          <Link
+            href="/signup"
+            className="inline-flex items-center rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            Audit my bill →
+          </Link>
+        </div>
+      </section>
       <footer className="border-t border-neutral-200 bg-white">
         <div className="mx-auto flex h-12 w-full max-w-4xl items-center justify-center px-4 text-xs text-neutral-500">
           <span>

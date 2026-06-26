@@ -63,15 +63,11 @@ describe('tmobile normalize', () => {
 
   it('reclassifies "Protection<360>" and "Protection 360" as insurance', () => {
     const a = baseBill();
-    firstLine(a).features = [
-      { name: 'Protection<360>', category: 'addon', monthly_cents: 1500 },
-    ];
+    firstLine(a).features = [{ name: 'Protection<360>', category: 'addon', monthly_cents: 1500 }];
     expect(firstLine(normalize(a)).features[0]?.category).toBe('insurance');
 
     const b = baseBill();
-    firstLine(b).features = [
-      { name: 'Protection 360', category: 'other', monthly_cents: 1500 },
-    ];
+    firstLine(b).features = [{ name: 'Protection 360', category: 'other', monthly_cents: 1500 }];
     expect(firstLine(normalize(b)).features[0]?.category).toBe('insurance');
   });
 

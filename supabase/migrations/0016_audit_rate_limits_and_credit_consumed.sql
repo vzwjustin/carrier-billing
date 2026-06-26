@@ -54,7 +54,7 @@ begin
           when b.window_start <= v_now - make_interval(secs => p_window_seconds) then v_now
           else b.window_start
         end
-  returning rate_limit_buckets.window_start, rate_limit_buckets.count
+  returning b.window_start, b.count
     into v_window_start, v_count;
 
   allowed := v_count <= p_limit;
@@ -82,22 +82,30 @@ begin
   update public.audits
     set status = 'failed',
         failure_reason = p_reason,
+        credit_consumed = false,
         updated_at = now()
     where id = p_audit_id
       and user_id = p_user_id
       and status = 'pending'
-  returning credit_consumed into v_credit_consumed;
+      and credit_consumed = true
+  returning true into v_credit_consumed;
 
-  if not found then
-    return;
-  end if;
-
-  if v_credit_consumed then
+  if found then
     update public.profiles
       set audit_credits = audit_credits + 1,
           updated_at = now()
       where id = p_user_id;
+    return;
   end if;
+
+  update public.audits
+    set status = 'failed',
+        failure_reason = p_reason,
+        updated_at = now()
+    where id = p_audit_id
+      and user_id = p_user_id
+      and status = 'pending'
+      and credit_consumed = false;
 end;
 $$;
 

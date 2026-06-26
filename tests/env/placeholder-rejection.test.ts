@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  REQUIRED_SERVER_SECRETS,
-  assertNoPlaceholderSecrets,
-  isPlaceholderSecret,
-} from '@/env';
+import { REQUIRED_SERVER_SECRETS, assertNoPlaceholderSecrets, isPlaceholderSecret } from '@/env';
 
 const REAL_VALUES: Record<(typeof REQUIRED_SERVER_SECRETS)[number], string> = {
   SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.real-service-role-token',
-  ANTHROPIC_API_KEY: 'sk-ant-api03-real-key',
+  ANTHROPIC_API_KEY: 'anthropic-real-fixture-value',
   AWS_ACCESS_KEY_ID: 'AKIAREALACCESSKEYID0',
   AWS_SECRET_ACCESS_KEY: 'aws-real-secret-access-key-0123456789abcdef',
   STRIPE_SECRET_KEY: 'sk_test_realstripesecret',
@@ -62,15 +58,12 @@ describe('assertNoPlaceholderSecrets', () => {
     expect(() => assertNoPlaceholderSecrets(buildEnv())).not.toThrow();
   });
 
-  it.each(REQUIRED_SERVER_SECRETS)(
-    'throws when %s is set to "placeholder"',
-    (key) => {
-      const env = buildEnv({ [key]: 'placeholder' });
-      expect(() => assertNoPlaceholderSecrets(env)).toThrow(
-        new RegExp(`placeholder values detected.*${key}`, 'i'),
-      );
-    },
-  );
+  it.each(REQUIRED_SERVER_SECRETS)('throws when %s is set to "placeholder"', (key) => {
+    const env = buildEnv({ [key]: 'placeholder' });
+    expect(() => assertNoPlaceholderSecrets(env)).toThrow(
+      new RegExp(`placeholder values detected.*${key}`, 'i'),
+    );
+  });
 
   it.each([
     'sk_placeholder',

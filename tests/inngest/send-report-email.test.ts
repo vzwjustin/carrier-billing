@@ -9,9 +9,7 @@ describe('sendReportEmailFn', () => {
   });
 
   it('appears in the exported functions registry', () => {
-    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) =>
-      fn.id(),
-    );
+    const ids = (functions as ReadonlyArray<{ id: () => string }>).map((fn) => fn.id());
     expect(ids.some((id) => id.includes('send-report-email'))).toBe(true);
   });
 

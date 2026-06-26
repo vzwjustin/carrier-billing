@@ -56,14 +56,8 @@ interface MockClient {
   __nextUpdateError: { message: string } | null;
   __nextSelectError: { message: string } | null;
   __nextRpcError: { message: string } | null;
-  __nextUpdateRows:
-    | Array<Record<string, unknown>>
-    | (() => Array<Record<string, unknown>>)
-    | null;
-  __nextSelectRows:
-    | Array<Record<string, unknown>>
-    | (() => Array<Record<string, unknown>>)
-    | null;
+  __nextUpdateRows: Array<Record<string, unknown>> | (() => Array<Record<string, unknown>>) | null;
+  __nextSelectRows: Array<Record<string, unknown>> | (() => Array<Record<string, unknown>>) | null;
 }
 
 function makeClient(): MockClient {
@@ -104,11 +98,7 @@ function makeClient(): MockClient {
           };
         },
         update(patch: Record<string, unknown>) {
-          const recordCall = (
-            eq: [string, unknown],
-            select?: string,
-            or?: string,
-          ) => {
+          const recordCall = (eq: [string, unknown], select?: string, or?: string) => {
             state.__updates.push({ table, patch, eq, select, or });
           };
           const consumeRows = (): Array<Record<string, unknown>> => {
@@ -126,9 +116,7 @@ function makeClient(): MockClient {
             eq(col: string, value: unknown) {
               const eqArgs: [string, unknown] = [col, value];
               const directThenable = {
-                then(
-                  resolve: (v: { error: typeof state.__nextUpdateError }) => void,
-                ) {
+                then(resolve: (v: { error: typeof state.__nextUpdateError }) => void) {
                   recordCall(eqArgs);
                   resolve({ error: consumeError() });
                 },
@@ -154,6 +142,13 @@ function makeClient(): MockClient {
                 // simulate "fresher event won" by setting it to `[]`.
                 or(orExpr: string) {
                   return {
+                    // Awaited directly (no .select) — real PostgREST resolves
+                    // an ordering-guarded UPDATE to `{ error }`. Used by the
+                    // #13 checkout subscription_id guard.
+                    then(resolve: (v: { error: typeof state.__nextUpdateError }) => void) {
+                      recordCall(eqArgs, undefined, orExpr);
+                      resolve({ error: consumeError() });
+                    },
                     select(cols: string) {
                       return {
                         then(
@@ -217,6 +212,7 @@ describe('handleStripeEvent', () => {
   it('checkout.session.completed (payment) calls grant_credit_once and stores customer id (C1)', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
+      payment_status: 'paid',
       client_reference_id: 'user_abc',
       customer: 'cus_111',
     });
@@ -249,6 +245,7 @@ describe('handleStripeEvent', () => {
   it('checkout.session.completed (payment) on a retry still calls grant_credit_once (C1 — RPC is idempotent)', async () => {
     const event = makeEvent('checkout.session.completed', {
       mode: 'payment',
+      payment_status: 'paid',
       client_reference_id: 'user_replay',
       customer: 'cus_replay',
     });
@@ -276,6 +273,91 @@ describe('handleStripeEvent', () => {
     expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_replay');
   });
 
+  it('checkout.session.completed (payment) skips credit when payment is not settled', async () => {
+    const event = makeEvent('checkout.session.completed', {
+      id: 'cs_async_pending',
+      mode: 'payment',
+      payment_status: 'unpaid',
+      client_reference_id: 'user_pending',
+      customer: 'cus_pending',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_pending',
+    });
+
+    expect(client.__rpcs).toHaveLength(0);
+    expect(client.__updates).toHaveLength(0);
+  });
+
+  it('checkout.session.completed (payment) grants credit when no payment is required', async () => {
+    const event = makeEvent('checkout.session.completed', {
+      mode: 'payment',
+      payment_status: 'no_payment_required',
+      client_reference_id: 'user_free',
+      customer: 'cus_free',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_free',
+    });
+
+    expect(client.__rpcs).toHaveLength(1);
+    expect(client.__rpcs[0]).toEqual({
+      name: 'grant_credit_once',
+      args: {
+        p_event_id: 'evt_row_free',
+        p_profile_id: 'user_free',
+        p_delta: 1,
+      },
+    });
+    expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_free');
+  });
+
+  it('checkout.session.async_payment_succeeded grants settled one-time credit exactly through grant_credit_once', async () => {
+    const event = makeEvent('checkout.session.async_payment_succeeded', {
+      mode: 'payment',
+      payment_status: 'paid',
+      client_reference_id: 'user_async',
+      customer: 'cus_async',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_async',
+    });
+
+    expect(client.__rpcs).toHaveLength(1);
+    expect(client.__rpcs[0]).toEqual({
+      name: 'grant_credit_once',
+      args: {
+        p_event_id: 'evt_row_async',
+        p_profile_id: 'user_async',
+        p_delta: 1,
+      },
+    });
+    expect(client.__updates[0]?.patch['stripe_customer_id']).toBe('cus_async');
+  });
+
+  it('checkout.session.async_payment_failed does not grant one-time credit', async () => {
+    const event = makeEvent('checkout.session.async_payment_failed', {
+      mode: 'payment',
+      payment_status: 'unpaid',
+      client_reference_id: 'user_async_fail',
+      customer: 'cus_async_fail',
+    });
+
+    await handleStripeEvent(event, client as unknown as never, {
+      previousStatus: null,
+      billingEventId: 'evt_row_async_fail',
+    });
+
+    expect(client.__rpcs).toHaveLength(0);
+    expect(client.__updates).toHaveLength(0);
+  });
+
   it('checkout.session.completed (subscription) records subscription_id + customer link without writing subscription_status (H11)', async () => {
     // H11: the `mode='subscription'` branch must NOT write
     // `subscription_status='active'` — that grants premature paid access for
@@ -291,20 +373,34 @@ describe('handleStripeEvent', () => {
     await handleStripeEvent(event, client as unknown as never);
 
     expect(client.__rpcs).toHaveLength(0);
-    expect(client.__updates).toHaveLength(1);
-    const update = client.__updates[0];
-    expect(update?.table).toBe('profiles');
-    expect(update?.eq).toEqual(['id', 'user_xyz']);
-    expect(update?.patch['subscription_id']).toBe('sub_777');
-    expect(update?.patch['stripe_customer_id']).toBe('cus_222');
-    // Status must be absent from the patch entirely — not written here at all.
-    expect(update?.patch).not.toHaveProperty('subscription_status');
+    // #13: the subscription_id write is now guarded so a replayed checkout
+    // cannot resurrect an id a newer subscription.deleted cleared. This splits
+    // into two updates: unconditional stripe_customer_id link + ordering-
+    // guarded subscription_id.
+    expect(client.__updates).toHaveLength(2);
+    const customerUpdate = client.__updates.find(
+      (u) => u.patch['stripe_customer_id'] !== undefined,
+    );
+    const subIdUpdate = client.__updates.find((u) => u.patch['subscription_id'] !== undefined);
+    expect(customerUpdate?.table).toBe('profiles');
+    expect(customerUpdate?.eq).toEqual(['id', 'user_xyz']);
+    expect(customerUpdate?.patch['stripe_customer_id']).toBe('cus_222');
+    expect(subIdUpdate?.eq).toEqual(['id', 'user_xyz']);
+    expect(subIdUpdate?.patch['subscription_id']).toBe('sub_777');
+    // The subscription_id write carries the ordering guard (and does NOT bump
+    // subscription_event_at — that stays the subscription.* events' authority).
+    expect(subIdUpdate?.or).toContain('subscription_event_at');
+    expect(subIdUpdate?.patch).not.toHaveProperty('subscription_event_at');
+    // Status must be absent everywhere — not written by checkout at all.
+    for (const u of client.__updates) {
+      expect(u.patch).not.toHaveProperty('subscription_status');
+    }
   });
 
   it('checkout.session.completed (subscription) writes ONLY id columns — no status fields (H11 column-set assertion)', async () => {
-    // Defense-in-depth: enumerate the exact columns written. Catches any
-    // regression that re-introduces status, subscription_event_at, or other
-    // state fields that should only be set by the subscription.* event handlers.
+    // Defense-in-depth: enumerate the exact columns written across both writes.
+    // Catches any regression that re-introduces status, subscription_event_at,
+    // or other state fields that should only be set by the subscription.* handlers.
     const event = makeEvent('checkout.session.completed', {
       mode: 'subscription',
       client_reference_id: 'user_h11',
@@ -314,15 +410,11 @@ describe('handleStripeEvent', () => {
 
     await handleStripeEvent(event, client as unknown as never);
 
-    const patch = client.__updates[0]?.patch ?? {};
-    const writtenCols = Object.keys(patch).sort();
-    // Exactly these columns: subscription_id (link), stripe_customer_id
-    // (link), updated_at (boilerplate from updateProfile). No status, no
-    // subscription_event_at, no audit_credits — all of those are handled
-    // elsewhere.
-    expect(writtenCols).toEqual(
-      ['stripe_customer_id', 'subscription_id', 'updated_at'].sort(),
-    );
+    const writtenCols = [...new Set(client.__updates.flatMap((u) => Object.keys(u.patch)))].sort();
+    // Union of both updates: subscription_id (link, guarded), stripe_customer_id
+    // (link), updated_at (boilerplate). No status, no subscription_event_at,
+    // no audit_credits.
+    expect(writtenCols).toEqual(['stripe_customer_id', 'subscription_id', 'updated_at'].sort());
   });
 
   it('customer.subscription.updated propagates the new status', async () => {
@@ -480,7 +572,14 @@ describe('handleStripeEvent', () => {
     // Production now does ONE select (the H9 guard) and the email comes back
     // from the UPDATE's .select('id, email') clause — no second SELECT.
     client.__nextSelectRows = [
-      { id: profileId, subscription_event_at: subscriptionEventAt },
+      {
+        id: profileId,
+        subscription_event_at: subscriptionEventAt,
+        // H1: handler reads subscription_status from the pre-UPDATE row to
+        // decide whether to dispatch the email. Stage as null (the typical
+        // first-failure shape) so the email path fires.
+        subscription_status: null,
+      },
     ];
     client.__nextUpdateRows = [{ id: profileId, email }];
   }
@@ -506,19 +605,17 @@ describe('handleStripeEvent', () => {
     expect(update?.or).toMatch(/subscription_event_at\.lt\./);
     // One SELECT — the H9 guard. The email comes back from the UPDATE's
     // own `.select('id, email')` clause, eliminating the post-CAS re-fetch.
+    // H1: also reads `subscription_status` so the email-dispatch gate can
+    // suppress duplicate emails on Stripe's dunning retries.
     expect(client.__selects).toHaveLength(1);
-    expect(client.__selects[0]?.cols).toBe('id, subscription_event_at');
+    expect(client.__selects[0]?.cols).toBe('id, subscription_event_at, subscription_status');
     expect(update?.select).toBe('id, email');
   });
 
   it('invoice.payment_failed skips past_due flip when fresher subscription event already landed (H2)', async () => {
     // Profile already has a fresher subscription_event_at than this invoice.
-    const fresherTs = new Date(
-      Date.UTC(2026, 4, 9, 13, 0, 0),
-    ).toISOString();
-    client.__nextSelectRows = [
-      { id: 'profile_fresh', subscription_event_at: fresherTs },
-    ];
+    const fresherTs = new Date(Date.UTC(2026, 4, 9, 13, 0, 0)).toISOString();
+    client.__nextSelectRows = [{ id: 'profile_fresh', subscription_event_at: fresherTs }];
     const staleEvent = makeEvent(
       'invoice.payment_failed',
       { id: 'in_stale', customer: 'cus_stale' },
@@ -557,10 +654,7 @@ describe('handleStripeEvent', () => {
     const firstCall = inngestSendMock.mock.calls[0] as unknown as
       | [{ data?: Record<string, unknown> }]
       | undefined;
-    const dispatchedData = (firstCall?.[0]?.data ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const dispatchedData = (firstCall?.[0]?.data ?? {}) as Record<string, unknown>;
     expect(dispatchedData).not.toHaveProperty('customerEmail');
   });
 
@@ -580,6 +674,93 @@ describe('handleStripeEvent', () => {
     expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
   });
 
+  it('invoice.payment_failed suppresses email when profile was already past_due (H1 — dunning retry guard)', async () => {
+    // Stripe sends a fresh invoice.payment_failed on every dunning retry
+    // (default schedule: 1 retry then 3/5/7 days), each carrying a newer
+    // event.created timestamp that passes the CAS. Without the H1 gate,
+    // one declined card produced 3-4 separate emails. The pre-UPDATE
+    // subscription_status is what decides whether a transition into
+    // past_due happened — if it was already past_due, the email is
+    // suppressed.
+    client.__nextSelectRows = [
+      {
+        id: 'profile_already_pd',
+        subscription_event_at: new Date(Date.UTC(2026, 4, 9, 11, 0, 0)).toISOString(),
+        subscription_status: 'past_due',
+      },
+    ];
+    client.__nextUpdateRows = [{ id: 'profile_already_pd', email: 'spam-me-not@example.com' }];
+
+    const retryEvent = makeEvent(
+      'invoice.payment_failed',
+      {
+        id: 'in_dunning_retry',
+        customer: 'cus_already_pd',
+        amount_due: 1500,
+      },
+      Math.floor(Date.UTC(2026, 4, 12, 12, 0, 0) / 1000), // 3 days later
+    );
+
+    await handleStripeEvent(retryEvent, client as unknown as never);
+
+    // The past_due UPDATE still ran (advances subscription_event_at so
+    // the CAS marker stays current).
+    expect(client.__updates).toHaveLength(1);
+    expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
+    // But NO Inngest dispatch — user already knows their card is declined.
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('invoice.payment_failed skips past_due flip when profile is incomplete', async () => {
+    client.__nextSelectRows = [
+      {
+        id: 'profile_incomplete',
+        subscription_event_at: new Date(Date.UTC(2026, 4, 9, 11, 0, 0)).toISOString(),
+        subscription_status: 'incomplete',
+      },
+    ];
+
+    const event = makeEvent(
+      'invoice.payment_failed',
+      {
+        id: 'in_after_incomplete',
+        customer: 'cus_incomplete',
+        amount_due: 1500,
+      },
+      Math.floor(Date.UTC(2026, 4, 12, 12, 0, 0) / 1000),
+    );
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    expect(client.__updates).toHaveLength(0);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('invoice.payment_failed skips past_due flip when profile is canceled', async () => {
+    client.__nextSelectRows = [
+      {
+        id: 'profile_canceled',
+        subscription_event_at: new Date(Date.UTC(2026, 4, 9, 11, 0, 0)).toISOString(),
+        subscription_status: 'canceled',
+      },
+    ];
+
+    const event = makeEvent(
+      'invoice.payment_failed',
+      {
+        id: 'in_after_cancel',
+        customer: 'cus_canceled',
+        amount_due: 1500,
+      },
+      Math.floor(Date.UTC(2026, 4, 12, 12, 0, 0) / 1000),
+    );
+
+    await handleStripeEvent(event, client as unknown as never);
+
+    expect(client.__updates).toHaveLength(0);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
   it('invoice.payment_failed swallows inngest.send errors so past_due update sticks', async () => {
     stageInvoiceSelects('profile_send_err', 'send-err@example.com');
     inngestSendMock.mockRejectedValueOnce(new Error('inngest down'));
@@ -589,9 +770,7 @@ describe('handleStripeEvent', () => {
       amount_due: 2500,
     });
 
-    await expect(
-      handleStripeEvent(event, client as unknown as never),
-    ).resolves.toBeUndefined();
+    await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
 
     expect(inngestSendMock).toHaveBeenCalledTimes(1);
     expect(client.__updates[0]?.patch['subscription_status']).toBe('past_due');
@@ -619,9 +798,9 @@ describe('handleStripeEvent', () => {
       customer: 'cus_err',
     });
 
-    await expect(
-      handleStripeEvent(event, client as unknown as never),
-    ).rejects.toThrow(/past_due update failed/);
+    await expect(handleStripeEvent(event, client as unknown as never)).rejects.toThrow(
+      /past_due update failed/,
+    );
   });
 
   // --- H9: ordering guard for subscription events --------------------------
@@ -700,9 +879,7 @@ describe('handleStripeEvent', () => {
     });
 
     it('applies the first subscription event when subscription_event_at is null', async () => {
-      client.__nextSelectRows = [
-        { id: 'profile_h9_first', subscription_event_at: null },
-      ];
+      client.__nextSelectRows = [{ id: 'profile_h9_first', subscription_event_at: null }];
 
       const event = makeEvent(
         'customer.subscription.created',
@@ -743,9 +920,7 @@ describe('handleStripeEvent', () => {
     const ACTIVE_TS = Math.floor(Date.UTC(2026, 4, 9, 12, 0, 0) / 1000);
 
     it('subscription update sends `.or(...)` ordering predicate to the database', async () => {
-      client.__nextSelectRows = [
-        { id: 'profile_h4', subscription_event_at: null },
-      ];
+      client.__nextSelectRows = [{ id: 'profile_h4', subscription_event_at: null }];
 
       const event = makeEvent(
         'customer.subscription.updated',
@@ -769,9 +944,7 @@ describe('handleStripeEvent', () => {
       // Pre-check passes (snapshot says null), but the CAS UPDATE returns 0
       // rows because a concurrent fresher writer landed between SELECT and
       // UPDATE. The handler must not throw — it logs a breadcrumb and returns.
-      client.__nextSelectRows = [
-        { id: 'profile_h4_race', subscription_event_at: null },
-      ];
+      client.__nextSelectRows = [{ id: 'profile_h4_race', subscription_event_at: null }];
       client.__nextUpdateRows = [];
 
       const event = makeEvent(
@@ -780,9 +953,7 @@ describe('handleStripeEvent', () => {
         ACTIVE_TS,
       );
 
-      await expect(
-        handleStripeEvent(event, client as unknown as never),
-      ).resolves.toBeUndefined();
+      await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
 
       // The UPDATE was attempted (recorded), but no exception thrown.
       expect(client.__updates).toHaveLength(1);
@@ -863,9 +1034,7 @@ describe('handleStripeEvent', () => {
 
       it('1 row matched: succeeds', async () => {
         setRows([{ id: 'profile_one', email: 'a@b.co' }]);
-        await expect(
-          handleStripeEvent(event, client as unknown as never),
-        ).resolves.toBeUndefined();
+        await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
       });
 
       if (isTerminal) {
@@ -878,9 +1047,9 @@ describe('handleStripeEvent', () => {
       } else {
         it('0 rows matched: throws so Stripe retries', async () => {
           setRows([]);
-          await expect(
-            handleStripeEvent(event, client as unknown as never),
-          ).rejects.toThrow(expectedThrow as RegExp);
+          await expect(handleStripeEvent(event, client as unknown as never)).rejects.toThrow(
+            expectedThrow as RegExp,
+          );
         });
       }
 
@@ -889,9 +1058,9 @@ describe('handleStripeEvent', () => {
           { id: 'profile_one', email: 'a@b.co' },
           { id: 'profile_two', email: 'c@d.co' },
         ]);
-        await expect(
-          handleStripeEvent(event, client as unknown as never),
-        ).rejects.toThrow(multiThrow);
+        await expect(handleStripeEvent(event, client as unknown as never)).rejects.toThrow(
+          multiThrow,
+        );
       });
     },
   );

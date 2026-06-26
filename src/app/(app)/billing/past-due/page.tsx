@@ -27,11 +27,14 @@ export default async function PaymentFailedPage(): Promise<React.ReactElement> {
   }
 
   const admin = getAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('profiles')
     .select('subscription_status')
     .eq('id', user.id)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Failed to load billing status: ${error.message}`);
+  }
 
   const profile = (data ?? null) as ProfileRow | null;
   if (profile?.subscription_status !== 'past_due') {
@@ -41,12 +44,8 @@ export default async function PaymentFailedPage(): Promise<React.ReactElement> {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Payment failed
-        </h1>
-        <p className="text-sm text-neutral-600">
-          Let&apos;s get your subscription back on track.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Payment failed</h1>
+        <p className="text-sm text-neutral-600">Let&apos;s get your subscription back on track.</p>
       </header>
 
       <Banner
@@ -62,13 +61,10 @@ export default async function PaymentFailedPage(): Promise<React.ReactElement> {
               1
             </span>
             <div className="space-y-2">
-              <p className="text-sm font-medium text-neutral-900">
-                Update your payment method
-              </p>
+              <p className="text-sm font-medium text-neutral-900">Update your payment method</p>
               <p className="text-sm text-neutral-600">
-                Open the Stripe customer portal to add a new card or replace
-                the failing one. The portal also lists every invoice we&apos;ve
-                tried to charge.
+                Open the Stripe customer portal to add a new card or replace the failing one. The
+                portal also lists every invoice we&apos;ve tried to charge.
               </p>
               <ManageSubscriptionButton />
             </div>
@@ -78,13 +74,11 @@ export default async function PaymentFailedPage(): Promise<React.ReactElement> {
               2
             </span>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-neutral-900">
-                Wait for Stripe to retry
-              </p>
+              <p className="text-sm font-medium text-neutral-900">Wait for Stripe to retry</p>
               <p className="text-sm text-neutral-600">
-                Once the new payment method is saved, Stripe will retry the
-                outstanding invoice within a few minutes. Your subscription
-                reactivates automatically when the charge succeeds.
+                Once the new payment method is saved, Stripe will retry the outstanding invoice
+                within a few minutes. Your subscription reactivates automatically when the charge
+                succeeds.
               </p>
             </div>
           </li>
@@ -97,9 +91,8 @@ export default async function PaymentFailedPage(): Promise<React.ReactElement> {
                 Still stuck? Reply to the email we sent
               </p>
               <p className="text-sm text-neutral-600">
-                If the portal can&apos;t recover the charge — for example,
-                because the card is permanently declined — reply to our
-                payment-failed email and we&apos;ll sort it out.
+                If the portal can&apos;t recover the charge — for example, because the card is
+                permanently declined — reply to our payment-failed email and we&apos;ll sort it out.
               </p>
             </div>
           </li>

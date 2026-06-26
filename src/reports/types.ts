@@ -1,4 +1,4 @@
-import type { Finding, Severity } from '@/rules/types';
+import type { Finding, FindingStatus, Severity } from '@/rules/types';
 
 /**
  * Shape of a row from the `audits` table that the report needs.
@@ -17,6 +17,12 @@ export interface ReportAuditRow {
   estimated_monthly_savings_cents: number | null;
   estimated_annual_savings_cents: number | null;
   completed_at: string | null;
+  /**
+   * Bill-level extraction confidence ('high' | 'medium' | 'low'), added in
+   * migration 0037. NULL on rows extracted before the column existed; the
+   * viewer treats NULL as 'high' (no caution banner).
+   */
+  extraction_confidence?: string | null;
 }
 
 /** Row shape for `bill_accounts` joined to a per-account line count. */
@@ -73,6 +79,12 @@ export interface ReportFindingRow {
   affected_line_ids: string[] | null;
   affected_account_ids: string[] | null;
   evidence: Record<string, unknown> | null;
+  /**
+   * Reviewer workflow status. Added in migration 0023. Nullable in TS to
+   * tolerate any pre-migration rows; the DB column is `NOT NULL DEFAULT
+   * 'new'` so production rows always have a value.
+   */
+  status?: FindingStatus | null;
 }
 
 /** Sub-shape exposed to the viewer for the audit summary block. */
@@ -89,6 +101,8 @@ export interface ReportAudit {
   estimated_monthly_savings_cents: number;
   estimated_annual_savings_cents: number;
   completed_at: string | null;
+  /** 'high' | 'medium' | 'low' | null — null is treated as high (no banner). */
+  extraction_confidence: string | null;
 }
 
 /** Sub-shape exposed to the viewer for the bill summary block. */
@@ -120,4 +134,4 @@ export interface ReportData {
 }
 
 /** Convenience export so other modules can use it without re-importing. */
-export type { Finding, Severity } from '@/rules/types';
+export type { Finding, FindingStatus, Severity } from '@/rules/types';

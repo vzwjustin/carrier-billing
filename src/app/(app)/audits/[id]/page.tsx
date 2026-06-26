@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 
 import { AuditViewer, type AuditStatusPayload } from '@/components/audits/audit-viewer';
+import { FirstAuditBanner } from '@/components/audits/first-audit-banner';
 import { trackServer } from '@/lib/analytics/events';
 import { createClient } from '@/lib/supabase/server';
 import { buildReportData } from '@/reports/builder';
@@ -61,6 +62,8 @@ interface AuditRow {
   completed_at: string | null;
   // F5: page_count surfaces the >100-page slowdown notice in audit-viewer.
   page_count: number | null;
+  // Migration 0037: bill-level extraction confidence for the caution banner.
+  extraction_confidence: string | null;
 }
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -85,7 +88,7 @@ export default async function AuditDetailPage({
   const { data, error } = await supabase
     .from('audits')
     .select(
-      'id,original_filename,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,failure_reason,completed_at,page_count',
+      'id,original_filename,status,carrier,line_count,account_count,total_charges_cents,billing_period_start,billing_period_end,estimated_monthly_savings_cents,estimated_annual_savings_cents,finding_count,high_severity_count,failure_reason,completed_at,page_count,extraction_confidence',
     )
     .eq('id', parsed.data.id)
     .maybeSingle<AuditRow>();
@@ -112,6 +115,22 @@ export default async function AuditDetailPage({
     page_count: data.page_count,
   };
 
+  // First-audit tour banner: show only when this audit is completed AND it
+  // is the user's only audit. Cheap HEAD count via RLS — no second roundtrip
+  // unless we're rendering a completed audit.
+  let showFirstAuditBanner = false;
+  let currentUserId: string | null = null;
+  if (data.status === 'completed') {
+    const [{ count: auditCount }, userRes] = await Promise.all([
+      supabase.from('audits').select('id', { head: true, count: 'exact' }),
+      supabase.auth.getUser(),
+    ]);
+    if (auditCount === 1 && userRes.data.user) {
+      showFirstAuditBanner = true;
+      currentUserId = userRes.data.user.id;
+    }
+  }
+
   // For completed audits, fetch the rest of the report data.
   let report: ReportData | undefined;
   if (data.status === 'completed') {
@@ -121,7 +140,7 @@ export default async function AuditDetailPage({
         supabase
           .from('findings')
           .select(
-            'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+            'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence,status',
           )
           .eq('audit_id', auditId),
         supabase
@@ -176,6 +195,7 @@ export default async function AuditDetailPage({
       estimated_monthly_savings_cents: data.estimated_monthly_savings_cents,
       estimated_annual_savings_cents: data.estimated_annual_savings_cents,
       completed_at: data.completed_at,
+      extraction_confidence: data.extraction_confidence,
     };
 
     report = buildReportData({
@@ -211,7 +231,11 @@ export default async function AuditDetailPage({
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      {showFirstAuditBanner && currentUserId ? (
+        <FirstAuditBanner auditId={data.id} userId={currentUserId} />
+      ) : null}
+
+      <div className="flex items-center justify-between gap-4">
         <div>
           <Link href="/audits" className="text-xs text-neutral-500 hover:text-neutral-900">
             ← All audits
@@ -219,6 +243,20 @@ export default async function AuditDetailPage({
           <h1 className="mt-2 max-w-xl truncate text-2xl font-semibold tracking-tight text-neutral-900">
             {data.original_filename}
           </h1>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-3 text-xs">
+          <Link
+            href={`/audits/${data.id}/autopsy`}
+            className="text-neutral-500 hover:text-neutral-900"
+          >
+            Bill Increase Autopsy →
+          </Link>
+          <Link
+            href={`/audits/${data.id}/activity`}
+            className="text-neutral-500 hover:text-neutral-900"
+          >
+            Activity →
+          </Link>
         </div>
       </div>
 

@@ -43,6 +43,19 @@ export type Edi811PipelineResult = {
 };
 
 /**
+ * Sniff the first bytes of an uploaded file to decide whether it should be
+ * parsed as X12 EDI 811. Some carrier feeds include a UTF-8 BOM or leading
+ * whitespace before the ISA envelope, so mirror decodeEdi's tolerated prefix
+ * here while still requiring ISA + a non-alphanumeric element separator.
+ */
+export function isLikelyEdi811Buffer(buffer: Buffer): boolean {
+  if (buffer.length < 4) return false;
+  const sample = buffer.toString('utf8', 0, Math.min(buffer.length, 64));
+  const trimmed = stripEdiLeadingPrefix(sample);
+  return /^ISA[^A-Za-z0-9]/.test(trimmed);
+}
+
+/**
  * Decode + parse + map an EDI 811 file into the same `ExtractedBill` shape
  * the PDF pipeline produces. The result is run through `ExtractedBillSchema`
  * before returning, so downstream code can trust the contract.
@@ -134,18 +147,26 @@ function pickHooks(carrier: Carrier): CarrierMapHooks {
       return ATT_HOOKS;
     case 'tmobile':
       return TMOBILE_HOOKS;
+    // US MVNOs / regional carriers do not ship EDI 811 to their end customers
+    // — those are MNO-only enterprise feeds. If a bill from one of these
+    // carriers ever reaches the EDI 811 pipeline (vanishingly unlikely),
+    // fall through to the empty-hook default so the generic mapper handles
+    // it instead of throwing an exhaustiveness error at compile time.
+    case 'uscellular':
+    case 'spectrum':
+    case 'xfinity':
+    case 'cricket':
     case 'unknown':
       return {};
   }
 }
 
 function decodeEdi(buffer: Buffer): string {
-  let text = buffer.toString('utf8');
-  // Strip a UTF-8 BOM if present.
-  if (text.charCodeAt(0) === 0xfeff) {
-    text = text.slice(1);
-  }
-  return text;
+  return stripEdiLeadingPrefix(buffer.toString('utf8'));
+}
+
+function stripEdiLeadingPrefix(text: string): string {
+  return text.replace(/^\uFEFF?[\r\n\t ]*/, '');
 }
 
 function formatZodError(err: unknown): string | null {

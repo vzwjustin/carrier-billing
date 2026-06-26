@@ -82,9 +82,7 @@ async function main(): Promise<void> {
   if (!secretAccessKey) missing.push('AWS_SECRET_ACCESS_KEY');
   if (!bucket) missing.push('AWS_TEXTRACT_S3_BUCKET');
   if (missing.length > 0) {
-    console.error(
-      `[ERROR] Missing required env: ${missing.join(', ')}. Set in .env.local.`,
-    );
+    console.error(`[ERROR] Missing required env: ${missing.join(', ')}. Set in .env.local.`);
     process.exit(1);
   }
 
@@ -112,23 +110,19 @@ async function main(): Promise<void> {
   // Preserve any existing rules; replace ours by RuleId.
   let existing: LifecycleRule[] = [];
   try {
-    const cfg = await s3.send(
-      new GetBucketLifecycleConfigurationCommand({ Bucket: bucket }),
-    );
+    const cfg = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucket }));
     existing = cfg.Rules ?? [];
   } catch (err) {
-    const code = (err as { name?: string; Code?: string }).name
-      ?? (err as { name?: string; Code?: string }).Code;
+    const code =
+      (err as { name?: string; Code?: string }).name ??
+      (err as { name?: string; Code?: string }).Code;
     if (code !== 'NoSuchLifecycleConfiguration') {
       throw err;
     }
     // No prior config — fine, we'll create one.
   }
 
-  const merged = [
-    desiredRule,
-    ...existing.filter((r) => r.ID !== RULE_ID),
-  ];
+  const merged = [desiredRule, ...existing.filter((r) => r.ID !== RULE_ID)];
 
   await s3.send(
     new PutBucketLifecycleConfigurationCommand({

@@ -28,10 +28,7 @@ export default async function UpdatePasswordPage() {
     <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <Link
-            href="/"
-            className="text-xl font-semibold tracking-tight text-neutral-900"
-          >
+          <Link href="/" className="text-xl font-semibold tracking-tight text-neutral-900">
             CarrierAudit
           </Link>
         </div>
@@ -41,9 +38,7 @@ export default async function UpdatePasswordPage() {
               <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
                 Set a new password
               </h1>
-              <p className="text-sm text-neutral-500">
-                Choose a new password for your account.
-              </p>
+              <p className="text-sm text-neutral-500">Choose a new password for your account.</p>
             </div>
             <UpdatePasswordForm />
           </div>

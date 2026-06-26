@@ -16,17 +16,49 @@ type GetUserResult = {
   error: null;
 };
 type AuditRowResp = {
-  data: { id: string; user_id: string; status: string; storage_path: string } | null;
+  data: {
+    id: string;
+    user_id: string;
+    status: string;
+    storage_path: string;
+    retry_count: number;
+  } | null;
   error: null | { message: string };
 };
 
 // Wrap top-level mocks in vi.hoisted so they're initialized before the
 // vi.mock factories below run (per CLAUDE.md test-mocking rule).
-const { getUserMock, auditsSelectMock, storageInfoMock, inngestSendMock } = vi.hoisted(() => ({
+const {
+  getUserMock,
+  auditsSelectMock,
+  storageInfoMock,
+  inngestSendMock,
+  sentryCaptureMock,
+  consumeRateLimitMock,
+  assertCanStartPendingAuditMock,
+} = vi.hoisted(() => ({
   getUserMock: vi.fn<() => Promise<GetUserResult>>(),
   auditsSelectMock: vi.fn<() => Promise<AuditRowResp>>(),
   storageInfoMock: vi.fn<() => Promise<{ data: unknown; error: null | { message: string } }>>(),
   inngestSendMock: vi.fn(async (_event: unknown) => undefined),
+  sentryCaptureMock: vi.fn(),
+  consumeRateLimitMock:
+    vi.fn<
+      (config: {
+        key: string;
+        limit: number;
+        windowSeconds: number;
+      }) => Promise<
+        | { ok: true; remaining: number; resetAt: string }
+        | { ok: false; remaining: number; resetAt: string }
+      >
+    >(),
+  assertCanStartPendingAuditMock:
+    vi.fn<() => Promise<{ ok: true } | { ok: false; reason: 'past_due' }>>(),
+}));
+
+vi.mock('@/lib/access/gate', () => ({
+  assertCanStartPendingAudit: () => assertCanStartPendingAuditMock(),
 }));
 
 // `from('audits').select(...).eq(...).maybeSingle()` chain
@@ -56,11 +88,24 @@ vi.mock('@/inngest/client', () => ({
   inngest: { send: (event: unknown) => inngestSendMock(event) },
 }));
 
+vi.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => sentryCaptureMock(...args),
+}));
+
 vi.mock('@/env', () => ({
   env: {
     NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',
     NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder',
   },
+}));
+
+vi.mock('@/lib/security/rate-limit', () => ({
+  consumeRateLimit: (config: { key: string; limit: number; windowSeconds: number }) =>
+    consumeRateLimitMock(config),
+  rateLimitedResponse: (resetAt: string) =>
+    new Response(JSON.stringify({ error: 'rate_limited', resetAt }), {
+      status: 429,
+    }),
 }));
 
 // Import after mocks register.
@@ -78,6 +123,15 @@ beforeEach(() => {
   auditsSelectMock.mockReset();
   storageInfoMock.mockReset();
   inngestSendMock.mockReset();
+  sentryCaptureMock.mockReset();
+  consumeRateLimitMock.mockReset();
+  consumeRateLimitMock.mockResolvedValue({
+    ok: true,
+    remaining: 9,
+    resetAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+  assertCanStartPendingAuditMock.mockReset();
+  assertCanStartPendingAuditMock.mockResolvedValue({ ok: true });
 
   getUserMock.mockResolvedValue({
     data: { user: { id: TEST_USER_ID } },
@@ -89,6 +143,7 @@ beforeEach(() => {
       user_id: TEST_USER_ID,
       status: 'pending',
       storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+      retry_count: 0,
     },
     error: null,
   });
@@ -118,6 +173,50 @@ describe('POST /api/audits/[id]/start', () => {
     expect(sent?.data?.auditId).toBe(TEST_AUDIT_ID);
     expect(sent?.data?.userId).toBe(TEST_USER_ID);
     expect(sent?.data?.storagePath).toBe(`${TEST_USER_ID}/audit/bill.pdf`);
+    expect(sent?.data?.retryCount).toBe(0);
+  });
+
+  it('uses retry-scoped idempotency id when retry_count > 0', async () => {
+    auditsSelectMock.mockResolvedValueOnce({
+      data: {
+        id: TEST_AUDIT_ID,
+        user_id: TEST_USER_ID,
+        status: 'pending',
+        storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+        retry_count: 2,
+      },
+      error: null,
+    });
+
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(200);
+
+    const sent = inngestSendMock.mock.calls[0]?.[0] as { id?: string };
+    expect(sent?.id).toBe(`${TEST_AUDIT_ID}-uploaded-retry-2`);
+  });
+
+  it('returns 429 when the per-user start rate limit is exceeded', async () => {
+    consumeRateLimitMock.mockResolvedValueOnce({
+      ok: false,
+      remaining: 0,
+      resetAt: '2026-05-30T12:00:00.000Z',
+    });
+
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+
+    expect(res.status).toBe(429);
+    expect(inngestSendMock).not.toHaveBeenCalled();
+    expect(consumeRateLimitMock).toHaveBeenCalledWith({
+      key: `audit-start:${TEST_USER_ID}`,
+      limit: 10,
+      windowSeconds: 60 * 60,
+    });
   });
 
   it('duplicate POST sends two events with the SAME idempotency id (Inngest dedupes)', async () => {
@@ -150,6 +249,21 @@ describe('POST /api/audits/[id]/start', () => {
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
+  it('returns 402 when subscription is past_due (start gate)', async () => {
+    assertCanStartPendingAuditMock.mockResolvedValueOnce({
+      ok: false,
+      reason: 'past_due',
+    });
+    const req = new Request('http://localhost/api/audits/X/start', {
+      method: 'POST',
+    });
+    const res = await POST(req, makeContext());
+    expect(res.status).toBe(402);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('subscription_past_due');
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
   it('returns 409 when the audit is not pending — no event sent', async () => {
     auditsSelectMock.mockResolvedValueOnce({
       data: {
@@ -157,6 +271,7 @@ describe('POST /api/audits/[id]/start', () => {
         user_id: TEST_USER_ID,
         status: 'extracting',
         storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+        retry_count: 0,
       },
       error: null,
     });
@@ -204,6 +319,7 @@ describe('POST /api/audits/[id]/start', () => {
         user_id: 'someone-else',
         status: 'pending',
         storage_path: `${TEST_USER_ID}/audit/bill.pdf`,
+        retry_count: 0,
       },
       error: null,
     });
@@ -213,5 +329,62 @@ describe('POST /api/audits/[id]/start', () => {
     const res = await POST(req, makeContext());
     expect(res.status).toBe(404);
     expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('scrubs enqueue errors before logging them', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    inngestSendMock.mockRejectedValueOnce(
+      new Error('enqueue failed for user@example.com acct 1234567890123'),
+    );
+
+    try {
+      const req = new Request('http://localhost/api/audits/X/start', {
+        method: 'POST',
+      });
+      const res = await POST(req, makeContext());
+
+      expect(res.status).toBe(502);
+      const logged = consoleErrorSpy.mock.calls.flat().join(' ');
+      expect(logged).not.toContain('user@example.com');
+      expect(logged).not.toContain('1234567890123');
+      expect(logged).toContain('[email]');
+      const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+        Error,
+        { tags?: { surface?: string }; extra?: { auditId?: string } },
+      ];
+      expect(err.message).toContain('[email]');
+      expect(err.message).not.toContain('user@example.com');
+      expect(ctx.tags?.surface).toBe('audits.start.inngest_send');
+      expect(ctx.extra?.auditId).toBe(TEST_AUDIT_ID);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('reports unexpected route errors with a scrubbed message', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    getUserMock.mockRejectedValueOnce(
+      new Error('auth failed for user@example.com acct 1234567890123'),
+    );
+
+    try {
+      const req = new Request('http://localhost/api/audits/X/start', {
+        method: 'POST',
+      });
+      const res = await POST(req, makeContext());
+
+      expect(res.status).toBe(500);
+      const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+        Error,
+        { tags?: { surface?: string }; extra?: { auditId?: string } },
+      ];
+      expect(err.message).toContain('[email]');
+      expect(err.message).not.toContain('user@example.com');
+      expect(err.message).not.toContain('1234567890123');
+      expect(ctx.tags?.surface).toBe('audits.start');
+      expect(ctx.extra?.auditId).toBe(TEST_AUDIT_ID);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

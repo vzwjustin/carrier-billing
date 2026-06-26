@@ -60,6 +60,8 @@ const REDACTED_KEYS = new Set([
 // hyphens, dots, spaces, or no separator between the trailing groups.
 const HYPHEN_PHONE = /(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}/g;
 const EMAIL = /[\w.+-]+@[\w.-]+\.\w+/g;
+const SHARE_PATH_TOKEN = /\/share\/[A-Za-z0-9_-]{32}\b/g;
+const TOKEN_QUERY_PARAM = /([?&](?:token|share_token)=)[A-Za-z0-9_-]{16,}/gi;
 const DIGIT_RUN = /\d{4,}/g;
 
 const MAX_DEPTH = 6;
@@ -95,10 +97,10 @@ function redactValue(value: unknown, depth: number): unknown {
 export function scrubString(value: string): string {
   // Cap length so a leaked verbatim model dump can never blow up logs.
   const truncated =
-    value.length > MAX_STRING_LENGTH
-      ? value.slice(0, MAX_STRING_LENGTH) + '…'
-      : value;
+    value.length > MAX_STRING_LENGTH ? value.slice(0, MAX_STRING_LENGTH) + '…' : value;
   return truncated
+    .replace(SHARE_PATH_TOKEN, '/share/[REDACTED]')
+    .replace(TOKEN_QUERY_PARAM, '$1[REDACTED]')
     .replace(EMAIL, '[email]')
     .replace(HYPHEN_PHONE, '[phone]')
     .replace(DIGIT_RUN, '[REDACTED]');

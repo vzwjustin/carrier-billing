@@ -74,28 +74,32 @@ describe('llm extraction', () => {
   for (const fx of fixtures) {
     const tCase = fx.pdfExists ? it : it.skip;
 
-    tCase(`${fx.name}: extractor output matches fixture invariants`, async () => {
-      const expectedRaw = readFileSync(fx.jsonPath, 'utf8');
-      const expected = ExtractedBillSchema.parse(JSON.parse(expectedRaw));
+    tCase(
+      `${fx.name}: extractor output matches fixture invariants`,
+      async () => {
+        const expectedRaw = readFileSync(fx.jsonPath, 'utf8');
+        const expected = ExtractedBillSchema.parse(JSON.parse(expectedRaw));
 
-      const { extractBill } = (await import('@/extraction/llm')) as {
-        extractBill: (buf: Buffer) => Promise<ExtractedBill>;
-      };
-      const pdfBuffer = readFileSync(fx.pdfPath);
-      const actual = await extractBill(pdfBuffer);
+        const { extractBill } = (await import('@/extraction/llm')) as {
+          extractBill: (buf: Buffer) => Promise<ExtractedBill>;
+        };
+        const pdfBuffer = readFileSync(fx.pdfPath);
+        const actual = await extractBill(pdfBuffer);
 
-      expect(actual.carrier).toBe(expected.carrier);
-      expect(actual.accounts.length).toBe(expected.accounts.length);
+        expect(actual.carrier).toBe(expected.carrier);
+        expect(actual.accounts.length).toBe(expected.accounts.length);
 
-      const expectedLines = totalLineCount(expected);
-      const actualLines = totalLineCount(actual);
-      const tolerance = Math.max(1, Math.ceil(expectedLines * 0.1));
-      expect(Math.abs(actualLines - expectedLines)).toBeLessThanOrEqual(tolerance);
+        const expectedLines = totalLineCount(expected);
+        const actualLines = totalLineCount(actual);
+        const tolerance = Math.max(1, Math.ceil(expectedLines * 0.1));
+        expect(Math.abs(actualLines - expectedLines)).toBeLessThanOrEqual(tolerance);
 
-      expect(
-        Math.abs(actual.total_charges_cents - expected.total_charges_cents),
-      ).toBeLessThanOrEqual(100); // $1
-    }, 120_000);
+        expect(
+          Math.abs(actual.total_charges_cents - expected.total_charges_cents),
+        ).toBeLessThanOrEqual(100); // $1
+      },
+      120_000,
+    );
   }
 
   if (fixtures.length === 0) {

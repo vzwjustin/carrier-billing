@@ -4,11 +4,7 @@ import { inngest } from '../client';
 import { AuditCompletedDataSchema, parseEventData } from '../events';
 import { assertPublicHttpsTarget } from '@/lib/security/ssrf-guard';
 import { getAdminClient } from '@/lib/supabase/admin';
-import type {
-  AuditCarrier,
-  AuditStatus,
-  FindingSeverity,
-} from '@/types/db-enums';
+import type { AuditCarrier, AuditStatus, FindingSeverity } from '@/types/db-enums';
 
 /**
  * dispatch-outbound-webhook — POST a completed audit's report to the user's
@@ -147,91 +143,14 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
     }
 
     const result = (await step.run('post-webhook', async () => {
-      const payload = {
-        event: 'audit.completed' as const,
-        delivered_at: new Date().toISOString(),
-        audit: {
-          id: ctx.audit.id,
-          user_id: ctx.audit.user_id,
-          status: ctx.audit.status,
-          carrier: ctx.audit.carrier,
-          billing_period_start: ctx.audit.billing_period_start,
-          billing_period_end: ctx.audit.billing_period_end,
-          estimated_monthly_savings_cents:
-            ctx.audit.estimated_monthly_savings_cents ?? 0,
-          estimated_annual_savings_cents:
-            ctx.audit.estimated_annual_savings_cents ?? 0,
-          finding_count: ctx.audit.finding_count ?? 0,
-          high_severity_count: ctx.audit.high_severity_count ?? 0,
-          completed_at: ctx.audit.completed_at,
-        },
-        findings: ctx.findings.map((f) => ({
-          id: f.id,
-          rule_id: f.rule_id,
-          severity: f.severity,
-          title: f.title,
-          description: f.description,
-          recommended_action: f.recommended_action,
-          estimated_monthly_savings_cents:
-            f.estimated_monthly_savings_cents ?? 0,
-          confidence: f.confidence,
-        })),
-      };
 
-      const body = JSON.stringify(payload);
-      const timestamp = Math.floor(Date.now() / 1000);
-      // v2 signature: HMAC over `${timestamp}.${body}` so a captured request
-      // can't be replayed indefinitely. Receivers should reject timestamps
-      // older than 5 min.
-      const signedPayload = `${timestamp}.${body}`;
-      const sigHex = createHmac('sha256', ctx.secret)
-        .update(signedPayload)
-        .digest('hex');
-      const signatureHeader = `t=${timestamp},v1=${sigHex}`;
+      return postOutboundWebhook({
+        url: ctx.url,
+        secret: ctx.secret,
+        audit: ctx.audit,
+        findings: ctx.findings,
+      });
 
-      // Re-validate the URL immediately before dispatch — checking only at
-      // submit-time would let an attacker register a public DNS name now and
-      // rebind it to 127.0.0.1 / 169.254.169.254 before the worker fires.
-      //
-      // We intentionally use normal `fetch(ctx.url)` instead of fetching an IP
-      // literal with a forged Host header: IP-literal HTTPS breaks certificate
-      // validation/SNI for ordinary webhook endpoints. This leaves a narrow DNS
-      // rebinding race between this validation lookup and fetch's own lookup;
-      // redirects remain disabled and the preflight still blocks private,
-      // loopback, link-local, and mixed DNS answers at dispatch time.
-      await assertPublicHttpsTarget(ctx.url);
-
-      // Bound the round-trip so a slow consumer doesn't park a worker.
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
-
-      try {
-        const response = await fetch(ctx.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CarrierAudit-Timestamp': String(timestamp),
-            'X-CarrierAudit-Signature': signatureHeader,
-            'X-CarrierAudit-Event': 'audit.completed',
-            'X-CarrierAudit-Audit-Id': ctx.audit.id,
-            'User-Agent': 'CarrierAudit-Webhook/1.0',
-          },
-          body,
-          signal: controller.signal,
-          // No redirects — receivers should expose a stable URL, and silently
-          // following a 30x to a different host opens a small SSRF surface.
-          redirect: 'error',
-        });
-
-        if (!response.ok) {
-          // Throw so Inngest retries; only surface the status code, not the
-          // body, to keep PII out of logs.
-          throw new Error(`webhook ${response.status}`);
-        }
-        return { status: response.status };
-      } finally {
-        clearTimeout(timeout);
-      }
     })) as { status: number };
 
     logger.info('dispatchOutboundWebhook: delivered', {
@@ -242,3 +161,102 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
     return { delivered: true, status: result.status };
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extracted POST logic — kept as a separate function so unit tests can
+// exercise the signing + fetch + SSRF-guard path without spinning up an
+// Inngest runtime. Exported via `__testables` (test-only surface).
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PostOutboundWebhookInput {
+  url: string;
+  secret: string;
+  audit: AuditRow;
+  findings: FindingRow[];
+}
+
+async function postOutboundWebhook(input: PostOutboundWebhookInput): Promise<{ status: number }> {
+  const { url, secret, audit, findings } = input;
+
+  const payload = {
+    event: 'audit.completed' as const,
+    delivered_at: new Date().toISOString(),
+    audit: {
+      id: audit.id,
+      // M3: do NOT ship the internal Supabase auth user_id to the operator's
+      // external endpoint — it's a persistent cross-service identifier, is not
+      // needed by receivers (dispatch-finding-webhook omits it), and violates
+      // the "account IDs + rule IDs only, no PII" discipline (CLAUDE.md §5).
+      status: audit.status,
+      carrier: audit.carrier,
+      billing_period_start: audit.billing_period_start,
+      billing_period_end: audit.billing_period_end,
+      estimated_monthly_savings_cents: audit.estimated_monthly_savings_cents ?? 0,
+      estimated_annual_savings_cents: audit.estimated_annual_savings_cents ?? 0,
+      finding_count: audit.finding_count ?? 0,
+      high_severity_count: audit.high_severity_count ?? 0,
+      completed_at: audit.completed_at,
+    },
+    findings: findings.map((f) => ({
+      id: f.id,
+      rule_id: f.rule_id,
+      severity: f.severity,
+      title: f.title,
+      description: f.description,
+      recommended_action: f.recommended_action,
+      estimated_monthly_savings_cents: f.estimated_monthly_savings_cents ?? 0,
+      confidence: f.confidence,
+    })),
+  };
+
+  const body = JSON.stringify(payload);
+  const timestamp = Math.floor(Date.now() / 1000);
+  // v2 signature: HMAC over `${timestamp}.${body}` so a captured request
+  // can't be replayed indefinitely. Receivers should reject timestamps older
+  // than 5 min.
+  const signedPayload = `${timestamp}.${body}`;
+  const sigHex = createHmac('sha256', secret).update(signedPayload).digest('hex');
+  const signatureHeader = `t=${timestamp},v1=${sigHex}`;
+
+  // Re-validate the URL immediately before dispatch — checking only at
+  // submit-time would let an attacker register a public DNS name now and
+  // rebind it to 127.0.0.1 / 169.254.169.254 before the worker fires.
+  //
+  // We intentionally use normal `fetch(url)` instead of fetching an IP literal
+  // with a forged Host header: IP-literal HTTPS breaks certificate validation
+  // and SNI for ordinary webhook endpoints. This leaves a narrow DNS rebinding
+  // race between this validation lookup and fetch's own lookup; redirects remain
+  // disabled and the preflight still blocks private, loopback, link-local, and
+  // mixed DNS answers at dispatch time.
+  await assertPublicHttpsTarget(url);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CarrierAudit-Timestamp': String(timestamp),
+        'X-CarrierAudit-Signature': signatureHeader,
+        'X-CarrierAudit-Event': 'audit.completed',
+        'X-CarrierAudit-Audit-Id': audit.id,
+        'User-Agent': 'CarrierAudit-Webhook/1.0',
+      },
+      body,
+      signal: controller.signal,
+      redirect: 'error',
+    });
+
+    if (!response.ok) {
+      // Throw so Inngest retries; only surface the status code, not the
+      // body, to keep PII out of logs.
+      throw new Error(`webhook ${response.status}`);
+    }
+    return { status: response.status };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const __testables = { postOutboundWebhook };

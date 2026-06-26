@@ -1,10 +1,9 @@
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
+import { scrubString } from '@/lib/observability/redact';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -89,10 +88,7 @@ export async function GET(
       .maybeSingle<AuditStatusRow>();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to look up audit.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to look up audit.' }, { status: 500 });
     }
     if (!data) {
       return NextResponse.json({ error: 'Audit not found.' }, { status: 404 });
@@ -122,10 +118,14 @@ export async function GET(
       failure_reason: data.failure_reason,
       page_count: data.page_count,
     });
-  } catch {
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
+  } catch (err) {
+    Sentry.captureException(
+      new Error(scrubString(err instanceof Error ? err.message : String(err))),
+      {
+        tags: { surface: 'audits.status' },
+        extra: { auditId: parsed.data.id },
+      },
     );
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

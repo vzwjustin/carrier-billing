@@ -6,7 +6,7 @@
 
 ## 0. Mission
 
-Build **CarrierAudit**, a SaaS that lets a business owner, office manager, MSP, or fractional CFO upload a PDF of their business wireless bill (Verizon, AT&T, or T-Mobile) and receive an audit report identifying wasted spend, wrong rate plans, missing discounts, expired promo credits, and other waste patterns — with estimated monthly savings and recommended actions.
+Build **CarrierAudit**, a SaaS that lets a business owner, office manager, MSP, or fractional CFO upload a PDF of their business or consumer wireless bill (Verizon, AT&T, or T-Mobile) and receive an audit report identifying wasted spend, wrong rate plans, missing discounts, expired promo credits, and other waste patterns — with estimated monthly savings and recommended actions.
 
 **Core value prop in one sentence:** Upload your wireless bill → get a professional audit with quantified savings in under 5 minutes.
 

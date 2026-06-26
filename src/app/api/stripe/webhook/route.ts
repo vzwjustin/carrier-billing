@@ -32,11 +32,7 @@ export async function POST(request: Request): Promise<Response> {
 
     let event: Stripe.Event;
     try {
-      event = getStripe().webhooks.constructEvent(
-        rawBody,
-        signature,
-        env.STRIPE_WEBHOOK_SECRET,
-      );
+      event = getStripe().webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
     } catch {
       return new Response('Invalid signature', { status: 400 });
     }
@@ -61,10 +57,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (existing.data) {
       const row = existing.data as BillingEventRow;
-      if (
-        row.processed_status === 'success' ||
-        row.processed_status === 'in_flight'
-      ) {
+      if (row.processed_status === 'success' || row.processed_status === 'in_flight') {
         // H8: already-processed → idempotent ack.
         // R1-F2: in_flight → another worker is mid-handler right now. Dedupe
         // at the entry path so we don't invoke handleStripeEvent in parallel.
@@ -100,25 +93,15 @@ export async function POST(request: Request): Promise<Response> {
             .eq('stripe_event_id', event.id)
             .maybeSingle();
           if (!raced.data) {
-            console.error(
-              '[stripe.webhook] race fetch failed',
-              event.type,
-              event.id,
-            );
-            Sentry.captureException(
-              new Error('race fetch returned no row after 23505'),
-              {
-                tags: { area: 'stripe.webhook', stripe_event_type: event.type },
-                extra: { stripe_event_id: event.id },
-              },
-            );
+            console.error('[stripe.webhook] race fetch failed', event.type, event.id);
+            Sentry.captureException(new Error('race fetch returned no row after 23505'), {
+              tags: { area: 'stripe.webhook', stripe_event_type: event.type },
+              extra: { stripe_event_id: event.id },
+            });
             return new Response('Internal error', { status: 500 });
           }
           const row = raced.data as BillingEventRow;
-          if (
-            row.processed_status === 'success' ||
-            row.processed_status === 'in_flight'
-          ) {
+          if (row.processed_status === 'success' || row.processed_status === 'in_flight') {
             // R1-F2 — same dedupe as the existing-row path above.
             console.log('[stripe.webhook]', event.type, event.id, 'deduped');
             return Response.json({ received: true, deduped: true });
@@ -130,7 +113,11 @@ export async function POST(request: Request): Promise<Response> {
             '[stripe.webhook] insert failed',
             event.type,
             event.id,
-            insertResult.error instanceof Error ? insertResult.error.message : 'unknown',
+            scrubString(
+              insertResult.error instanceof Error
+                ? insertResult.error.message
+                : String(insertResult.error),
+            ),
           );
           Sentry.captureException(insertResult.error, {
             tags: { area: 'stripe.webhook', stripe_event_type: event.type },
@@ -140,11 +127,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       } else {
         if (!insertResult.data) {
-          console.error(
-            '[stripe.webhook] insert returned no row',
-            event.type,
-            event.id,
-          );
+          console.error('[stripe.webhook] insert returned no row', event.type, event.id);
           return new Response('Internal error', { status: 500 });
         }
         const row = insertResult.data as BillingEventRow;
@@ -189,7 +172,7 @@ export async function POST(request: Request): Promise<Response> {
         '[stripe.webhook] handler failed',
         event.type,
         event.id,
-        handlerErr instanceof Error ? handlerErr.message : 'unknown',
+        scrubString(handlerErr instanceof Error ? handlerErr.message : String(handlerErr)),
       );
       Sentry.captureException(handlerErr, {
         tags: { area: 'stripe.webhook.handler', stripe_event_type: event.type },
@@ -205,17 +188,19 @@ export async function POST(request: Request): Promise<Response> {
     // which would re-grant credits / re-flip status. Returning 5xx makes
     // Stripe retry; on the retry the existing row is found, previousStatus
     // is read from the row (still null OR whatever the next bookkeeping
-    // attempt sets) and the handler short-circuits non-idempotent ops via
-    // the existing previousStatus gate (the credit grant already requires
-    // previousStatus === null, so a retry of an already-credited row will
-    // skip the RPC because the row is now visible to the next request).
+    // attempt sets). Checkout credit grants are idempotent through
+    // `grant_credit_once`, keyed by billingEventId, so retrying after this
+    // bookkeeping failure can safely converge.
     const markErr = await markSuccess(supabase, billingEventId);
     if (markErr) {
       return new Response('Bookkeeping failed', { status: 500 });
     }
     return Response.json({ received: true });
   } catch (err) {
-    console.error('[stripe.webhook] unexpected error', err instanceof Error ? err.message : 'unknown');
+    console.error(
+      '[stripe.webhook] unexpected error',
+      scrubString(err instanceof Error ? err.message : String(err)),
+    );
     Sentry.captureException(err, { tags: { area: 'stripe.webhook' } });
     return new Response('Internal error', { status: 500 });
   }
@@ -267,14 +252,15 @@ async function markSuccess(
   supabase: SupabaseClient,
   billingEventId: string,
 ): Promise<unknown | null> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('billing_events')
     .update({
       processed_at: new Date().toISOString(),
       processed_status: 'success',
       last_error: null,
     })
-    .eq('id', billingEventId);
+    .eq('id', billingEventId)
+    .select('id');
   if (error) {
     // M-S1: surface to Sentry AND return the error so the caller can 5xx and
     // let Stripe retry. Returning 200 would leave the row stuck at null and
@@ -284,6 +270,15 @@ async function markSuccess(
       extra: { billingEventId },
     });
     return error;
+  }
+  const rows = (data ?? []) as Array<{ id: string }>;
+  if (rows.length !== 1) {
+    const rowCountErr = new Error(`markSuccess matched ${rows.length} billing_events rows`);
+    Sentry.captureException(rowCountErr, {
+      tags: { area: 'stripe.webhook.mark_success' },
+      extra: { billingEventId, matchCount: rows.length },
+    });
+    return rowCountErr;
   }
   return null;
 }
@@ -295,17 +290,36 @@ async function markFailure(
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
   const safe = scrubString(message).slice(0, LAST_ERROR_MAX);
-  const { error } = await supabase
+  // M1: CAS-gate the demotion on processed_status='in_flight' — the state
+  // markInFlight claimed before the handler ran. Without it a plain UPDATE
+  // WHERE id could demote a terminal 'success' row (one a concurrent replay-cron
+  // tick or duplicate delivery already finalized) back to 'failed', which the
+  // replay cron's (null|failed) claim then re-picks → handler re-runs →
+  // unprotected inngest.send + subscription writes re-fire. 0 rows here now
+  // means the row already reached a terminal state concurrently — a benign
+  // no-op, not an error.
+  const { data, error } = await supabase
     .from('billing_events')
     .update({
       processed_status: 'failed',
       last_error: safe,
     })
-    .eq('id', billingEventId);
+    .eq('id', billingEventId)
+    .eq('processed_status', 'in_flight')
+    .select('id');
   if (error) {
     Sentry.captureException(error, {
       tags: { area: 'stripe.webhook.mark_failure' },
       extra: { billingEventId },
+    });
+    return;
+  }
+  const rows = (data ?? []) as Array<{ id: string }>;
+  if (rows.length > 1) {
+    Sentry.captureMessage('stripe webhook markFailure matched unexpected row count', {
+      level: 'error',
+      tags: { area: 'stripe.webhook.mark_failure' },
+      extra: { billingEventId, matchCount: rows.length },
     });
   }
 }

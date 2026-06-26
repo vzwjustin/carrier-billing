@@ -18,22 +18,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// Mock pdf-parse to throw the same error shape production raises for an
-// encrypted PDF. pdfjs throws `PasswordException` ("No password given");
-// pdf-parse forwards it. Our wrapper wraps it in PdfParseError.
+// Mock pdf-parse (v2 class-based API) to throw the same error shape production
+// raises for an encrypted PDF. pdfjs throws `PasswordException` ("No password
+// given"); pdf-parse forwards it from `getText()`. Our wrapper wraps it in
+// PdfParseError.
 // ---------------------------------------------------------------------------
 
-const pdfParseMock = vi.fn();
+const { getTextMock, destroyMock } = vi.hoisted(() => ({
+  getTextMock: vi.fn(),
+  destroyMock: vi.fn(),
+}));
+
+// Use a plain class (not vi.fn()) so `vi.restoreAllMocks()` in afterEach
+// can't strip the constructor implementation between tests.
 vi.mock('pdf-parse', () => ({
-  default: (...args: unknown[]) =>
-    pdfParseMock(...(args as [Buffer, { max?: number }])),
+  PDFParse: class {
+    getText = getTextMock;
+    destroy = destroyMock;
+  },
 }));
 
 // Import AFTER the mock is registered.
 import { extractText, PdfParseError } from '@/extraction/pdf';
 
 beforeEach(() => {
-  pdfParseMock.mockReset();
+  getTextMock.mockReset();
+  destroyMock.mockReset();
+  // destroy() is awaited; returning undefined still resolves the await.
 });
 
 afterEach(() => {
@@ -45,7 +56,7 @@ describe('extractText — encrypted PDF rejection', () => {
     // Mirrors how pdfjs surfaces it: an Error whose name is "PasswordException".
     const passwordExc = new Error('No password given');
     passwordExc.name = 'PasswordException';
-    pdfParseMock.mockRejectedValueOnce(passwordExc);
+    getTextMock.mockRejectedValueOnce(passwordExc);
 
     const dummyBuffer = Buffer.from(
       // A real-ish PDF preamble; the body is irrelevant since pdf-parse is mocked.
@@ -53,12 +64,10 @@ describe('extractText — encrypted PDF rejection', () => {
       'binary',
     );
 
-    await expect(extractText(dummyBuffer)).rejects.toBeInstanceOf(
-      PdfParseError,
-    );
+    await expect(extractText(dummyBuffer)).rejects.toBeInstanceOf(PdfParseError);
 
     // Re-run the same call to capture the thrown error and inspect it.
-    pdfParseMock.mockRejectedValueOnce(passwordExc);
+    getTextMock.mockRejectedValueOnce(passwordExc);
     let caught: unknown = null;
     try {
       await extractText(dummyBuffer);
@@ -77,7 +86,7 @@ describe('extractText — encrypted PDF rejection', () => {
     // Belt-and-suspenders: any pdfjs throw should be wrapped.
     const generic = new Error('InvalidPDFException: corrupt xref');
     generic.name = 'InvalidPDFException';
-    pdfParseMock.mockRejectedValueOnce(generic);
+    getTextMock.mockRejectedValueOnce(generic);
 
     let caught: unknown = null;
     try {
@@ -108,12 +117,11 @@ describe('extractText — encrypted PDF rejection', () => {
     // belongs in this file).
     const passwordExc = new Error('No password given');
     passwordExc.name = 'PasswordException';
-    pdfParseMock.mockRejectedValueOnce(passwordExc);
+    getTextMock.mockRejectedValueOnce(passwordExc);
 
-    await expect(extractText(Buffer.from('%PDF-1.4', 'binary'))).rejects
-      .toMatchObject({
-        name: 'PdfParseError',
-      });
+    await expect(extractText(Buffer.from('%PDF-1.4', 'binary'))).rejects.toMatchObject({
+      name: 'PdfParseError',
+    });
   });
 
   // Document-only: generating a real encrypted PDF inline requires running

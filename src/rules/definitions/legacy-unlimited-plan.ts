@@ -44,9 +44,7 @@ export const legacyUnlimitedPlanRule: Rule = {
           evidence: {
             plan_name: line.plan_name,
             carrier,
-            replacement_plan: isCrossCarrierGuess
-              ? null
-              : match.replacement_plan,
+            replacement_plan: isCrossCarrierGuess ? null : match.replacement_plan,
             source_note: match.source_note,
             cross_carrier_guess: isCrossCarrierGuess,
           },

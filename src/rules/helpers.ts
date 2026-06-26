@@ -36,11 +36,7 @@ export function isExpired(date: Date | string | null, today: Date): boolean {
  * True iff `date` is in the next `days` days inclusive of today, AND not
  * already expired. Returns false for null.
  */
-export function expiresWithinDays(
-  date: Date | string | null,
-  today: Date,
-  days: number,
-): boolean {
+export function expiresWithinDays(date: Date | string | null, today: Date, days: number): boolean {
   if (date === null) return false;
   const delta = daysUntil(date, today);
   return delta >= 0 && delta <= days;
@@ -55,10 +51,7 @@ export function findFeatureByCategory(
 }
 
 /** Test a plan name against a list of "deprecated" regex patterns. */
-export function isPlanNameDeprecated(
-  planName: string | null,
-  patterns: RegExp[],
-): boolean {
+export function isPlanNameDeprecated(planName: string | null, patterns: RegExp[]): boolean {
   if (planName === null) return false;
   return patterns.some((re) => re.test(planName));
 }
@@ -103,8 +96,7 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
   // that happen to share the prefix (e.g. "Verizon Plan Unlimited Edge").
   {
     carrier: 'verizon',
-    pattern:
-      /\bVerizon\s+Plan\s+Unlimited\b(?!\s+(Pro|Plus|Start|Edge|Premium|Ultimate))/i,
+    pattern: /\bVerizon\s+Plan\s+Unlimited\b(?!\s+(Pro|Plus|Start|Edge|Premium|Ultimate))/i,
     replacement_plan: 'Business Unlimited Plus 2.0',
     estimated_monthly_savings_cents: 800,
     source_note: 'verizon.com/support/verizon-plan-unlimited-faqs',
@@ -167,11 +159,16 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
   // "Magenta" but NOT current "Magenta Plus" / "Magenta Max" / "Magenta Business"
   // and NOT future SKUs that happen to start with "Magenta" (Magenta 55+,
   // Magenta Military, Magenta First Responder are existing carrier-modifier
-  // SKUs that should NOT be flagged as legacy).
+  // SKUs that should NOT be flagged as legacy). Also excludes:
+  //   - "Bus" — T-Mobile's bill-line abbreviation for "Business" (e.g.
+  //     "Magenta Bus Tab 10GB Promo" — a current business tablet plan).
+  //   - "Tab" / "Tablet" — tablet-line SKUs share the "Magenta" brand stem
+  //     but are currently-sold connected-device plans, not legacy phone tiers.
+  //     Flagging them with a phone-plan migration recommendation is wrong.
   {
     carrier: 'tmobile',
     pattern:
-      /\bMagenta\b(?!\s+(Plus|Max|Business|55\+|Military|First Responder))/i,
+      /\bMagenta\b(?!\s+(Plus|Max|Bus(?:iness)?|Tab(?:let)?|55\+|Military|First Responder))/i,
     replacement_plan: 'Business Unlimited Advanced',
     estimated_monthly_savings_cents: 700,
     source_note: 'phonearena.com/news/i-just-ditched-my-grandfathered-t-mobile-magenta-plan',
@@ -183,13 +180,60 @@ export const LEGACY_PLAN_PATTERNS: LegacyPlanPattern[] = [
     estimated_monthly_savings_cents: 700,
     source_note: 'phonearena.com/news/t-mobile-legacy-plan-migration-2026',
   },
+
+  // US Cellular — uscellular.com/plans (modern Business Unlimited family
+  // replaces the long-retired Belief / Payback consumer tiers).
+  {
+    carrier: 'uscellular',
+    pattern: /Belief\s+Plan/i,
+    replacement_plan: 'Business Unlimited Everyday',
+    estimated_monthly_savings_cents: 1000,
+    source_note: 'uscellular.com/support/legacy-plans',
+  },
+  {
+    carrier: 'uscellular',
+    pattern: /Unlimited\s+with\s+Payback/i,
+    replacement_plan: 'Business Unlimited Everyday',
+    estimated_monthly_savings_cents: 800,
+    source_note: 'uscellular.com/support/legacy-plans',
+  },
+
+  // Spectrum Mobile — spectrum.com/mobile (consumer-tier "Unlimited Plus"
+  // still appears on small-business accounts that ported in pre-2024).
+  {
+    carrier: 'spectrum',
+    pattern: /Unlimited\s+Plus/i,
+    replacement_plan: 'Spectrum Business Unlimited',
+    estimated_monthly_savings_cents: 700,
+    source_note: 'spectrum.com/mobile/plans',
+  },
+
+  // Xfinity Mobile — xfinity.com/mobile/plan (the "By the Gig" metered tier
+  // is a hold-over from the original 2017 launch — modern Unlimited is
+  // cheaper above ~3 GB/mo of usage).
+  {
+    carrier: 'xfinity',
+    pattern: /By\s+the\s+Gig/i,
+    replacement_plan: 'Xfinity Mobile Unlimited',
+    estimated_monthly_savings_cents: 500,
+    source_note: 'xfinity.com/mobile/plan',
+  },
+
+  // Cricket Wireless — cricketwireless.com/cell-phone-plans (the legacy
+  // "Cricket More" mid-tier was retired in favor of the simpler Core /
+  // Smart / Elite ladder).
+  {
+    carrier: 'cricket',
+    pattern: /Cricket\s+More/i,
+    replacement_plan: 'Cricket Smart',
+    estimated_monthly_savings_cents: 500,
+    source_note: 'cricketwireless.com/cell-phone-plans',
+  },
 ];
 
 function patternsForCarrier(carrier: Carrier): LegacyPlanPattern[] {
   if (carrier === 'unknown') return LEGACY_PLAN_PATTERNS;
-  return LEGACY_PLAN_PATTERNS.filter(
-    (p) => p.carrier === carrier || p.carrier === 'all',
-  );
+  return LEGACY_PLAN_PATTERNS.filter((p) => p.carrier === carrier || p.carrier === 'all');
 }
 
 /**

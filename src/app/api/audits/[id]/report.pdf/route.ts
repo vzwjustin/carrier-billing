@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import { trackServer } from '@/lib/analytics/events';
 import { hashTokenForAnalytics } from '@/lib/analytics/hash';
+import { logTrailEvent } from '@/lib/audit-trail/log';
 import { buildReportData } from '@/reports/builder';
 import type {
   ReportAccountRow,
@@ -25,11 +26,8 @@ import type {
   ReportLineRow,
 } from '@/reports/types';
 import * as Sentry from '@sentry/nextjs';
-import {
-  consumeRateLimit,
-  rateLimitedResponse,
-} from '@/lib/security/rate-limit';
-import { SHARE_TOKEN_REGEX } from '@/lib/share-token';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
+import { isShareTokenExpired, SHARE_TOKEN_REGEX } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -40,6 +38,8 @@ const ParamsSchema = z.object({ id: z.string().uuid() });
 
 const AUDIT_COLUMNS =
   'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token,share_token_expires_at';
+const AUDIT_COLUMNS_WITHOUT_SHARE_EXPIRY =
+  'id,user_id,status,carrier,billing_period_start,billing_period_end,total_charges_cents,account_count,line_count,finding_count,high_severity_count,estimated_monthly_savings_cents,estimated_annual_savings_cents,completed_at,share_token';
 
 interface AuditFullRow extends ReportAuditRow {
   user_id: string;
@@ -48,16 +48,9 @@ interface AuditFullRow extends ReportAuditRow {
   share_token_expires_at: string | null;
 }
 
-function isShareTokenExpired(expiresAt: string | null): boolean {
-  // NULL on a row that already has a share_token means the token is
-  // grandfathered (created before the expiry column existed). We treat that
-  // as "still valid" so we don't break working public links on deploy.
-  // For freshly-revoked rows, share_token is null already, which the caller
-  // checks first.
-  if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
-  if (Number.isNaN(ts)) return false;
-  return ts <= Date.now();
+function isMissingColumnError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === '42703' || code === 'PGRST204';
 }
 
 function pdfFilename(auditId: string): string {
@@ -128,12 +121,28 @@ export async function GET(
       return rateLimitedResponse(limited.resetAt);
     }
     const admin = getAdminClient();
-    const { data, error } = await admin
+    const result = await admin
       .from('audits')
       .select(AUDIT_COLUMNS)
       .eq('id', auditId)
       .eq('share_token', token)
       .maybeSingle<AuditFullRow>();
+    let data = result.data;
+    let error = result.error;
+    let expiryColumnAvailable = true;
+
+    if (error && isMissingColumnError(error)) {
+      const retry = await admin
+        .from('audits')
+        .select(AUDIT_COLUMNS_WITHOUT_SHARE_EXPIRY)
+        .eq('id', auditId)
+        .eq('share_token', token)
+        .maybeSingle<Omit<AuditFullRow, 'share_token_expires_at'>>();
+      data = retry.data ? { ...retry.data, share_token_expires_at: null } : null;
+      error = retry.error;
+      expiryColumnAvailable = false;
+    }
+
     // Public token surface — collapse all lookup failures (no row, transient
     // DB error) into a uniform 404. This matches `notFound()` shape used by
     // the share page and prevents differential leaks (e.g. "this audit id
@@ -146,7 +155,7 @@ export async function GET(
     // the query, but if it's been nulled out between SELECT planning and
     // execution we'd never get here; the expiry check catches the lifecycle
     // case where the row still has the token but the window has elapsed.
-    if (isShareTokenExpired(audit.share_token_expires_at)) {
+    if (isShareTokenExpired(audit.share_token_expires_at, expiryColumnAvailable)) {
       return new NextResponse('Not found.', { status: 404 });
     }
   } else {
@@ -219,7 +228,7 @@ export async function GET(
     admin
       .from('findings')
       .select(
-        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence',
+        'id,rule_id,severity,title,description,recommended_action,estimated_monthly_savings_cents,confidence,affected_line_ids,affected_account_ids,evidence,status',
       )
       .eq('audit_id', auditId),
   ]);
@@ -255,17 +264,35 @@ export async function GET(
   // but capture the failure (H9). Silently discarding the upload result meant
   // every subsequent download did a full cold render (DB query + heavy
   // @react-pdf/renderer pass) with no signal that the cache was broken.
-  const cacheWrite = await admin.storage
-    .from('reports')
-    .upload(storagePath, pdfBytes, {
-      contentType: 'application/pdf',
-      upsert: true,
-    });
+  const cacheWrite = await admin.storage.from('reports').upload(storagePath, pdfBytes, {
+    contentType: 'application/pdf',
+    upsert: true,
+  });
   if (cacheWrite.error) {
     Sentry.captureException(cacheWrite.error, {
       tags: { surface: 'pdf.cache_write' },
       extra: { auditId, storagePath },
     });
+    // L5: some upload failure modes leave a zero-byte/partial object
+    // behind. A subsequent request would hit the cache path, download
+    // the empty body, and serve a 0-byte PDF. Best-effort scrub so the
+    // next miss re-renders cleanly. Report remove failures; the cache is
+    // only an optimization, but a stuck corrupt object is operationally
+    // meaningful.
+    try {
+      const { error: removeError } = await admin.storage.from('reports').remove([storagePath]);
+      if (removeError) {
+        Sentry.captureException(removeError, {
+          tags: { surface: 'pdf.cache_scrub' },
+          extra: { auditId, storagePath },
+        });
+      }
+    } catch (removeErr) {
+      Sentry.captureException(removeErr, {
+        tags: { surface: 'pdf.cache_scrub' },
+        extra: { auditId, storagePath },
+      });
+    }
   }
 
   await trackPdfDownload(auditId, audit.user_id, token);
@@ -283,6 +310,17 @@ async function trackPdfDownload(
   userId: string,
   shareToken: string | null,
 ): Promise<void> {
+  // Auth-only audit trail: a public share-token download isn't attributable
+  // to the authenticated user, so we never forge a trail row in that case.
+  if (shareToken === null) {
+    await logTrailEvent({
+      userId,
+      eventType: 'report_downloaded',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: { format: 'pdf' },
+    });
+  }
   try {
     await trackServer(
       {

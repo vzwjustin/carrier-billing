@@ -50,8 +50,7 @@ const maybeSingleMock = vi.fn(async () => ({
   data: null as { id: string; processed_status: 'success' | 'failed' | null } | null,
   error: null,
 }));
-const updateMock = vi.fn(async (_patch: unknown) => ({ error: null }));
-const claimMock = vi.fn(async (_patch: unknown) => ({
+const updateMock = vi.fn(async (_patch: unknown) => ({
   data: [{ id: 'be_signed' }],
   error: null,
 }));
@@ -70,12 +69,13 @@ vi.mock('@/lib/supabase/admin', () => ({
       update: (patch: unknown) => {
         const builder = {
           eq: () => builder,
+          is: () => builder,
           or: () => builder,
-          select: () => claimMock(patch),
+          select: () => updateMock(patch),
           then: (
-            onFulfilled: (v: { error: null | { message: string } }) => unknown,
-            onRejected?: (e: unknown) => unknown,
-          ) => Promise.resolve(updateMock(patch)).then(onFulfilled, onRejected),
+            onFulfilled: (value: { error: null }) => unknown,
+            onRejected?: (reason: unknown) => unknown,
+          ) => updateMock(patch).then((value) => onFulfilled({ error: value.error }), onRejected),
         };
         return builder;
       },
@@ -119,9 +119,7 @@ beforeEach(() => {
   maybeSingleMock.mockClear();
   maybeSingleMock.mockImplementation(async () => ({ data: null, error: null }));
   updateMock.mockClear();
-  updateMock.mockImplementation(async () => ({ error: null }));
-  claimMock.mockClear();
-  claimMock.mockImplementation(async () => ({
+  updateMock.mockImplementation(async () => ({
     data: [{ id: 'be_signed' }],
     error: null,
   }));

@@ -2,9 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- Mocks ----------------------------------------------------------------
 
-const getUserMock = vi.fn<
-  () => Promise<{ data: { user: { id: string; email: string | null } | null } }>
->();
+const getUserMock =
+  vi.fn<() => Promise<{ data: { user: { id: string; email: string | null } | null } }>>();
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -82,25 +81,21 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }));
 
-const customersCreateMock = vi.fn<
-  (args: { email?: string; metadata?: Record<string, string> }) => Promise<{ id: string }>
->();
+const customersCreateMock =
+  vi.fn<(args: { email?: string; metadata?: Record<string, string> }) => Promise<{ id: string }>>();
 const customersDelMock = vi.fn<(id: string) => Promise<{ id: string; deleted: boolean }>>();
-const sessionsCreateMock = vi.fn<
-  (args: Record<string, unknown>) => Promise<{ url: string | null }>
->();
+const sessionsCreateMock =
+  vi.fn<(args: Record<string, unknown>) => Promise<{ url: string | null }>>();
 
 vi.mock('@/lib/stripe/client', () => ({
   getStripe: () => ({
     customers: {
-      create: (args: Parameters<typeof customersCreateMock>[0]) =>
-        customersCreateMock(args),
+      create: (args: Parameters<typeof customersCreateMock>[0]) => customersCreateMock(args),
       del: (id: string) => customersDelMock(id),
     },
     checkout: {
       sessions: {
-        create: (args: Parameters<typeof sessionsCreateMock>[0]) =>
-          sessionsCreateMock(args),
+        create: (args: Parameters<typeof sessionsCreateMock>[0]) => sessionsCreateMock(args),
       },
     },
   }),
@@ -108,7 +103,7 @@ vi.mock('@/lib/stripe/client', () => ({
 
 vi.mock('@/env', () => ({
   env: {
-    NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+    NEXT_PUBLIC_APP_URL: 'http://localhost:3000///',
     STRIPE_PRICE_ID_ONE_TIME: 'price_one_time_test',
     STRIPE_PRICE_ID_SUBSCRIPTION: 'price_sub_test',
   },
@@ -198,9 +193,9 @@ describe('POST /api/stripe/checkout', () => {
     expect(params['mode']).toBe('payment');
     expect(params['customer']).toBe('cus_new');
     expect(params['client_reference_id']).toBe('user_1');
-    expect(params['line_items']).toEqual([
-      { price: 'price_one_time_test', quantity: 1 },
-    ]);
+    expect(params['success_url']).toBe('http://localhost:3000/dashboard?checkout=success');
+    expect(params['cancel_url']).toBe('http://localhost:3000/pricing');
+    expect(params['line_items']).toEqual([{ price: 'price_one_time_test', quantity: 1 }]);
   });
 
   it('reuses an existing customer id and creates a subscription session', async () => {
@@ -226,9 +221,7 @@ describe('POST /api/stripe/checkout', () => {
     const params = sessionsCreateMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params['mode']).toBe('subscription');
     expect(params['customer']).toBe('cus_existing');
-    expect(params['line_items']).toEqual([
-      { price: 'price_sub_test', quantity: 1 },
-    ]);
+    expect(params['line_items']).toEqual([{ price: 'price_sub_test', quantity: 1 }]);
   });
 
   it('returns { url } in the success body', async () => {

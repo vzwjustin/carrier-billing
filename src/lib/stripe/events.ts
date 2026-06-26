@@ -7,6 +7,8 @@
  */
 export const HANDLED_STRIPE_EVENT_TYPES = {
   CheckoutSessionCompleted: 'checkout.session.completed',
+  CheckoutSessionAsyncPaymentSucceeded: 'checkout.session.async_payment_succeeded',
+  CheckoutSessionAsyncPaymentFailed: 'checkout.session.async_payment_failed',
   CustomerSubscriptionCreated: 'customer.subscription.created',
   CustomerSubscriptionUpdated: 'customer.subscription.updated',
   CustomerSubscriptionDeleted: 'customer.subscription.deleted',
@@ -20,9 +22,7 @@ const HANDLED_EVENT_TYPE_SET: ReadonlySet<string> = new Set(
   Object.values(HANDLED_STRIPE_EVENT_TYPES),
 );
 
-export function isHandledStripeEventType(
-  type: string,
-): type is HandledStripeEventType {
+export function isHandledStripeEventType(type: string): type is HandledStripeEventType {
   return HANDLED_EVENT_TYPE_SET.has(type);
 }
 
@@ -40,9 +40,7 @@ export function isHandledStripeEventType(
  * The webhook's idempotency guarantee comes from the `stripe_event_id` unique
  * constraint, not from this function.
  */
-export function deriveUserIdFromEventObject(
-  obj: unknown,
-): string | null {
+export function deriveUserIdFromEventObject(obj: unknown): string | null {
   if (!obj || typeof obj !== 'object') return null;
   const record = obj as Record<string, unknown>;
 

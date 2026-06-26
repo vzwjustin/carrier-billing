@@ -48,9 +48,7 @@ function bound(value: string): string {
 // validation failure (which would fail the entire EDI bill).
 const FREE_TEXT_LONG_MAX = 120;
 function boundLong(value: string): string {
-  return value.length > FREE_TEXT_LONG_MAX
-    ? value.slice(0, FREE_TEXT_LONG_MAX)
-    : value;
+  return value.length > FREE_TEXT_LONG_MAX ? value.slice(0, FREE_TEXT_LONG_MAX) : value;
 }
 
 const NOTE_MAX = 500;
@@ -132,10 +130,7 @@ export function mapEdi811ToBill(
         const qualifier = el(seg, 1);
         const date = parseEdiDate(el(seg, 2));
         if (!date) break;
-        if (
-          qualifier === DTM_SERVICE_PERIOD_START ||
-          qualifier === DTM_SERVICE_PERIOD_START_ALT
-        ) {
+        if (qualifier === DTM_SERVICE_PERIOD_START || qualifier === DTM_SERVICE_PERIOD_START_ALT) {
           billingPeriodStart = date;
         } else if (
           qualifier === DTM_SERVICE_PERIOD_END ||
@@ -268,12 +263,8 @@ export function mapEdi811ToBill(
           currentAccount.currentLine.line.plan_base_cents = unitPriceCents;
         }
         // Promote any pending PID device description onto the line.
-        if (
-          currentAccount.currentLine.devicePending &&
-          !currentAccount.currentLine.line.device
-        ) {
-          currentAccount.currentLine.line.device =
-            currentAccount.currentLine.devicePending;
+        if (currentAccount.currentLine.devicePending && !currentAccount.currentLine.line.device) {
+          currentAccount.currentLine.line.device = currentAccount.currentLine.devicePending;
         }
         break;
       }
@@ -283,18 +274,19 @@ export function mapEdi811ToBill(
         const amountCents = parseSacAmount(el(seg, 5));
         // SAC15 is the canonical free-form description in 4010 wireless 811s,
         // but some carriers stuff it into SAC14 or SAC12 instead. Try in order.
-        const description =
-          elOrNull(seg, 15) ?? elOrNull(seg, 14) ?? elOrNull(seg, 12) ?? '';
+        const description = elOrNull(seg, 15) ?? elOrNull(seg, 14) ?? elOrNull(seg, 12) ?? '';
         if (amountCents === null) break;
 
         // Device installment (DPP). Always rolls up to the current line.
+        // The schema allows monthly_cents: 0 (nonnegative), so a $0 installment
+        // is a valid, retained row — dropping it would break device binding for
+        // DPP / contract-rate rules. Use >= 0 (negative amounts stay dropped,
+        // matching the schema's nonnegative invariant).
         if (serviceIdCode === SAC_DEVICE_INSTALLMENT) {
-          if (currentAccount?.currentLine && amountCents > 0) {
+          if (currentAccount?.currentLine && amountCents >= 0) {
             const dpp: ExtractedDpp = {
               device: bound(
-                description ||
-                  currentAccount.currentLine.line.device ||
-                  'Device installment',
+                description || currentAccount.currentLine.line.device || 'Device installment',
               ),
               monthly_cents: amountCents,
               remaining_payments: parseIntOrNull(el(seg, 7)),
@@ -307,11 +299,7 @@ export function mapEdi811ToBill(
 
         // Plan base charge — populates plan_base_cents only if not already set
         // by an IT1 segment for the same line.
-        if (
-          serviceIdCode === SAC_PLAN &&
-          indicator === SAC_CHARGE &&
-          currentAccount?.currentLine
-        ) {
+        if (serviceIdCode === SAC_PLAN && indicator === SAC_CHARGE && currentAccount?.currentLine) {
           if (currentAccount.currentLine.line.plan_base_cents === null) {
             currentAccount.currentLine.line.plan_base_cents = amountCents;
           }
@@ -371,7 +359,14 @@ export function mapEdi811ToBill(
         const numeric = Number(valueRaw);
         if (!Number.isFinite(numeric) || numeric < 0) break;
         if (qualifier === QTY_DATA_GB) {
-          currentAccount.currentLine.line.data_used_gb = numeric;
+          // #15: the schema caps data_used_gb at 10000 and Zod .max() REJECTS
+          // (throws) rather than clamps, so a garbled QTY*DG (decimal-shift, or
+          // bytes mislabeled as GB) would fail the whole otherwise-good 811.
+          // Clamp at the write site, mirroring the free-text bounding elsewhere.
+          if (numeric > 10_000) {
+            console.warn(`[edi811] data_used_gb ${numeric} exceeds cap; clamping to 10000`);
+          }
+          currentAccount.currentLine.line.data_used_gb = Math.min(numeric, 10_000);
         } else if (qualifier === QTY_VOICE_MIN) {
           currentAccount.currentLine.line.voice_used_min = Math.round(numeric);
         } else if (qualifier === QTY_SMS_COUNT) {
@@ -411,14 +406,21 @@ export function mapEdi811ToBill(
     acc.account.lines = acc.lines.map((s) => s.line);
     acc.account.total_charges_cents = sumAccountTotal(acc.account);
   }
+  // #3: a credit-balance bill yields a negative TDS01 total. parseTdsAmount has
+  // no sign guard, and the raw negative is otherwise written straight onto the
+  // single account (overwriting the just-applied per-account zero-clamp) and
+  // returned as the bill total — both fields are schema nonnegative(), so a
+  // .parse() throw rejects the entire otherwise-good 811. Clamp here so it
+  // neither un-clamps the account nor trips the schema.
+  if (totalChargesCents !== null && totalChargesCents < 0) {
+    console.warn(`[edi811] negative top-level TDS total ${totalChargesCents} cents; clamping to 0`);
+    totalChargesCents = 0;
+  }
   if (totalChargesCents !== null && accounts.length === 1 && accounts[0]) {
     accounts[0].account.total_charges_cents = totalChargesCents;
   }
   if (totalChargesCents === null) {
-    totalChargesCents = accounts.reduce(
-      (sum, a) => sum + a.account.total_charges_cents,
-      0,
-    );
+    totalChargesCents = accounts.reduce((sum, a) => sum + a.account.total_charges_cents, 0);
   }
 
   // (M-E2) Reconcile the billing period.
@@ -551,6 +553,15 @@ function sumAccountTotal(account: ExtractedAccount): number {
   }
   for (const c of account.account_level_credits) total += c.monthly_cents;
   if (account.taxes_fees_cents) total += account.taxes_fees_cents;
+  // An arithmetically-negative subtotal is almost always an extraction error
+  // (e.g. credits parsed without a matching base charge). We still clamp to 0
+  // so the schema's nonnegative() doesn't reject the whole bill, but a silent
+  // clamp masks the corruption — surface it. account_number_last4 only, no PII.
+  if (total < 0) {
+    console.warn(
+      `[edi811] account ${account.account_number_last4 ?? 'unknown'} computed negative subtotal ${total} cents; clamping to 0`,
+    );
+  }
   return Math.max(total, 0);
 }
 

@@ -49,7 +49,13 @@ export const dataOveragePatternRule: Rule = {
 
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
-        const used = line.data_used_gb ?? 0;
+        // M5: null-vs-zero discipline. A null data_used_gb means the carrier
+        // never reported usage for this line — NOT that the line used 0 GB.
+        // Coercing null→0 silently suppresses any overage finding on a line
+        // whose usage failed extraction (false-negative). Skip the line,
+        // matching zero-usage-phone-line.ts / unused-mifi-line.ts.
+        if (line.data_used_gb === null) return;
+        const used = line.data_used_gb;
         const softCap = findSoftCap(line.plan_name);
 
         // Branch S: known soft cap match — uses the actual per-tier threshold
@@ -106,7 +112,7 @@ export const dataOveragePatternRule: Rule = {
             title: `Very heavy data user — ${used.toFixed(0)} GB this period`,
             description: `This line used ${used.toFixed(2)} GB this period. At >${VERY_HIGH_DATA_GB} GB, the line is worth a right-size review regardless of current plan: confirm the plan's premium-data allotment isn't being exhausted and the line isn't being deprioritized.`,
             recommended_action:
-              'Confirm this line is on the carrier\'s top-tier plan. If usage is stable at this volume, also evaluate whether a dedicated hotspot/router would be cheaper than tethering through a phone.',
+              "Confirm this line is on the carrier's top-tier plan. If usage is stable at this volume, also evaluate whether a dedicated hotspot/router would be cheaper than tethering through a phone.",
             estimated_monthly_savings_cents: 0,
             confidence: 0.4,
             affected_line_indexes: [lineIndex],
@@ -124,8 +130,7 @@ export const dataOveragePatternRule: Rule = {
         // Branches B & C cover the 50..100 GB band when no soft cap matched.
         if (used <= HIGH_DATA_GB) return;
 
-        const isTopTier =
-          line.plan_name !== null && HIGH_TIER_RE.test(line.plan_name);
+        const isTopTier = line.plan_name !== null && HIGH_TIER_RE.test(line.plan_name);
 
         if (isTopTier) {
           // Branch B: heavy use (>50 GB) on a top-tier plan — informational
@@ -164,7 +169,7 @@ export const dataOveragePatternRule: Rule = {
             : `Heavy data use — ${used.toFixed(0)} GB this period`,
           description: `This line used ${used.toFixed(2)} GB this period on ${line.plan_name ? `"${line.plan_name}"` : 'an unrecognized plan'}. Lines pushing past ${HIGH_DATA_GB} GB on a non-top-tier plan often hit the carrier's deprioritization threshold during congestion. Worth a tier-fit review.`,
           recommended_action:
-            'Confirm the line\'s plan is the right tier for sustained heavy use. If usage stays at this volume, evaluate moving up a tier (or moving heavy traffic to a dedicated hotspot/router).',
+            "Confirm the line's plan is the right tier for sustained heavy use. If usage stays at this volume, evaluate moving up a tier (or moving heavy traffic to a dedicated hotspot/router).",
           estimated_monthly_savings_cents: 0,
           confidence: 0.35,
           affected_line_indexes: [lineIndex],

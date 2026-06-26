@@ -19,12 +19,7 @@ describe('normalizeSubscriptionStatus', () => {
     expect(normalizeSubscriptionStatus('past_due')).toBe('past_due');
   });
 
-  it.each([
-    ['incomplete'],
-    ['incomplete_expired'],
-    ['unpaid'],
-    ['paused'],
-  ])(
+  it.each([['incomplete'], ['incomplete_expired'], ['unpaid'], ['paused']])(
     'maps ambiguous Stripe status %s to past_due (fail-closed)',
     (status) => {
       expect(normalizeSubscriptionStatus(status)).toBe('past_due');
@@ -32,9 +27,7 @@ describe('normalizeSubscriptionStatus', () => {
   );
 
   it('maps unknown future Stripe statuses to past_due (fail-closed)', () => {
-    expect(normalizeSubscriptionStatus('something_new_stripe_added')).toBe(
-      'past_due',
-    );
+    expect(normalizeSubscriptionStatus('something_new_stripe_added')).toBe('past_due');
     expect(normalizeSubscriptionStatus('')).toBe('past_due');
   });
 });

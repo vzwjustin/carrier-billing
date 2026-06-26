@@ -47,9 +47,7 @@ export function InboundEmailCard({
     return (
       <section className="space-y-2 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
         <header className="space-y-1">
-          <h2 className="text-lg font-semibold text-neutral-900">
-            Forward bills by email
-          </h2>
+          <h2 className="text-lg font-semibold text-neutral-900">Forward bills by email</h2>
         </header>
         <p className="text-sm text-neutral-600">
           Email ingest is not yet enabled on this deployment. Set
@@ -71,42 +69,31 @@ export function InboundEmailCard({
   return (
     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          Forward bills by email
-        </h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Forward bills by email</h2>
         <p className="text-sm text-neutral-600">
-          Forward your monthly carrier bill PDF to the address below and
-          we&apos;ll start an audit automatically. Each ingest still uses one
-          credit (or your unlimited subscription).
+          Forward your monthly carrier bill PDF to the address below and we&apos;ll start an audit
+          automatically. Each ingest still uses one credit (or your unlimited subscription).
         </p>
       </header>
 
       {address ? (
         <div className="space-y-2">
           <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <code className="break-all text-sm font-mono text-neutral-900">
-              {address}
-            </code>
+            <code className="font-mono text-sm break-all text-neutral-900">{address}</code>
             <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void copy(address)}
-              >
+              <Button type="button" size="sm" variant="outline" onClick={() => void copy(address)}>
                 Copy
               </Button>
             </div>
           </div>
           <p className="text-xs text-neutral-500">
-            Anyone who knows this address can submit a bill audit on your
-            account. Treat it like a secret.
+            Anyone who knows this address can submit a bill audit on your account. Treat it like a
+            secret.
           </p>
         </div>
       ) : (
         <p className="text-sm text-neutral-700">
-          You don&apos;t have a forwarding address yet. Generate one to get
-          started.
+          You don&apos;t have a forwarding address yet. Generate one to get started.
         </p>
       )}
 
@@ -118,11 +105,7 @@ export function InboundEmailCard({
           onClick={rotate}
           disabled={isPending}
         >
-          {isPending
-            ? 'Working…'
-            : address
-              ? 'Rotate address'
-              : 'Generate address'}
+          {isPending ? 'Working…' : address ? 'Rotate address' : 'Generate address'}
         </Button>
       </div>
     </section>

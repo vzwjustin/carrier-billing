@@ -18,7 +18,7 @@ describe('ReportActions', () => {
       <ReportActions
         auditId="11111111-1111-4111-8111-111111111111"
         isPublic
-        publicToken="token with spaces"
+        shareToken="token with spaces"
       />,
     );
 

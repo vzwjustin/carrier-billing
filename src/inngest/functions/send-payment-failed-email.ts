@@ -3,10 +3,7 @@ import * as React from 'react';
 import { inngest } from '../client';
 import { BillingPaymentFailedDataSchema, parseEventData } from '../events';
 import { env } from '@/env';
-import {
-  PaymentFailedEmail,
-  type PaymentFailedEmailProps,
-} from '@/lib/email/payment-failed';
+import { PaymentFailedEmail, type PaymentFailedEmailProps } from '@/lib/email/payment-failed';
 import { renderPaymentFailedText } from '@/lib/email/payment-failed-text';
 import { getResend } from '@/lib/resend/client';
 import { FROM_ADDRESS } from '@/lib/resend/from';
@@ -63,34 +60,31 @@ export const sendPaymentFailedEmailFn = inngest.createFunction(
 
     logger.info('sendPaymentFailedEmail: start', { userId, invoiceId });
 
-    const ctx = (await step.run(
-      'load-context',
-      async (): Promise<LoadedContext> => {
-        const supabase = getAdminClient();
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, email, subscription_status')
-          .eq('id', userId)
-          .maybeSingle();
+    const ctx = (await step.run('load-context', async (): Promise<LoadedContext> => {
+      const supabase = getAdminClient();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, subscription_status')
+        .eq('id', userId)
+        .maybeSingle();
 
-        if (error) {
-          throw new Error(`profiles select failed: ${error.message}`);
-        }
-        if (!data) {
-          return { skipped: true, reason: 'profile-missing' };
-        }
+      if (error) {
+        throw new Error(`profiles select failed: ${error.message}`);
+      }
+      if (!data) {
+        return { skipped: true, reason: 'profile-missing' };
+      }
 
-        const row = data as unknown as ProfileRow;
-        if (row.subscription_status !== 'past_due') {
-          return { skipped: true, reason: 'status-recovered' };
-        }
-        if (!row.email) {
-          return { skipped: true, reason: 'no-email' };
-        }
+      const row = data as unknown as ProfileRow;
+      if (row.subscription_status !== 'past_due') {
+        return { skipped: true, reason: 'status-recovered' };
+      }
+      if (!row.email) {
+        return { skipped: true, reason: 'no-email' };
+      }
 
-        return { skipped: false, email: row.email };
-      },
-    )) as LoadedContext;
+      return { skipped: false, email: row.email };
+    })) as LoadedContext;
 
     if (ctx.skipped) {
       logger.info('sendPaymentFailedEmail: skipped', {
@@ -127,9 +121,7 @@ export const sendPaymentFailedEmailFn = inngest.createFunction(
         throw new Error(`resend send failed: ${code}`);
       }
       const messageId =
-        response.data && typeof response.data.id === 'string'
-          ? response.data.id
-          : null;
+        response.data && typeof response.data.id === 'string' ? response.data.id : null;
       return { messageId };
     })) as { messageId: string | null };
 

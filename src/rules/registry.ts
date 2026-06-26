@@ -17,6 +17,25 @@ import {
   disproportionateTaxesFeesRule,
   activationFeeOnExistingLineRule,
   strandedCloudStorageRule,
+  zeroUsagePhoneLineRule,
+  redundantHotspotAddonRule,
+  tabletWatchWithZeroUsageRule,
+  featureFirstSeenRule,
+  dppExceedsPlanBaseRule,
+  accountTaxesFeesLowAnomalyRule,
+  lineWithOnlyCreditsRule,
+  billIncreaseOverThresholdInTotalRule,
+  lineChargeOutlierWithinAccountRule,
+  activationFeeOutsizedRule,
+  unassignedUserLabelRule,
+  duplicateDeviceInstallmentSameLineRule,
+  accountTotalMismatchRule,
+  featureAppearsOnMajorityOfLinesUnderOneDollarRule,
+  highCostLowUsagePhoneRule,
+  contractRateMismatchRule,
+  duplicateChargeWithinAuditRule,
+  duplicateChargeAcrossAccountsRule,
+  promoCreditExpiresBeforeDevicePayoffRule,
 } from './definitions';
 
 export const ALL_RULES: Rule[] = [
@@ -35,6 +54,25 @@ export const ALL_RULES: Rule[] = [
   disproportionateTaxesFeesRule,
   activationFeeOnExistingLineRule,
   strandedCloudStorageRule,
+  zeroUsagePhoneLineRule,
+  redundantHotspotAddonRule,
+  tabletWatchWithZeroUsageRule,
+  featureFirstSeenRule,
+  dppExceedsPlanBaseRule,
+  accountTaxesFeesLowAnomalyRule,
+  lineWithOnlyCreditsRule,
+  billIncreaseOverThresholdInTotalRule,
+  lineChargeOutlierWithinAccountRule,
+  activationFeeOutsizedRule,
+  unassignedUserLabelRule,
+  duplicateDeviceInstallmentSameLineRule,
+  accountTotalMismatchRule,
+  featureAppearsOnMajorityOfLinesUnderOneDollarRule,
+  highCostLowUsagePhoneRule,
+  contractRateMismatchRule,
+  duplicateChargeWithinAuditRule,
+  duplicateChargeAcrossAccountsRule,
+  promoCreditExpiresBeforeDevicePayoffRule,
 ];
 
 const VALID_CARRIERS = new Set<Carrier>(CarrierSchema.options);
@@ -50,9 +88,7 @@ export function validateRegistry(rules: Rule[] = ALL_RULES): void {
   const seenIds = new Set<string>();
   for (const rule of rules) {
     if (typeof rule.id !== 'string' || rule.id.length === 0) {
-      throw new Error(
-        `[rules] registry: rule "${rule.title ?? '<unknown>'}" has an empty id`,
-      );
+      throw new Error(`[rules] registry: rule "${rule.title ?? '<unknown>'}" has an empty id`);
     }
     if (seenIds.has(rule.id)) {
       throw new Error(
@@ -62,9 +98,11 @@ export function validateRegistry(rules: Rule[] = ALL_RULES): void {
     seenIds.add(rule.id);
 
     if (typeof rule.title !== 'string' || rule.title.trim().length === 0) {
-      throw new Error(
-        `[rules] registry: rule "${rule.id}" has an empty title`,
-      );
+      throw new Error(`[rules] registry: rule "${rule.id}" has an empty title`);
+    }
+
+    if (typeof rule.evaluate !== 'function') {
+      throw new Error(`[rules] registry: rule "${rule.id}" has no evaluate function`);
     }
 
     const applies = rule.appliesTo;

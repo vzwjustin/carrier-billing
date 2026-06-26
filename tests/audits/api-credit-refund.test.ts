@@ -13,6 +13,7 @@ type GetUserResult = {
 };
 
 type InsertResult = { data: unknown; error: null | { message: string } };
+type DeleteResult = { data: null; error: null | { message: string } };
 type SignedUrlResult = {
   data: { signedUrl: string; token: string; path: string } | null;
   error: null | { message: string };
@@ -25,7 +26,10 @@ type GateResult =
 
 const getUserMock = vi.fn<() => Promise<GetUserResult>>();
 const auditsInsertMock = vi.fn<(row: unknown) => Promise<InsertResult>>();
-const auditsDeleteEqMock = vi.fn(async () => ({ data: null, error: null }));
+const auditsDeleteEqMock = vi.fn<() => Promise<DeleteResult>>(async () => ({
+  data: null,
+  error: null,
+}));
 const createSignedUploadUrlMock = vi.fn<(path: string) => Promise<SignedUrlResult>>();
 
 const auditsUpdateMock = vi.fn(async () => ({ data: [{ id: 'audit-1' }], error: null }));
@@ -59,9 +63,10 @@ vi.mock('@/lib/access/gate', () => ({
   assertCanRunAudit: () => gateMock(),
 }));
 
-const decrementMock = vi.fn(async () => ({ remaining: 0 }));
+const decrementMock =
+  vi.fn<(userId: string, auditId: string) => Promise<{ remaining: number; idempotent: boolean }>>();
 vi.mock('@/lib/access/decrement', () => ({
-  decrementAuditCreditAtomically: () => decrementMock(),
+  consumeAuditCreditForAudit: (userId: string, auditId: string) => decrementMock(userId, auditId),
 }));
 
 const adminRpcMock = vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
@@ -104,7 +109,8 @@ beforeEach(() => {
   fromMock.mockClear();
   storageFromMock.mockClear();
   gateMock.mockReset();
-  decrementMock.mockClear();
+  decrementMock.mockReset();
+  decrementMock.mockResolvedValue({ remaining: 0, idempotent: false });
   adminRpcMock.mockReset();
   sentryCaptureMock.mockReset();
 
@@ -131,10 +137,19 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     expect(res.status).toBe(500);
     expect(decrementMock).toHaveBeenCalledTimes(1);
     expect(adminRpcMock).toHaveBeenCalledTimes(1);
-    expect(adminRpcMock).toHaveBeenCalledWith('increment_audit_credits', {
-      profile_id: TEST_USER_ID,
-      delta: 1,
+    // Refund via the idempotent, row-anchored refund_orphan_audit RPC (not a
+    // bare increment) so a request retry / the orphan-cleanup cron can't
+    // double-refund.
+    expect(adminRpcMock).toHaveBeenCalledWith('refund_orphan_audit', {
+      p_audit_id: expect.any(String),
+      p_user_id: TEST_USER_ID,
+      p_reason: 'create_rollback',
     });
+    // Refund runs BEFORE the row delete — the RPC must match the still-present
+    // pending row, and refunding first closes the crash-window credit leak.
+    expect(adminRpcMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      auditsDeleteEqMock.mock.invocationCallOrder[0]!,
+    );
     // Audit row was deleted as part of cleanup.
     expect(auditsDeleteEqMock).toHaveBeenCalledTimes(1);
   });
@@ -148,6 +163,26 @@ describe('POST /api/audits — credit refund on signed-URL failure (H1)', () => 
     // Subscription users never consumed a credit, so neither path runs.
     expect(decrementMock).not.toHaveBeenCalled();
     expect(adminRpcMock).not.toHaveBeenCalled();
+  });
+
+  it('reports returned delete errors while cleaning up a signed-URL orphan', async () => {
+    gateMock.mockResolvedValue({ ok: true, reason: 'subscription' });
+    auditsDeleteEqMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'delete denied' },
+    });
+
+    const res = await POST(makeRequest({ filename: 'bill.pdf', fileSize: 12345 }));
+
+    expect(res.status).toBe(500);
+    expect(sentryCaptureMock).toHaveBeenCalledTimes(1);
+    const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+      Error,
+      { tags?: Record<string, unknown>; extra?: Record<string, unknown> },
+    ];
+    expect(err.message).toBe('delete denied');
+    expect(ctx.tags?.['surface']).toBe('audits.create.rollback_signed_url_orphan');
+    expect(ctx.extra?.['userId']).toBe(TEST_USER_ID);
   });
 
   it('returns 500 and reports to Sentry when refund itself fails', async () => {

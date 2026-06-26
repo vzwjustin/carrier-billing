@@ -64,11 +64,7 @@ vi.mock('@/extraction/carriers/tmobile', () => ({
   normalize: <T>(b: T) => b,
 }));
 
-import {
-  MAX_PDF_BYTES,
-  PipelineError,
-  runExtractionPipeline,
-} from '@/extraction/pipeline';
+import { MAX_PDF_BYTES, PipelineError, runExtractionPipeline } from '@/extraction/pipeline';
 
 beforeEach(() => {
   extractTextMock.mockClear();
@@ -107,9 +103,9 @@ describe('runExtractionPipeline — H5 PDF size cap', () => {
 
   it('does not invoke ANY downstream pipeline step on size-cap rejection', async () => {
     const oversized = Buffer.alloc(MAX_PDF_BYTES + 1);
-    await expect(
-      runExtractionPipeline({ buffer: oversized }),
-    ).rejects.toBeInstanceOf(PipelineError);
+    await expect(runExtractionPipeline({ buffer: oversized })).rejects.toBeInstanceOf(
+      PipelineError,
+    );
 
     // Critical: the LLM, OCR, pdf-parse, and detect calls must not have run.
     // Otherwise we still pay for memory + API on the rejected payload.

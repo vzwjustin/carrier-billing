@@ -1,9 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import { getAdminClient } from '@/lib/supabase/admin';
-import {
-  isSubscriptionStatus,
-  type SubscriptionStatus,
-} from '@/types/db-enums';
+import { isSubscriptionStatus, type SubscriptionStatus } from '@/types/db-enums';
 
 /**
  * Result of asking "is this user allowed to start a new audit right now?".
@@ -39,9 +36,7 @@ function isProfileRow(value: unknown): value is ProfileRow {
   );
 }
 
-export async function assertCanRunAudit(
-  userId: string,
-): Promise<AccessGateResult> {
+export async function assertCanRunAudit(userId: string): Promise<AccessGateResult> {
   const supabase = getAdminClient();
   const { data, error } = await supabase
     .from('profiles')
@@ -79,4 +74,19 @@ export async function assertCanRunAudit(
   }
 
   return { ok: false, reason: 'no_plan' };
+}
+
+/**
+ * Gate for POST /api/audits/[id]/start — blocks processing when billing is
+ * past_due, but still allows pending audits that already reserved a credit
+ * at create time (do not re-run the full gate here).
+ */
+export async function assertCanStartPendingAudit(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; reason: 'past_due' }> {
+  const gate = await assertCanRunAudit(userId);
+  if (!gate.ok && gate.reason === 'past_due') {
+    return { ok: false, reason: 'past_due' };
+  }
+  return { ok: true };
 }

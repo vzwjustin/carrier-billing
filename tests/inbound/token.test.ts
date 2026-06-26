@@ -1,11 +1,14 @@
+import { createHmac } from 'node:crypto';
+
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 
 import {
   generateInboundToken,
+  getOrCreateInboundToken,
   parseInboundRecipient,
   verifyHmac,
 } from '@/lib/inbound/token';
-import { createHmac } from 'node:crypto';
 
 describe('generateInboundToken', () => {
   it('returns a 16-char base32 string', () => {
@@ -24,23 +27,23 @@ describe('generateInboundToken', () => {
 
 describe('parseInboundRecipient', () => {
   it('extracts token + domain from a plain address', () => {
-    expect(
-      parseInboundRecipient('bills+abcdefgh23456pqr@inbound.example.com'),
-    ).toEqual({ token: 'abcdefgh23456pqr', domain: 'inbound.example.com' });
+    expect(parseInboundRecipient('bills+abcdefgh23456pqr@inbound.example.com')).toEqual({
+      token: 'abcdefgh23456pqr',
+      domain: 'inbound.example.com',
+    });
   });
 
   it('handles angle-bracket-wrapped addresses with display name', () => {
     expect(
-      parseInboundRecipient(
-        'CarrierAudit <bills+xyzpdq2345abcdef@inbound.example.com>',
-      ),
+      parseInboundRecipient('CarrierAudit <bills+xyzpdq2345abcdef@inbound.example.com>'),
     ).toEqual({ token: 'xyzpdq2345abcdef', domain: 'inbound.example.com' });
   });
 
   it('lower-cases token + domain', () => {
-    expect(
-      parseInboundRecipient('Bills+ABCDE2345FGHIJ23@INBOUND.example.com'),
-    ).toEqual({ token: 'abcde2345fghij23', domain: 'inbound.example.com' });
+    expect(parseInboundRecipient('Bills+ABCDE2345FGHIJ23@INBOUND.example.com')).toEqual({
+      token: 'abcde2345fghij23',
+      domain: 'inbound.example.com',
+    });
   });
 
   it('returns null when local-part has no token suffix', () => {
@@ -49,23 +52,15 @@ describe('parseInboundRecipient', () => {
 
   it('returns null when token is too short (not exactly 16)', () => {
     expect(parseInboundRecipient('bills+abc@inbound.example.com')).toBeNull();
-    expect(
-      parseInboundRecipient('bills+abc234567@inbound.example.com'),
-    ).toBeNull();
+    expect(parseInboundRecipient('bills+abc234567@inbound.example.com')).toBeNull();
   });
 
   it('returns null when token is too long (not exactly 16)', () => {
-    expect(
-      parseInboundRecipient(
-        'bills+abcdefghij234567abc@inbound.example.com',
-      ),
-    ).toBeNull();
+    expect(parseInboundRecipient('bills+abcdefghij234567abc@inbound.example.com')).toBeNull();
   });
 
   it('returns null when local-part is wrong (e.g. reports+token)', () => {
-    expect(
-      parseInboundRecipient('reports+abcdefgh23456789@inbound.example.com'),
-    ).toBeNull();
+    expect(parseInboundRecipient('reports+abcdefgh23456789@inbound.example.com')).toBeNull();
   });
 
   it('returns null on garbage input', () => {
@@ -84,9 +79,7 @@ describe('verifyHmac', () => {
   });
 
   it('returns false for a different signature', () => {
-    expect(
-      verifyHmac(body, goodSig.replace(/^./, '0'), secret),
-    ).toBe(false);
+    expect(verifyHmac(body, goodSig.replace(/^./, '0'), secret)).toBe(false);
   });
 
   it('returns false when length differs (timing-safe)', () => {
@@ -106,9 +99,7 @@ describe('verifyHmac', () => {
   });
 
   it('accepts uppercase hex with a sha256= prefix', () => {
-    expect(verifyHmac(body, `sha256=${goodSig.toUpperCase()}`, secret)).toBe(
-      true,
-    );
+    expect(verifyHmac(body, `sha256=${goodSig.toUpperCase()}`, secret)).toBe(true);
   });
 
   it('returns false on junk (non-hex) input', () => {
@@ -116,18 +107,69 @@ describe('verifyHmac', () => {
   });
 
   it('returns false when input has wrong length even with the prefix', () => {
-    expect(verifyHmac(body, `sha256=${goodSig.slice(0, -2)}`, secret)).toBe(
-      false,
-    );
+    expect(verifyHmac(body, `sha256=${goodSig.slice(0, -2)}`, secret)).toBe(false);
   });
 
   it('does not throw on non-string signature', () => {
-    expect(
-      verifyHmac(body, undefined as unknown as string, secret),
-    ).toBe(false);
+    expect(verifyHmac(body, undefined as unknown as string, secret)).toBe(false);
+  });
+});
+
+describe('getOrCreateInboundToken', () => {
+  type SelectResult = {
+    data: { inbound_email_token: string | null } | null;
+    error: { message: string } | null;
+  };
+  type UpdateResult = {
+    data: Array<{ inbound_email_token: string | null }> | null;
+    error: { message: string; code?: string } | null;
+  };
+
+  function makeAdmin(selectResults: SelectResult[], updateResults: UpdateResult[]): SupabaseClient {
+    return {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () =>
+              selectResults.shift() ?? {
+                data: null,
+                error: { message: 'unexpected select' },
+              },
+          }),
+        }),
+        update: () => ({
+          eq: () => ({
+            is: () => ({
+              select: async () =>
+                updateResults.shift() ?? {
+                  data: null,
+                  error: { message: 'unexpected update' },
+                },
+            }),
+          }),
+        }),
+      }),
+    } as unknown as SupabaseClient;
+  }
+
+  it('surfaces race-path reread errors instead of mislabeling them as collisions', async () => {
+    const admin = makeAdmin(
+      [
+        { data: { inbound_email_token: null }, error: null },
+        { data: null, error: { message: 'database unavailable' } },
+      ],
+      [{ data: [], error: null }],
+    );
+
+    await expect(getOrCreateInboundToken(admin, 'user_1')).rejects.toThrow(
+      'inbound token reread failed: database unavailable',
+    );
   });
 
   // L-10: accept base64 signatures (some providers send base64 instead of hex).
+  const secret = 'shared-secret-1234567890abcdef';
+  const body = '{"hello":"world"}';
+
   it('accepts a base64-encoded signature', () => {
     const b64 = createHmac('sha256', secret).update(body).digest('base64');
     expect(verifyHmac(body, b64, secret)).toBe(true);

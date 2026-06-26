@@ -127,13 +127,23 @@ function makeServerSelectBuilder() {
   };
 }
 
-const updateEqMock = vi.fn(async () => ({ data: null, error: null }));
+const updateEqMock = vi.fn(async () => ({ data: [{ id: AUDIT_A_ID }], error: null }));
+
+function makeUpdateBuilder() {
+  const builder = {
+    eq: (_col: string, _val: string) => builder,
+    then: (
+      onFulfilled: (value: { data: Array<{ id: string }>; error: null }) => unknown,
+      onRejected?: (reason: unknown) => unknown,
+    ) => updateEqMock().then(onFulfilled, onRejected),
+    select: async (_cols: string) => updateEqMock(),
+  };
+  return builder;
+}
 
 const fromMock = vi.fn((_table: string) => ({
   select: (_cols: string) => makeServerSelectBuilder(),
-  update: (_row: Record<string, unknown>) => ({
-    eq: (_col: string, _val: string) => updateEqMock(),
-  }),
+  update: (_row: Record<string, unknown>) => makeUpdateBuilder(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -167,9 +177,7 @@ vi.mock('@/lib/supabase/admin', () => ({
             maybeSingle: async () => ({ data: null, error: null }),
           }),
         }),
-        update: (_row: Record<string, unknown>) => ({
-          eq: (_col: string, _val: string) => updateEqMock(),
-        }),
+        update: (_row: Record<string, unknown>) => makeUpdateBuilder(),
       };
     },
     storage: {

@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  processBillFn,
-  __testables,
-  translateLineIndexes,
-} from '@/inngest/functions/process-bill';
+import { processBillFn, __testables, translateLineIndexes } from '@/inngest/functions/process-bill';
 import { functions } from '@/inngest/functions';
 import type { ExtractedBill } from '@/extraction/schema';
 import type { Finding } from '@/rules/types';

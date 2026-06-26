@@ -47,10 +47,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
-      return Response.json(
-        { error: 'invalid_mode', issues: parsed.error.issues },
-        { status: 400 },
-      );
+      return Response.json({ error: 'invalid_mode', issues: parsed.error.issues }, { status: 400 });
     }
     const { mode } = parsed.data;
 
@@ -65,9 +62,7 @@ export async function POST(request: Request): Promise<Response> {
       .maybeSingle();
 
     if (profileResult.error) {
-      throw new Error(
-        `profile lookup failed: ${profileResult.error.message}`,
-      );
+      throw new Error(`profile lookup failed: ${profileResult.error.message}`);
     }
 
     const profile = profileResult.data as {
@@ -118,17 +113,12 @@ export async function POST(request: Request): Promise<Response> {
           // M-S2: Stripe error messages can echo customer email/address.
           // Scrub the message string before handing it to Sentry's serializer
           // (extra is id-only and safe).
-          Sentry.captureException(
-            new Error(scrubString(String(cleanupErr))),
-            {
-              tags: { area: 'stripe.checkout.cleanup' },
-              extra: { customerId: customer.id, userId: user.id },
-            },
-          );
+          Sentry.captureException(new Error(scrubString(String(cleanupErr))), {
+            tags: { area: 'stripe.checkout.cleanup' },
+            extra: { customerId: customer.id, userId: user.id },
+          });
         }
-        throw new Error(
-          `persist stripe_customer_id failed: ${updateResult.error.message}`,
-        );
+        throw new Error(`persist stripe_customer_id failed: ${updateResult.error.message}`);
       }
 
       const rows = (updateResult.data ?? []) as Array<{ id: string }>;
@@ -150,13 +140,10 @@ export async function POST(request: Request): Promise<Response> {
           try {
             await stripe.customers.del(customer.id);
           } catch (cleanupErr) {
-            Sentry.captureException(
-              new Error(scrubString(String(cleanupErr))),
-              {
-                tags: { area: 'stripe.checkout.orphan_cleanup_after_reread_fail' },
-                extra: { customerId: customer.id, userId: user.id },
-              },
-            );
+            Sentry.captureException(new Error(scrubString(String(cleanupErr))), {
+              tags: { area: 'stripe.checkout.orphan_cleanup_after_reread_fail' },
+              extra: { customerId: customer.id, userId: user.id },
+            });
           }
           throw new Error(
             `profile re-read failed after concurrent customer creation: ${
@@ -164,8 +151,7 @@ export async function POST(request: Request): Promise<Response> {
             }`,
           );
         }
-        const winner = (reread.data as { stripe_customer_id: string | null })
-          .stripe_customer_id;
+        const winner = (reread.data as { stripe_customer_id: string | null }).stripe_customer_id;
         if (!winner) {
           // The losing-side reread saw null too — extremely unlikely, but the
           // safest action is to abort this request without leaking a customer.
@@ -173,17 +159,12 @@ export async function POST(request: Request): Promise<Response> {
           try {
             await stripe.customers.del(customer.id);
           } catch (cleanupErr) {
-            Sentry.captureException(
-              new Error(scrubString(String(cleanupErr))),
-              {
-                tags: { area: 'stripe.checkout.orphan_cleanup_null_winner' },
-                extra: { customerId: customer.id, userId: user.id },
-              },
-            );
+            Sentry.captureException(new Error(scrubString(String(cleanupErr))), {
+              tags: { area: 'stripe.checkout.orphan_cleanup_null_winner' },
+              extra: { customerId: customer.id, userId: user.id },
+            });
           }
-          throw new Error(
-            'concurrent customer creation: profile still has no stripe_customer_id',
-          );
+          throw new Error('concurrent customer creation: profile still has no stripe_customer_id');
         }
         // Delete our orphan; log if it fails so we can reconcile out-of-band.
         try {
@@ -220,7 +201,7 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+    const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
 
     const sharedParams = {
       customer: stripeCustomerId,
@@ -238,16 +219,12 @@ export async function POST(request: Request): Promise<Response> {
         ? await stripe.checkout.sessions.create({
             ...sharedParams,
             mode: 'payment',
-            line_items: [
-              { price: env.STRIPE_PRICE_ID_ONE_TIME, quantity: 1 },
-            ],
+            line_items: [{ price: env.STRIPE_PRICE_ID_ONE_TIME, quantity: 1 }],
           })
         : await stripe.checkout.sessions.create({
             ...sharedParams,
             mode: 'subscription',
-            line_items: [
-              { price: env.STRIPE_PRICE_ID_SUBSCRIPTION, quantity: 1 },
-            ],
+            line_items: [{ price: env.STRIPE_PRICE_ID_SUBSCRIPTION, quantity: 1 }],
           });
 
     if (!session.url) {
@@ -256,7 +233,10 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ url: session.url });
   } catch (err) {
-    console.error('[stripe.checkout] unexpected error', err instanceof Error ? err.message : 'unknown');
+    console.error(
+      '[stripe.checkout] unexpected error',
+      scrubString(err instanceof Error ? err.message : String(err)),
+    );
     Sentry.captureException(err, { tags: { area: 'stripe.checkout' } });
     return Response.json({ error: 'internal_error' }, { status: 500 });
   }

@@ -29,9 +29,7 @@ export default async function NewAuditPage(): Promise<React.JSX.Element> {
     return (
       <div className="mx-auto max-w-2xl space-y-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            New audit
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">New audit</h1>
         </div>
         <Banner
           variant="warning"
@@ -48,21 +46,15 @@ export default async function NewAuditPage(): Promise<React.JSX.Element> {
     return (
       <div className="mx-auto max-w-2xl space-y-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            New audit
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">New audit</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            You need a one-time audit credit or an active subscription to run
-            an audit.
+            You need a one-time audit credit or an active subscription to run an audit.
           </p>
         </div>
         <div className="rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-neutral-900">
-            Out of credits
-          </h2>
+          <h2 className="text-lg font-semibold text-neutral-900">Out of credits</h2>
           <p className="mt-2 text-sm text-neutral-600">
-            Buy a one-time audit for $149, or subscribe for $99/mo and audit
-            unlimited bills.
+            Buy a one-time audit for $149, or subscribe for $99/mo and audit unlimited bills.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href="/pricing">
@@ -96,12 +88,10 @@ export default async function NewAuditPage(): Promise<React.JSX.Element> {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          New audit
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">New audit</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Drop a PDF of a Verizon, AT&amp;T, or T-Mobile business wireless bill.
-          We&apos;ll have results in under 5 minutes.
+          Drop a PDF of a Verizon, AT&amp;T, or T-Mobile business wireless bill. We&apos;ll have
+          results in under 5 minutes.
         </p>
       </div>
 
@@ -109,6 +99,42 @@ export default async function NewAuditPage(): Promise<React.JSX.Element> {
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">
         <UploadForm />
+      </div>
+
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-5">
+        <h2 className="text-sm font-semibold text-neutral-900">What happens next</h2>
+        <ol className="mt-3 space-y-2 text-sm text-neutral-700">
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-semibold text-white">
+              1
+            </span>
+            <span>
+              We parse every line, plan, credit, and device-payment installment from your PDF.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-semibold text-white">
+              2
+            </span>
+            <span>
+              Ten rules run against the bill — expired promos, paid-off device installments, plan
+              mismatches, suspended lines billing, and more.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-semibold text-white">
+              3
+            </span>
+            <span>
+              You get a PDF report you can hand to your account rep with concrete asks and dollar
+              amounts.
+            </span>
+          </li>
+        </ol>
+        <p className="mt-3 text-xs text-neutral-500">
+          We never contact your carrier. Phone numbers are masked to last-4. Your file stays in your
+          account.
+        </p>
       </div>
     </div>
   );

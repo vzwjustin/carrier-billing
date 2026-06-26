@@ -45,9 +45,7 @@ type AuditFullRow = {
   share_token: string | null;
 };
 
-type MaybeSingleResult =
-  | { data: AuditFullRow; error: null }
-  | { data: null; error: null };
+type MaybeSingleResult = { data: AuditFullRow; error: null } | { data: null; error: null };
 
 type SelectListResult = { data: unknown[]; error: null };
 
@@ -138,8 +136,7 @@ vi.mock('@/lib/supabase/admin', () => ({
     storage: {
       from: (_bucket: string) => ({
         download: (path: string) => downloadSpy(path),
-        upload: (path: string, body: Uint8Array, _opts: unknown) =>
-          uploadSpy(path, body),
+        upload: (path: string, body: Uint8Array, _opts: unknown) => uploadSpy(path, body),
       }),
     },
   }),
@@ -215,9 +212,7 @@ function makeContext(id: string): { params: Promise<{ id: string }> } {
 }
 
 function makeRequest(): Request {
-  return new Request(
-    `http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`,
-  );
+  return new Request(`http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`);
 }
 
 beforeEach(() => {
@@ -314,9 +309,7 @@ describe('GET /api/audits/[id]/report.pdf — cache lifecycle', () => {
     const cachedBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
     storage.set(`reports:${VALID_AUDIT_ID}.pdf`, cachedBytes);
 
-    const url = new URL(
-      `http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`,
-    );
+    const url = new URL(`http://localhost/api/audits/${VALID_AUDIT_ID}/report.pdf`);
     url.searchParams.set('force', '1');
     const res = await GET(new Request(url), makeContext(VALID_AUDIT_ID));
 

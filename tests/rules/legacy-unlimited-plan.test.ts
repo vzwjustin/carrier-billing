@@ -74,14 +74,13 @@ describe('legacy_unlimited_plan rule — AT&T patterns', () => {
 });
 
 describe('legacy_unlimited_plan rule — T-Mobile patterns', () => {
-  it.each([
-    ['Simple Choice Unlimited'],
-    ['Magenta'],
-    ['T-Mobile ONE'],
-  ])('flags T-Mobile legacy plan: %s', async (plan) => {
-    const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
-    expect(findings).toHaveLength(1);
-  });
+  it.each([['Simple Choice Unlimited'], ['Magenta'], ['T-Mobile ONE']])(
+    'flags T-Mobile legacy plan: %s',
+    async (plan) => {
+      const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
+      expect(findings).toHaveLength(1);
+    },
+  );
 
   it.each([
     ['Magenta Plus'],
@@ -92,6 +91,14 @@ describe('legacy_unlimited_plan rule — T-Mobile patterns', () => {
     ['Magenta First Responder'],
     ['T-Mobile ONE Business'],
     ['Business Unlimited Ultimate'],
+    // Carrier-bill abbreviations + tablet variants. T-Mobile bills print
+    // "Bus" as the abbreviation for "Business" and "Tab" for tablet-line
+    // SKUs. Both are currently-sold plans and must NOT be flagged as legacy.
+    ['Magenta Bus'],
+    ['Magenta Bus Tab 10GB Promo'],
+    ['Magenta Tab'],
+    ['Magenta Tablet 10GB'],
+    ['Magenta Business Tab'],
   ])('does NOT flag current T-Mobile plan: %s', async (plan) => {
     const findings = await legacyUnlimitedPlanRule.evaluate(ctx('tmobile', plan));
     expect(findings).toHaveLength(0);

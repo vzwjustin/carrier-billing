@@ -26,6 +26,24 @@
 -- ----------------------------------------------------------------------------
 -- C2 (defense in depth): CHECK constraint floors `audit_credits` at zero.
 -- ----------------------------------------------------------------------------
+-- The TOCTOU bug being fixed by this migration is known to produce
+-- `audit_credits = -1` in environments that exhibited the race. Adding the
+-- CHECK without a pre-flight backfill would abort the entire migration on
+-- those environments (the constraint validates against all existing rows
+-- immediately). Pre-flight to 0 so the deploy lands cleanly on any prior
+-- state.
+update public.profiles
+   set audit_credits = 0,
+       updated_at = now()
+ where audit_credits < 0;
+
+-- Idempotent re-application: if the constraint already exists from a prior
+-- partial apply or a re-deploy against the same database, drop it first so
+-- the add below succeeds. CHECK constraint semantics are identical either
+-- way; the drop+add is a no-op on the schema graph.
+alter table public.profiles
+  drop constraint if exists profiles_audit_credits_nonneg_check;
+
 alter table public.profiles
   add constraint profiles_audit_credits_nonneg_check
     check (audit_credits >= 0);

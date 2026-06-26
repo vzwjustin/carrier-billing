@@ -164,8 +164,7 @@ describe('redactDetails', () => {
       customerEmail: 'jane@example.com',
       device_serial: 'F2LZX0AAJC6L',
       imei: '356938035643809',
-      hosted_invoice_url:
-        'https://invoice.stripe.com/i/acct_x/test_aBcDeF1234567890?secret=foo',
+      hosted_invoice_url: 'https://invoice.stripe.com/i/acct_x/test_aBcDeF1234567890?secret=foo',
       ok: true,
     }) as Record<string, unknown>;
     expect(out.from).toBe('[REDACTED]');
@@ -225,9 +224,7 @@ describe('redactDetails', () => {
         },
       ],
       raw: {
-        accounts: [
-          { lines: [{ user_label: 'JANE DOE', mdn_last4: '5309' }] },
-        ],
+        accounts: [{ lines: [{ user_label: 'JANE DOE', mdn_last4: '5309' }] }],
       },
     });
 

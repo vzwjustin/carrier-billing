@@ -34,11 +34,7 @@ export function PostHogProvider({ children }: PostHogProviderProps) {
     return <>{children}</>;
   }
 
-  return (
-    <PostHogInner>
-      {children}
-    </PostHogInner>
-  );
+  return <PostHogInner>{children}</PostHogInner>;
 }
 
 function PostHogInner({ children }: PostHogProviderProps) {
@@ -48,10 +44,7 @@ function PostHogInner({ children }: PostHogProviderProps) {
     // navigation transitions. Re-check `window.location.pathname` *before*
     // posthog.init so the autocapture of $current_url on first init never
     // sees a `/share/<token>` URL.
-    if (
-      typeof window !== 'undefined' &&
-      window.location.pathname.startsWith('/share/')
-    ) {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/share/')) {
       return;
     }
     initPostHog();

@@ -58,6 +58,14 @@ describe('rules/registry self-check', () => {
     expect(() => validateRegistry([bad])).toThrow(/empty array/);
   });
 
+  it('throws when a rule has no evaluate function', () => {
+    const bad = makeRule({ id: 'no_evaluate' });
+    // Cast to Partial<Rule> makes `evaluate` optional so `delete` is legal —
+    // simulating a malformed rule that slipped past the compile-time type.
+    delete (bad as Partial<Rule>).evaluate;
+    expect(() => validateRegistry([bad])).toThrow(/rule "no_evaluate" has no evaluate function/);
+  });
+
   it('accepts a valid carrier-scoped rule', () => {
     const ok = makeRule({ id: 'verizon_only', appliesTo: ['verizon'] });
     expect(() => validateRegistry([ok])).not.toThrow();

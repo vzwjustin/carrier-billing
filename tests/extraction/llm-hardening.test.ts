@@ -152,9 +152,7 @@ describe('extractBill — H4 prompt caching', () => {
   it('sends cache_control on the system block and on the PDF document block', async () => {
     messagesCreateMock.mockResolvedValueOnce({
       stop_reason: 'end_turn',
-      content: [
-        { type: 'text', text: JSON.stringify(makeBalancedBill()) },
-      ],
+      content: [{ type: 'text', text: JSON.stringify(makeBalancedBill()) }],
     });
 
     await extractBill(FAKE_PDF);
@@ -178,6 +176,55 @@ describe('extractBill — H4 prompt caching', () => {
     const firstUserContent = arg.messages[0]?.content ?? [];
     const docBlock = firstUserContent.find((b) => b.type === 'document');
     expect(docBlock?.cache_control).toEqual({ type: 'ephemeral' });
+  });
+});
+
+describe('extractBill — schema-validation failure does not leak bill PII', () => {
+  it('omits the raw bill candidate from ExtractionError.details, keeping only Zod issues', async () => {
+    // A well-formed JSON object that FAILS the schema: `total_charges_cents`
+    // is a string, and it carries un-truncated PII (full phone + account
+    // number) that must NOT survive onto the thrown error's details.
+    const malformed = JSON.stringify({
+      carrier: 'verizon',
+      billing_period_start: '2026-04-01',
+      billing_period_end: '2026-04-30',
+      total_charges_cents: 'not-a-number',
+      account_number: '4155551234',
+      contact_phone: '415-555-1234',
+      accounts: [],
+      notes: [],
+    });
+    // extractBill retries once on a schema failure, so both attempts must
+    // return the malformed payload to reach the final throw.
+    messagesCreateMock.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: malformed }],
+    });
+
+    let caught: unknown = null;
+    try {
+      await extractBill(FAKE_PDF);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ExtractionError);
+    const e = caught as ExtractionError;
+    expect(e.message).toMatch(/schema validation failed/i);
+
+    const details = e.details as Record<string, unknown>;
+    // The raw bill candidate must be gone entirely.
+    expect(details).not.toHaveProperty('raw');
+    // And no bill PII may have bled into details by any path.
+    const serialized = JSON.stringify(details);
+    expect(serialized).not.toContain('4155551234');
+    expect(serialized).not.toContain('415-555-1234');
+
+    // Zod issue paths are still present for diagnostics.
+    const issues = details.issues as Array<{ path: unknown[]; message: string }>;
+    expect(Array.isArray(issues)).toBe(true);
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.some((i) => i.path.includes('total_charges_cents'))).toBe(true);
   });
 });
 
@@ -237,6 +284,59 @@ describe('extractBill — H6 totals sanity check', () => {
     // 100¢ floor. Must NOT downgrade.
     const bill = makeBalancedBill();
     bill.accounts[0]!.total_charges_cents = 6050;
+    messagesCreateMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(bill) }],
+    });
+
+    const out = await extractBill(FAKE_PDF);
+    expect(out.confidence).toBeUndefined();
+    expect(sentryMock.captureMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('extractBill — billing-period coherence check', () => {
+  it('downgrades confidence and appends a note when start is after end', async () => {
+    // Cycle dates transposed: start 2026-04-30 after end 2026-04-01. Totals
+    // still reconcile, so the only signal is the date order.
+    const bill = makeBalancedBill({
+      billing_period_start: '2026-04-30',
+      billing_period_end: '2026-04-01',
+    });
+    messagesCreateMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(bill) }],
+    });
+
+    const out = await extractBill(FAKE_PDF);
+    expect(out.confidence).toBe('medium');
+    expect(out.notes.some((n) => /transposed/i.test(n))).toBe(true);
+
+    expect(sentryMock.captureMessage).toHaveBeenCalledTimes(1);
+    const [msg, ctx] = sentryMock.captureMessage.mock.calls[0] ?? [];
+    expect(msg).toMatch(/billing period out of order/i);
+    const tags = (ctx as { tags?: Record<string, string> }).tags;
+    expect(tags?.surface).toBe('extraction-period-check');
+  });
+
+  it('leaves a coherent billing period untouched', async () => {
+    const bill = makeBalancedBill();
+    messagesCreateMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(bill) }],
+    });
+
+    const out = await extractBill(FAKE_PDF);
+    expect(out.confidence).toBeUndefined();
+    expect(out.notes).toEqual([]);
+    expect(sentryMock.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('treats a same-day cycle (start === end) as coherent', async () => {
+    const bill = makeBalancedBill({
+      billing_period_start: '2026-04-15',
+      billing_period_end: '2026-04-15',
+    });
     messagesCreateMock.mockResolvedValueOnce({
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: JSON.stringify(bill) }],

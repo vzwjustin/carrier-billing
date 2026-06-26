@@ -27,9 +27,7 @@ export const insuranceAfterDevicePayoffRule: Rule = {
         const insurance = findFeatureByCategory(line, 'insurance');
         if (insurance.length === 0) return;
 
-        const paidOff = line.dpp_installments.some(
-          (d) => d.remaining_payments === 0,
-        );
+        const paidOff = line.dpp_installments.some((d) => d.remaining_payments === 0);
         if (!paidOff) return;
 
         const total = insurance.reduce((sum, f) => sum + f.monthly_cents, 0);
@@ -50,9 +48,8 @@ export const insuranceAfterDevicePayoffRule: Rule = {
               name: f.name,
               monthly_cents: f.monthly_cents,
             })),
-            paid_off_dpp_count: line.dpp_installments.filter(
-              (d) => d.remaining_payments === 0,
-            ).length,
+            paid_off_dpp_count: line.dpp_installments.filter((d) => d.remaining_payments === 0)
+              .length,
           },
         });
       });

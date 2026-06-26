@@ -190,11 +190,7 @@ describe('Unknown carrier — end-to-end rules runner', () => {
       carrier: bill.carrier,
     };
 
-    const result = await runRules(ctx, [
-      verizonOnlyRule,
-      attOnlyRule,
-      tmobileOnlyRule,
-    ]);
+    const result = await runRules(ctx, [verizonOnlyRule, attOnlyRule, tmobileOnlyRule]);
 
     expect(result.findings).toEqual([]);
     expect(result.errors).toEqual([]);

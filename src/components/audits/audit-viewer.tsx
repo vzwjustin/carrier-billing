@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { ReportView } from '@/components/audits/report-view';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatIsoDatePeriod } from '@/lib/dates';
 import type { ReportData } from '@/reports/types';
 import { cn, formatCents } from '@/lib/utils';
 
@@ -64,17 +65,6 @@ function statusIndex(status: string): number {
   if (status === 'analyzing') return 2;
   if (status === 'extracting') return 1;
   return 0;
-}
-
-function formatPeriod(start: string | null, end: string | null): string {
-  if (!start || !end) return '—';
-  const fmt = (s: string) =>
-    new Date(s).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  return `${fmt(start)} – ${fmt(end)}`;
 }
 
 export interface AuditViewerProps {
@@ -161,8 +151,7 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
   // F5: SPEC §11 case 5 — show a "this may be slow" notice once we know
   // the bill is large. page_count is persisted by the extract step, so the
   // notice appears from the analyzing phase onward.
-  const isLargeBill =
-    typeof data.page_count === 'number' && data.page_count > 100;
+  const isLargeBill = typeof data.page_count === 'number' && data.page_count > 100;
 
   return (
     <div className="space-y-6">
@@ -172,9 +161,8 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-medium">Large bill detected — {data.page_count} pages.</p>
           <p className="mt-1">
-            Processing a bill this size may take a few minutes longer than
-            usual. You can leave this tab open — we&apos;ll keep the report when
-            it&apos;s ready.
+            Processing a bill this size may take a few minutes longer than usual. You can leave this
+            tab open — we&apos;ll keep the report when it&apos;s ready.
           </p>
         </div>
       ) : null}
@@ -217,7 +205,7 @@ export function AuditViewer({ auditId, initial, report }: AuditViewerProps): Rea
           />
           <SummaryCard
             label="Billing period"
-            value={formatPeriod(data.billing_period_start, data.billing_period_end)}
+            value={formatIsoDatePeriod(data.billing_period_start, data.billing_period_end)}
           />
           <SummaryCard
             label="Accounts"

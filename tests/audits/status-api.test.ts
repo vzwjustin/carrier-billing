@@ -62,6 +62,11 @@ vi.mock('@/env', () => ({
   },
 }));
 
+const sentryCaptureMock = vi.fn();
+vi.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => sentryCaptureMock(...args),
+}));
+
 // Import after mocks are registered.
 import { GET } from '@/app/api/audits/[id]/status/route';
 
@@ -100,6 +105,7 @@ beforeEach(() => {
   eqMock.mockClear();
   selectMock.mockClear();
   fromMock.mockClear();
+  sentryCaptureMock.mockReset();
 
   getUserMock.mockResolvedValue({
     data: { user: { id: 'user-uuid-1', email: 'test@example.com' } },
@@ -176,9 +182,7 @@ describe('GET /api/audits/[id]/status', () => {
     expect(json['status']).toBe('failed');
     expect(json['progress']).toBe(100);
     expect(json['currentStep']).toBe('Failed');
-    expect(json['failure_reason']).toBe(
-      'extraction:llm-extract: schema validation failed',
-    );
+    expect(json['failure_reason']).toBe('extraction:llm-extract: schema validation failed');
   });
 
   it('uses the right currentStep wording for in-flight states', async () => {
@@ -208,5 +212,21 @@ describe('GET /api/audits/[id]/status', () => {
     json = (await res.json()) as Record<string, unknown>;
     expect(json['progress']).toBe(5);
     expect(json['currentStep']).toBe('Queued');
+  });
+
+  it('reports unexpected failures with a scrubbed message', async () => {
+    getUserMock.mockRejectedValueOnce(new Error('boom for customer@example.com'));
+
+    const res = await GET(makeRequest(), makeContext(VALID_AUDIT_ID));
+
+    expect(res.status).toBe(500);
+    const [err, ctx] = sentryCaptureMock.mock.calls[0] as [
+      Error,
+      { tags?: { surface?: string }; extra?: { auditId?: string } },
+    ];
+    expect(err.message).toContain('[email]');
+    expect(err.message).not.toContain('customer@example.com');
+    expect(ctx.tags?.surface).toBe('audits.status');
+    expect(ctx.extra?.auditId).toBe(VALID_AUDIT_ID);
   });
 });
