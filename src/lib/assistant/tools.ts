@@ -415,9 +415,12 @@ export async function executeGetFinding(
     if (linesError) {
       throw new Error(`get_finding lines lookup failed: ${linesError.message}`);
     }
-    affectedLineLast4 = ((lines ?? []) as LineLast4Row[])
-      .map((l) => takeLast4(l.mdn_masked))
-      .filter((v): v is string => v !== null);
+    // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocations from .map().filter()
+    affectedLineLast4 = ((lines ?? []) as LineLast4Row[]).reduce<string[]>((acc, l) => {
+      const last4 = takeLast4(l.mdn_masked);
+      if (last4 !== null) acc.push(last4);
+      return acc;
+    }, []);
   }
 
   let affectedAccountLast4: string[] = [];
@@ -430,9 +433,12 @@ export async function executeGetFinding(
     if (accountsError) {
       throw new Error(`get_finding accounts lookup failed: ${accountsError.message}`);
     }
-    affectedAccountLast4 = ((accounts ?? []) as AccountLast4Row[])
-      .map((a) => takeLast4(a.account_number_masked))
-      .filter((v): v is string => v !== null);
+    // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocations from .map().filter()
+    affectedAccountLast4 = ((accounts ?? []) as AccountLast4Row[]).reduce<string[]>((acc, a) => {
+      const last4 = takeLast4(a.account_number_masked);
+      if (last4 !== null) acc.push(last4);
+      return acc;
+    }, []);
   }
 
   citations.auditIds.add(row.audit_id);
@@ -594,9 +600,11 @@ export async function executeListLines(
 
   let accountIdFilter: string[] | null = null;
   if (account_last4) {
-    accountIdFilter = accountRows
-      .filter((a) => takeLast4(a.account_number_masked) === account_last4)
-      .map((a) => a.id);
+    // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocations from .filter().map()
+    accountIdFilter = accountRows.reduce<string[]>((acc, a) => {
+      if (takeLast4(a.account_number_masked) === account_last4) acc.push(a.id);
+      return acc;
+    }, []);
     if (accountIdFilter.length === 0) {
       return {
         audit_id,
@@ -630,7 +638,8 @@ export async function executeListLines(
     if (featureError) {
       throw new Error(`list_lines feature filter failed: ${featureError.message}`);
     }
-    const featureLineIds = new Set(((featureRows ?? []) as FeatureLinkRow[]).map((f) => f.line_id));
+    // ⚡ Bolt: Use Array.from for clean iteration when mapping to Set
+    const featureLineIds = new Set(Array.from((featureRows ?? []) as FeatureLinkRow[], (f) => f.line_id));
     lines = lines.filter((l) => featureLineIds.has(l.id));
   }
 
