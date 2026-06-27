@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-06-27 - Preventing chained loop overheads inside inner loops
+**Learning:** O(N^2) redundancy was found in rules checking array-bound values (e.g. median cost calculations) by invoking `.map().filter()` inside `.forEach()` loops. The cost calculations were repeatedly executed.
+**Action:** When evaluating cross-sectional items, pre-compute values in an initial pass into a bounded array and extract peers via direct indexing rather than chaining array methods inside O(N) evaluations.

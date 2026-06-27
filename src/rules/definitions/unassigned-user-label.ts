@@ -40,10 +40,19 @@ export const unassignedUserLabelRule: Rule = {
     const findings: Finding[] = [];
 
     bill.accounts.forEach((account, accountIndex) => {
-      const peerHasLabel = account.lines.map(
-        (line) => line.user_label !== null && line.user_label.trim().length > 0,
-      );
-      const labeledCount = peerHasLabel.filter(Boolean).length;
+      // ⚡ Bolt: Single-pass iteration avoids intermediate array allocation from .map().filter()
+      let labeledCount = 0;
+      const peerHasLabel = new Array(account.lines.length);
+      for (let i = 0; i < account.lines.length; i++) {
+        const line = account.lines[i];
+        if (line && line.user_label !== null && line.user_label.trim().length > 0) {
+          peerHasLabel[i] = true;
+          labeledCount++;
+        } else {
+          peerHasLabel[i] = false;
+        }
+      }
+
       if (labeledCount < MIN_LABELED_PEERS) return;
 
       account.lines.forEach((line, lineIndex) => {
