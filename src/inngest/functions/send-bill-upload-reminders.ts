@@ -44,7 +44,11 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
       if (recentErr) {
         throw new Error(`audits select failed: ${recentErr.message}`);
       }
-      const active = new Set(((recentData ?? []) as AuditUserRow[]).map((r) => r.user_id));
+      // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocations from .map() and .filter().map()
+      const active = new Set<string>();
+      for (const r of (recentData ?? []) as AuditUserRow[]) {
+        active.add(r.user_id);
+      }
 
       const { data: profileData, error: profileErr } = await supabase
         .from('profiles')
@@ -54,9 +58,13 @@ export const sendBillUploadRemindersFn = inngest.createFunction(
         throw new Error(`profiles select failed: ${profileErr.message}`);
       }
 
-      return ((profileData ?? []) as ProfileRow[])
-        .filter((p) => !active.has(p.id) && !!p.email)
-        .map((p) => ({ id: p.id, email: p.email as string }));
+      const filteredDue: { id: string; email: string }[] = [];
+      for (const p of (profileData ?? []) as ProfileRow[]) {
+        if (!active.has(p.id) && !!p.email) {
+          filteredDue.push({ id: p.id, email: p.email as string });
+        }
+      }
+      return filteredDue;
     })) as { id: string; email: string }[];
 
     const enabled = env.BILL_REMINDER_ENABLED === 'true';
