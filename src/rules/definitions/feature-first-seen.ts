@@ -32,21 +32,29 @@ export const featureFirstSeenRule: Rule = {
 
     bill.accounts.forEach((account, accountIndex) => {
       account.lines.forEach((line, lineIndex) => {
-        const flagged = line.features.filter((f) => {
-          if (f.category !== 'other') return false;
-          if (f.monthly_cents <= 0) return false;
-          return MARKETING_NAME_RE.test(f.name);
-        });
-        if (flagged.length === 0) return;
+        // ⚡ Bolt: Single-pass iteration replaces chained .filter().reduce().map()
+        // avoiding intermediate array allocations for the `flagged` list.
+        const flagged = [];
+        let total = 0;
+        let namesStr = '';
 
-        const total = flagged.reduce((sum, f) => sum + f.monthly_cents, 0);
-        const names = flagged.map((f) => f.name).join(', ');
+        for (const f of line.features) {
+          if (f.category !== 'other') continue;
+          if (f.monthly_cents <= 0) continue;
+          if (!MARKETING_NAME_RE.test(f.name)) continue;
+
+          flagged.push({ name: f.name, monthly_cents: f.monthly_cents });
+          total += f.monthly_cents;
+          namesStr += (namesStr ? ', ' : '') + f.name;
+        }
+
+        if (flagged.length === 0) return;
 
         findings.push({
           rule_id: RULE_ID,
           severity: 'low',
           title: `Paid add-on(s) on this line worth a human review`,
-          description: `This line carries ${flagged.length === 1 ? 'a paid feature' : `${flagged.length} paid features`} (${names}) totaling ${formatCents(total)}/mo whose name matches the carrier's marketing-upsell pattern. These SOCs are commonly attached at activation and forgotten — they may or may not still be needed.`,
+          description: `This line carries ${flagged.length === 1 ? 'a paid feature' : `${flagged.length} paid features`} (${namesStr}) totaling ${formatCents(total)}/mo whose name matches the carrier's marketing-upsell pattern. These SOCs are commonly attached at activation and forgotten — they may or may not still be needed.`,
           recommended_action:
             'Review with the line owner whether the listed add-on(s) are still in use. If not, ask your carrier rep to remove the SOC and request a back-credit for unused months.',
           estimated_monthly_savings_cents: total,
@@ -56,10 +64,7 @@ export const featureFirstSeenRule: Rule = {
           affected_line_indexes: [lineIndex],
           affected_account_indexes: [accountIndex],
           evidence: {
-            features: flagged.map((f) => ({
-              name: f.name,
-              monthly_cents: f.monthly_cents,
-            })),
+            features: flagged,
             total_monthly_cents: total,
           },
         });
