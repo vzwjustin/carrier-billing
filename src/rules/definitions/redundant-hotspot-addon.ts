@@ -35,25 +35,29 @@ export const redundantHotspotAddonRule: Rule = {
         if (line.plan_name === null) return;
         if (!PREMIUM_TIER_RE.test(line.plan_name)) return;
 
-        const hotspotAddons = line.features.filter((f) => {
-          if (INTL_FEATURE_RE.test(f.name)) return false;
-          return HOTSPOT_FEATURE_RE.test(f.name);
-        });
-        if (hotspotAddons.length === 0) return;
-        // Only flag PAID add-ons. Some carriers print a $0 hotspot feature
-        // row that just documents the plan-included allotment — flagging
-        // that would be noise.
-        const billed = hotspotAddons.filter((f) => f.monthly_cents > 0);
-        if (billed.length === 0) return;
+        // ⚡ Bolt: Single-pass iteration replaces chained .filter().filter().reduce().map()
+        // avoids allocating intermediate arrays for hotspotAddons and billed.
+        const billed = [];
+        let total = 0;
+        let namesStr = '';
 
-        const total = billed.reduce((sum, f) => sum + f.monthly_cents, 0);
-        const names = billed.map((f) => f.name).join(', ');
+        for (const f of line.features) {
+          if (f.monthly_cents <= 0) continue;
+          if (INTL_FEATURE_RE.test(f.name)) continue;
+          if (!HOTSPOT_FEATURE_RE.test(f.name)) continue;
+
+          billed.push({ name: f.name, monthly_cents: f.monthly_cents });
+          total += f.monthly_cents;
+          namesStr += (namesStr ? ', ' : '') + f.name;
+        }
+
+        if (billed.length === 0) return;
 
         findings.push({
           rule_id: RULE_ID,
           severity: 'medium',
           title: `Paid hotspot add-on on a plan that already includes hotspot`,
-          description: `This line is on "${line.plan_name}", which already includes a mobile-hotspot data allotment, but is also being charged ${formatCents(total)}/mo for ${billed.length === 1 ? 'the add-on' : 'add-ons'} (${names}). Carriers commonly attach a hotspot SOC at activation that should be removed once the plan is upgraded to a tier that bundles hotspot data.`,
+          description: `This line is on "${line.plan_name}", which already includes a mobile-hotspot data allotment, but is also being charged ${formatCents(total)}/mo for ${billed.length === 1 ? 'the add-on' : 'add-ons'} (${namesStr}). Carriers commonly attach a hotspot SOC at activation that should be removed once the plan is upgraded to a tier that bundles hotspot data.`,
           recommended_action:
             "Confirm the line's monthly hotspot usage against the plan's included allotment. If usage fits, ask your carrier rep to remove the redundant add-on SOC (Service Order Code) and back-credit any cycles billed after the plan upgrade.",
           estimated_monthly_savings_cents: total,
@@ -65,10 +69,7 @@ export const redundantHotspotAddonRule: Rule = {
           affected_account_indexes: [accountIndex],
           evidence: {
             plan_name: line.plan_name,
-            addons: billed.map((f) => ({
-              name: f.name,
-              monthly_cents: f.monthly_cents,
-            })),
+            addons: billed,
             total_addon_monthly_cents: total,
           },
         });
