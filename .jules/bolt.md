@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-08-07 - Pre-computation before O(N^2) loops
+**Learning:** Found an instance in outlier detection where an expensive array reduction (line cost computation) and O(N log N) sorting (for median calculation) was being executed inside an N-element loop, turning the entire operation into O(N^2 log N). By calculating the values and sorting once upfront, we can do O(1) lookups during the loop, changing the complexity to O(N log N) overall.
+**Action:** When working with nested loops or loops over many elements, always verify that expensive computations, array sorting, and complex reductions are pulled out of the loop and pre-computed in a single pass if possible.

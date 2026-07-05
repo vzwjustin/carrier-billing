@@ -35,18 +35,6 @@ function lineMonthlyCost(line: ExtractedLine): number {
   return planBase + features;
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) {
-    return sorted[mid] ?? 0;
-  }
-  const lo = sorted[mid - 1] ?? 0;
-  const hi = sorted[mid] ?? 0;
-  return (lo + hi) / 2;
-}
-
 /**
  * Per-account outlier detector: flags any phone line whose
  * (plan_base + sum(features)) is at least 2× the median of OTHER phone lines
@@ -67,20 +55,33 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
     const findings: Finding[] = [];
 
     bill.accounts.forEach((account, accountIndex) => {
+      // ⚡ Bolt: Calculate costs once upfront to avoid recalculating in nested loops
       const phones = account.lines
         .map((line, lineIndex) => ({ line, lineIndex }))
-        .filter(({ line }) => isPhoneLine(line));
+        .filter(({ line }) => isPhoneLine(line))
+        .map(({ line, lineIndex }) => ({ line, lineIndex, cost: lineMonthlyCost(line) }));
 
       if (phones.length < MIN_PEER_LINES + 1) return;
 
-      for (const { line, lineIndex } of phones) {
-        const cost = lineMonthlyCost(line);
+      // ⚡ Bolt: Sort all phone costs once to allow O(1) median lookup per line
+      const allCostsSorted = phones.map((p) => p.cost).sort((a, b) => a - b);
+      const peerCount = allCostsSorted.length - 1;
+      const mid = Math.floor(peerCount / 2);
+
+      for (const { line, lineIndex, cost } of phones) {
         if (cost <= 0) continue;
 
-        const peers = phones.filter((p) => p.lineIndex !== lineIndex);
-        if (peers.length < MIN_PEER_LINES) continue;
-        const peerCosts = peers.map(({ line: peer }) => lineMonthlyCost(peer));
-        const med = median(peerCosts);
+        // Efficient O(1) median of peers by ignoring this line's cost in the sorted array
+        const costIndex = allCostsSorted.indexOf(cost);
+        const getPeerCost = (i: number) => allCostsSorted[i >= costIndex ? i + 1 : i];
+
+        let med = 0;
+        if (peerCount > 0) {
+          med = peerCount % 2 === 1
+            ? (getPeerCost(mid) ?? 0)
+            : ((getPeerCost(mid - 1) ?? 0) + (getPeerCost(mid) ?? 0)) / 2;
+        }
+
         if (med <= 0) continue;
 
         if (cost < OUTLIER_MULTIPLE * med) continue;
@@ -107,7 +108,7 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
             line_cost_cents: cost,
             peer_median_cents: med,
             multiple: Number((cost / med).toFixed(2)),
-            peer_count: peers.length,
+            peer_count: peerCount,
             plan_name: line.plan_name,
           },
         });
