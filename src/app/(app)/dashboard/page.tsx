@@ -208,15 +208,17 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   // This avoids multiple `.reduce()` and `.map()` iterations and intermediate arrays.
   let lifetimeSavingsCents = 0;
   let totalHighSeverity = 0;
-  const carrierSpendInput = new Array(completed.length);
+  const carrierSpendInput: { carrier: string | null; total_charges_cents: number | null }[] = [];
   for (let i = 0; i < completed.length; i++) {
     const row = completed[i];
-    lifetimeSavingsCents += row.estimated_annual_savings_cents ?? 0;
-    totalHighSeverity += row.high_severity_count ?? 0;
-    carrierSpendInput[i] = {
-      carrier: row.carrier,
-      total_charges_cents: row.total_charges_cents,
-    };
+    if (row) {
+      lifetimeSavingsCents += row.estimated_annual_savings_cents ?? 0;
+      totalHighSeverity += row.high_severity_count ?? 0;
+      carrierSpendInput.push({
+        carrier: row.carrier,
+        total_charges_cents: row.total_charges_cents,
+      });
+    }
   }
 
   const latestAutopsyUnavailable = hasQueryError(latestAutopsyRes.error);
