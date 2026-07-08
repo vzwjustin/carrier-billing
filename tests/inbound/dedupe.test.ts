@@ -135,6 +135,7 @@ vi.mock('@sentry/nextjs', () => ({
 // Import after mocks. The real `@/lib/inbound/token` is intentionally not
 // mocked — we want its real `parseInboundRecipient` + `verifyHmac` here.
 import { POST } from '@/app/api/inbound/email/route';
+import * as Sentry from '@sentry/nextjs';
 
 const SECRET = 'test-secret-1234567890abcdef';
 const TOKEN = 'abcdefgh23456pqr'; // 16-char base32 (RFC4648: a-z, 2-7)
