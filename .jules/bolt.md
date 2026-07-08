@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2024-05-19 - [Multiple `.reduce()` and `.map()` Iterations]
+**Learning:** Found multiple consecutive array iterations on the same array to calculate aggregates or perform transformation, which can be computationally expensive as the array grows larger.
+**Action:** Replace multiple sequential iterations (`.reduce()`, `.map()`) with a single-pass `for` loop to compute all aggregated variables and transformed arrays simultaneously, minimizing loop overhead and intermediate allocations.

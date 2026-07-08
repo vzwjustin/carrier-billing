@@ -203,11 +203,24 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   const latest = latestRes.data ?? [];
   const totalAudits = countRes.count ?? latest.length;
   const completed = completedRes.data ?? [];
-  const lifetimeSavingsCents = completed.reduce(
-    (acc, row) => acc + (row.estimated_annual_savings_cents ?? 0),
-    0,
-  );
-  const totalHighSeverity = completed.reduce((acc, row) => acc + (row.high_severity_count ?? 0), 0);
+
+  // ⚡ Bolt: Calculate aggregated values and chart inputs in a single pass over `completed`.
+  // This avoids multiple `.reduce()` and `.map()` iterations and intermediate arrays.
+  let lifetimeSavingsCents = 0;
+  let totalHighSeverity = 0;
+  const carrierSpendInput: { carrier: string | null; total_charges_cents: number | null }[] = [];
+  for (let i = 0; i < completed.length; i++) {
+    const row = completed[i];
+    if (row) {
+      lifetimeSavingsCents += row.estimated_annual_savings_cents ?? 0;
+      totalHighSeverity += row.high_severity_count ?? 0;
+      carrierSpendInput.push({
+        carrier: row.carrier,
+        total_charges_cents: row.total_charges_cents,
+      });
+    }
+  }
+
   const latestAutopsyUnavailable = hasQueryError(latestAutopsyRes.error);
   const latestAutopsy = latestAutopsyUnavailable ? null : (latestAutopsyRes.data ?? null);
 
@@ -241,13 +254,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   }
   const mostRecentCompletedAuditId = completedAuditIds[0] ?? null;
 
-  // Spend-by-carrier chart input — derived from `completedRes`, no extra
-  // query. We pass the full mini-row shape so the aggregator can strip null
-  // totals itself (keeps the carrier bucket out of the chart entirely).
-  const carrierSpendInput = completed.map((row) => ({
-    carrier: row.carrier,
-    total_charges_cents: row.total_charges_cents,
-  }));
+  // Spend-by-carrier chart input is now derived in the single-pass loop above.
 
   // Findings-over-time chart input. The completed audits are already ordered
   // newest-first; we slice to the chart window and look up findings only for
