@@ -147,7 +147,7 @@ export function detectCrossAuditDuplicates(input: DetectorInput): Finding[] {
   for (const group of groups) {
     if (group.refs.length < 2) continue;
 
-    const accountIndexes = unique(group.refs.map((r) => r.accountIndex));
+    const accountIndexes = uniqueMapped(group.refs, (r) => r.accountIndex);
     const isAcrossAccounts = accountIndexes.length > 1;
 
     if (isAcrossAccounts) {
@@ -160,13 +160,15 @@ export function detectCrossAuditDuplicates(input: DetectorInput): Finding[] {
   return findings;
 }
 
-function unique<T>(arr: T[]): T[] {
-  const seen = new Set<T>();
-  const out: T[] = [];
+// ⚡ Bolt: Single-pass unique mapping helper to avoid intermediate array instantiation from .map()
+function uniqueMapped<T, U>(arr: T[], mapFn: (item: T) => U): U[] {
+  const seen = new Set<U>();
+  const out: U[] = [];
   for (const v of arr) {
-    if (!seen.has(v)) {
-      seen.add(v);
-      out.push(v);
+    const mapped = mapFn(v);
+    if (!seen.has(mapped)) {
+      seen.add(mapped);
+      out.push(mapped);
     }
   }
   return out;
@@ -185,7 +187,7 @@ function buildWithinAuditFinding(group: Group, accountIndexes: number[]): Findin
   }
   // All refs are in the same account; collect the local line indexes.
   // De-duplicate so "same line twice" doesn't double-stamp the same line id.
-  const localLineIndexes = unique(group.refs.map((r) => r.lineIndex));
+  const localLineIndexes = uniqueMapped(group.refs, (r) => r.lineIndex);
   const count = group.refs.length;
   // Conservative savings: keep one occurrence, recover the rest.
   const savings = group.monthlyCents * (count - 1);
