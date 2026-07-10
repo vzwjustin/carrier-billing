@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2026-06-23 - Eliminating O(N^2) loops inside inner array operations
+**Learning:** Evaluator rules (like `lineChargeOutlierWithinAccountRule`) recalculating entity properties inside nested peer comparisons creates an O(N^2) complexity spike, compounding heavily with `.filter().map()` chain allocations.
+**Action:** When comparing entities against peers inside rule evaluations, strictly pre-compute expensive calculations (like feature summation for a line) into a flat data structure first. Then use flat `for` loops rather than array iterators to avoid creating intermediary comparison arrays inside the loop.
