@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2026-07-13 - Avoiding V8 call stack bounds with Math.max/min and array spread
+**Learning:** Found multiple instances where `Math.max(...array)` or `Math.min(...array)` were used on arrays created by `map()`. This pattern allocates intermediate arrays and importantly, runs the risk of a `RangeError: Maximum call stack size exceeded` in the V8 engine if the dynamically-sized array gets too large, because the spread operator expands the array elements into function arguments.
+**Action:** Replace `Math.max(...array.map(...))` spreads with `array.reduce((max, item) => Math.max(max, item), -Infinity)` or standard `for...of` loops to prevent both intermediate allocations and call stack size errors.
