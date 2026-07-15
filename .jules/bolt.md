@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-06-25 - Avoiding multiple array allocations with spread and array mapping
+**Learning:** In `src/rules/definitions/feature-appears-on-majority-of-lines-under-one-dollar.ts`, multiple passes were made over the same `occurrences` array: `.some()`, `.reduce()`, `.map()`, and `Math.max(...array.map())`. This resulted in unnecessary O(4N) iteration and allocated intermediate arrays (particularly dangerous with `Math.max(...array)` on dynamically sized arrays due to stack overflow risks). By refactoring these operations into a single `for...of` pass, we avoided extra allocations, reduced iteration to O(N), and eliminated the stack overflow risk.
+**Action:** Keep identifying multi-pass array operations on the same dataset (especially those that create intermediate arrays or use spread operators on large data) and combine them into single-pass `for...of` or `.reduce()` loops.
