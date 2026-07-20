@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2024-05-15 - [V8 Spread Operator Array Allocation]
+**Learning:** Using the spread operator (`...`) on dynamically-sized arrays resulting from `.map()` (e.g. `Math.max(...array.map())`) in V8 allocates intermediate arrays and risks a `RangeError: Maximum call stack size exceeded` for large fleets (e.g. thousands of lines).
+**Action:** When finding extremes in potentially large or unbounded arrays, use `.reduce()` (e.g., `occurrences.reduce((max, o) => Math.max(max, o.monthly_cents), -Infinity)`) to process in a single pass without large intermediate allocations or risking stack overflow.
