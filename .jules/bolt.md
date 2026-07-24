@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-07-24 - Avoiding RangeError with Math.max on dynamically sized arrays
+**Learning:** In Javascript/TypeScript, using the spread operator with `Math.max` on a potentially large array, like `Math.max(...occurrences.map(o => o.cents))`, creates an intermediate array in memory and spreads it across the call stack. On V8, this throws `RangeError: Maximum call stack size exceeded` if the array is sufficiently large, while also wasting memory.
+**Action:** Replace `Math.max(...array.map(fn))` with a `.reduce((max, item) => Math.max(max, fn(item)), -Infinity)` on unbounded data arrays (like fleet-wide occurrences) to execute in a single pass without call stack limits or intermediate array creation. Always use `-Infinity` as the initial value to avoid bugs if the array is empty or contains negative values.
