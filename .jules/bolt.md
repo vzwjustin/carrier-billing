@@ -16,3 +16,7 @@
 ## 2024-07-26 - Spread operator RangeError in Math.max
 **Learning:** Found an instance in `src/rules/definitions/feature-appears-on-majority-of-lines-under-one-dollar.ts` where a potentially massive, fleet-wide array was spread into `Math.max(...occurrences.map(o => o.monthly_cents))`. In V8, spreading dynamically sized arrays can quickly throw a `RangeError: Maximum call stack size exceeded` and crash the application.
 **Action:** Replace `Math.max(...array)` with a `for...of` loop tracking the maximum manually (or `.reduce()` if iterating once) on arrays that can dynamically scale with account sizes to avoid stack limit bugs.
+
+## 2024-07-26 - Export route Edge runtime crash
+**Learning:** Found that `src/app/(app)/admin/export/route.ts` imported `@supabase/supabase-js` via `src/lib/supabase/admin.ts`. The route was deployed to the Edge Runtime (or at least had no runtime explicitly configured), which caused a Next.js build error: "A Node.js API is used (process.version at line: 27) which is not supported in the Edge Runtime". The admin supabase client is used here, and `supabase-js` relies on `process.version` which isn't available in edge functions.
+**Action:** When a Next.js App Router API route uses `@supabase/supabase-js` (e.g., via the admin client) rather than `@supabase/ssr`, ensure `export const runtime = 'nodejs';` is set at the top of the route file to prevent Edge runtime crashes.

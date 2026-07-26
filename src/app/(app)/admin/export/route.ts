@@ -9,6 +9,7 @@ import { getAdminContext } from '@/lib/admin/guard';
 import { toCsv } from '@/lib/csv';
 import { getAdminClient } from '@/lib/supabase/admin';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest): Promise<Response> {
