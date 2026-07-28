@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-08-01 - Avoid spread operator for dynamically sized arrays in Math.max
+**Learning:** Found an instance where `Math.max(...occurrences.map((o) => o.monthly_cents))` was used on a dynamically sized array `occurrences`. If the array is very large (e.g. tracking features across a large fleet), this can throw a `RangeError: Maximum call stack size exceeded` because the spread operator passes all array elements as individual arguments, and JavaScript engines have a limit on function arguments.
+**Action:** Replace `Math.max(...array.map(fn))` with `array.reduce((max, item) => Math.max(max, fn(item)), -Infinity)`. This works correctly for large and unbounded arrays, avoids intermediate array allocations from `.map()`, and is safer in general.
