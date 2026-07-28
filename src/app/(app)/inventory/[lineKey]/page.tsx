@@ -147,13 +147,18 @@ export default async function InventoryLinePage({
   if (!headEntry) notFound();
 
   // Sparkline-like spread for the plan-base over time (min/max/delta).
-  const baseValues = history
-    .map((h) => h.planBaseCents)
-    .filter((v): v is number => typeof v === 'number');
-  const minBase = baseValues.length > 0 ? Math.min(...baseValues) : null;
-  const maxBase = baseValues.length > 0 ? Math.max(...baseValues) : null;
-  const deltaCents =
-    baseValues.length >= 2 && minBase !== null && maxBase !== null ? maxBase - minBase : null;
+  // ⚡ Bolt: Removed Array.map/filter chain and Math.min/Math.max spread overhead.
+  let minBase: number | null = null;
+  let maxBase: number | null = null;
+  let count = 0;
+  for (const h of history) {
+    if (typeof h.planBaseCents === 'number') {
+      if (minBase === null || h.planBaseCents < minBase) minBase = h.planBaseCents;
+      if (maxBase === null || h.planBaseCents > maxBase) maxBase = h.planBaseCents;
+      count++;
+    }
+  }
+  const deltaCents = count >= 2 && minBase !== null && maxBase !== null ? maxBase - minBase : null;
 
   return (
     <div className="space-y-6">
