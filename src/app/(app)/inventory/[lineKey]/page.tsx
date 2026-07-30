@@ -150,8 +150,10 @@ export default async function InventoryLinePage({
   const baseValues = history
     .map((h) => h.planBaseCents)
     .filter((v): v is number => typeof v === 'number');
-  const minBase = baseValues.length > 0 ? Math.min(...baseValues) : null;
-  const maxBase = baseValues.length > 0 ? Math.max(...baseValues) : null;
+  // Optimization: use reduce instead of Math.min/max with spread on arrays
+  // to avoid large call stack allocation
+  const minBase = baseValues.length > 0 ? baseValues.reduce((min, val) => Math.min(min, val), Infinity) : null;
+  const maxBase = baseValues.length > 0 ? baseValues.reduce((max, val) => Math.max(max, val), -Infinity) : null;
   const deltaCents =
     baseValues.length >= 2 && minBase !== null && maxBase !== null ? maxBase - minBase : null;
 
