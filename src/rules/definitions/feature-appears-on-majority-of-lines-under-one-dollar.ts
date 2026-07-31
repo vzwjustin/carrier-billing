@@ -102,7 +102,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            // Bolt Optimization: Replace Math.max(...occurrences.map(...)) with reduce
+            // Bolt Optimization: Replace spread operator Math.max() with reduce
             // to avoid array allocations and prevent Call Stack limit exceptions on edge runtime
             per_line_max_cents: occurrences.reduce((max, o) => Math.max(max, o.monthly_cents), -Infinity),
           },
