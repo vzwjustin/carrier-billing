@@ -102,7 +102,15 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
+            // ⚡ Bolt: Using a manual loop here instead of Math.max(...occurrences.map())
+            // avoids allocating an intermediate array and prevents V8 stack size limits.
+            per_line_max_cents: (function() {
+              let max = -Infinity;
+              for (const o of occurrences) {
+                if (o.monthly_cents > max) max = o.monthly_cents;
+              }
+              return max;
+            })(),
           },
         });
       }
