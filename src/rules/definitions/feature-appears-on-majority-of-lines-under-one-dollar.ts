@@ -104,10 +104,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             total_monthly_cents: total,
             // ⚡ Bolt Performance Optimization: Replaced map() + spread operator with a single-pass
             // reduce() to eliminate intermediate arrays and prevent Edge Runtime build failures.
-            per_line_max_cents: occurrences.reduce(
-              (max, o) => Math.max(max, o.monthly_cents),
-              -Infinity,
-            ),
+            per_line_max_cents: occurrences.reduce((max, o) => Math.max(max, o.monthly_cents), -Infinity),
           },
         });
       }
