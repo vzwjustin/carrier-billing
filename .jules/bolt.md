@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2024-05-14 - [Avoid spread operators with Math.max/min]
+**Learning:** Found spread operator used with `Math.max(...array)` inside array mappings. This can cause Maximum call stack size exceeded errors in V8 engine and creates intermediate arrays.
+**Action:** Always avoid `Math.max(...array)` and `Math.min(...array)` universally across the codebase. Use `.reduce((a, b) => Math.max(a, b), -Infinity)` or similar instead.
