@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2026-08-08 - Array Spread Operator Bottlenecks
+**Learning:** Using the spread operator inside `Math.max(...array)` or `Math.min(...array)` for dynamically-sized or large arrays can result in "Maximum call stack size exceeded" in the V8 engine and can cause Cloudflare Workers / Next.js Edge Runtime CI build failures. It also allocates intermediate arrays unnecessarily.
+**Action:** Universally eliminate array spread operators inside `Math.max()` and `Math.min()` (e.g., `Math.max(...array)`) across the codebase, regardless of array size. For tracking extreme values, use a single pass loop or `.reduce()` with proper initial values (`-Infinity` for max, `Infinity` for min).
