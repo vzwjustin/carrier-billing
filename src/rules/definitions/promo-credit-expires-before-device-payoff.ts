@@ -45,11 +45,15 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
       account.lines.forEach((line, lineIndex) => {
         // Longest remaining device obligation on the line. DPPs whose
         // remaining term isn't printed (null) can't be compared, so skip them.
-        const remainingTerms = line.dpp_installments
-          .map((d) => d.remaining_payments)
-          .filter((n): n is number => n !== null && n > 0);
-        if (remainingTerms.length === 0) return;
-        const dppMonthsLeft = Math.max(...remainingTerms);
+        // Performance: Single-pass iteration to avoid intermediate arrays and spread operator
+        let dppMonthsLeft = -Infinity;
+        for (const d of line.dpp_installments) {
+          const n = d.remaining_payments;
+          if (n !== null && n > 0 && n > dppMonthsLeft) {
+            dppMonthsLeft = n;
+          }
+        }
+        if (dppMonthsLeft === -Infinity) return;
 
         // Promo credits with an explicit future expiry that lapses well
         // before the device is paid off. Unit care: `remaining_payments` is a
