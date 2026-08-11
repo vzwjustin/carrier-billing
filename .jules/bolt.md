@@ -13,3 +13,9 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2026-08-11 - Array spread operator inside Math.max and Math.min
+**Learning:** Using the spread operator (`...`) inside `Math.max()` or `Math.min()` on dynamically-sized arrays (like mapped arrays) can trigger a `Maximum call stack size exceeded` error if the array is large enough, and creates unnecessary intermediate array allocations.
+**Action:** Universally replace `Math.max(...array)` and `Math.min(...array)` with `array.reduce((max, val) => Math.max(max, val), -Infinity)` and `array.reduce((min, val) => Math.min(min, val), Infinity)` respectively. Note that the initial values (`-Infinity` and `Infinity`) are crucial for correctness, especially with empty arrays or negative values.
+## 2026-08-11 - Edge runtime configuration in Next.js routes
+**Learning:** When using libraries like `@supabase/supabase-js` in Next.js API routes, it can cause build failures in environments like Cloudflare Workers if the route tries to use Edge Runtime while the library relies on Node.js APIs (e.g. `process.version`).
+**Action:** Ensure that `export const runtime = 'nodejs';` is explicitly declared in Next.js API routes that utilize such libraries to avoid Edge runtime compilation errors.
