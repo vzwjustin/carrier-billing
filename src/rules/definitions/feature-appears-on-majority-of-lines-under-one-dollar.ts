@@ -102,7 +102,11 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
+            // Using reduce to avoid spread array allocations in Math.max which can cause stack limits
+            per_line_max_cents: occurrences.reduce(
+              (max, o) => (o.monthly_cents > max ? o.monthly_cents : max),
+              -Infinity
+            ),
           },
         });
       }
