@@ -49,7 +49,8 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
           .map((d) => d.remaining_payments)
           .filter((n): n is number => n !== null && n > 0);
         if (remainingTerms.length === 0) return;
-        const dppMonthsLeft = Math.max(...remainingTerms);
+        // ⚡ Bolt Performance Optimization: Avoid spread operator `Math.max(...array)`
+        const dppMonthsLeft = remainingTerms.reduce((max, val) => Math.max(max, val), -Infinity);
 
         // Promo credits with an explicit future expiry that lapses well
         // before the device is paid off. Unit care: `remaining_payments` is a
@@ -77,8 +78,10 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
           0,
         );
         // The soonest-expiring qualifying credit drives the headline horizon.
-        const soonestCyclesLeft = Math.min(
-          ...expiringCredits.map((c) => creditCyclesLeft(c.expires_on as string)),
+        // ⚡ Bolt Performance Optimization: Avoid spread operator over mapped arrays
+        const soonestCyclesLeft = expiringCredits.reduce(
+          (min, c) => Math.min(min, creditCyclesLeft(c.expires_on as string)),
+          Infinity,
         );
         const soonestExpiryMonths = soonestCyclesLeft - 1;
         const gapMonths = dppMonthsLeft - soonestCyclesLeft;
