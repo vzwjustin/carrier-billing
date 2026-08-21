@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-06-25 - V8 Stack Limits with Spread on Dynamic Arrays
+**Learning:** Using the spread operator (`...`) with functions like `Math.max()` on dynamically-sized arrays (e.g., `Math.max(...array.map())`) allocates intermediate arrays and can cause a `RangeError: Maximum call stack size exceeded` in V8 when the array size exceeds the call stack limit (often ~100k items). In enterprise billing data, feature occurrences can easily hit these limits.
+**Action:** Refactor array spreads on dynamically-sized data into single-pass `for...of` loops that manually track extreme values (initializing with `-Infinity` or `Infinity`), simultaneously avoiding intermediate allocations and stack overflow risks.
