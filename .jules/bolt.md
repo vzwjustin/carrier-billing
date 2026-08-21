@@ -1,3 +1,4 @@
+
 ## 2024-05-24 - Array.reduce bottlenecks
 **Learning:** In multiple places across the codebase, there was a pattern of doing a full pass to group/aggregate items into a map, and then converting the map values to an array `Array.from(map.values())` and doing a full second O(N) iteration `reduce` pass over it just to sum a total. This double iteration overhead can be avoided by summing the total dynamically during the first pass while items are being grouped or evaluated.
 **Action:** Always look to combine multiple sequential loop iterations (`reduce`, `map`, `filter`) or `Array.from()` array instantiations into single pass logic when calculating totals or manipulating collections.
@@ -17,3 +18,7 @@
 ## 2024-06-25 - V8 Stack Limits with Spread on Dynamic Arrays
 **Learning:** Using the spread operator (`...`) with functions like `Math.max()` on dynamically-sized arrays (e.g., `Math.max(...array.map())`) allocates intermediate arrays and can cause a `RangeError: Maximum call stack size exceeded` in V8 when the array size exceeds the call stack limit (often ~100k items). In enterprise billing data, feature occurrences can easily hit these limits.
 **Action:** Refactor array spreads on dynamically-sized data into single-pass `for...of` loops that manually track extreme values (initializing with `-Infinity` or `Infinity`), simultaneously avoiding intermediate allocations and stack overflow risks.
+
+## 2026-08-21 - Next.js Edge Runtime process.version Error
+**Learning:** Upgrading `@supabase/supabase-js` to v2.49+ in Next.js 14+ causes Edge Runtime (used by Middleware and Edge API routes) builds to fail with "A Node.js API is used (process.version at line: 27) which is not supported in the Edge Runtime". This happens because `supabase-js` references `process.version` at the module level.
+**Action:** Suppress this warning via Webpack in `next.config.ts` by using `webpack.DefinePlugin` to stringify `'process.version': ''` specifically when `isServer` is true and `nextRuntime === 'edge'`.
