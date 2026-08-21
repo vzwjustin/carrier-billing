@@ -60,6 +60,18 @@ export const nextConfig: NextConfig = {
   images: {
     remotePatterns: [],
   },
+  webpack: (config, { isServer, nextRuntime, webpack }) => {
+    // Suppress "A Node.js API is used (process.version...)" edge warnings in CI
+    // emitted by @supabase/supabase-js constants.ts.
+    if (isServer && nextRuntime === 'edge') {
+      config.plugins.push(
+        new webpack.DefinePlugin({
+          'process.version': JSON.stringify(''),
+        })
+      );
+    }
+    return config;
+  },
   async headers() {
     return headersConfig;
   },
