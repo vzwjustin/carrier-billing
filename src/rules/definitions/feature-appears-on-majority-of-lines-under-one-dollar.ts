@@ -64,13 +64,30 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
 
       for (const [, occurrences] of byName) {
         if (occurrences.length < threshold) continue;
-        // Every occurrence must be under $1. A single $5 occurrence breaks
-        // the "trivial-per-line" framing this rule depends on.
-        if (occurrences.some((o) => o.monthly_cents >= UNDER_DOLLAR_CENTS)) {
-          continue;
+        // ⚡ Bolt: Single pass to compute totals, max, and line indexes while checking constraint
+        // to avoid multiple array iterations (.some, .reduce, .map) and a potentially dangerous
+        // spread operator on a dynamically sized array (Math.max(...occurrences.map)).
+        let hasOverDollar = false;
+        let total = 0;
+        let perLineMaxCents = -Infinity;
+        const lineIndexes: number[] = [];
+
+        for (const o of occurrences) {
+          if (o.monthly_cents >= UNDER_DOLLAR_CENTS) {
+            hasOverDollar = true;
+            break;
+          }
+          total += o.monthly_cents;
+          if (o.monthly_cents > perLineMaxCents) {
+            perLineMaxCents = o.monthly_cents;
+          }
+          lineIndexes.push(o.lineIndex);
         }
 
-        const total = occurrences.reduce((sum, o) => sum + o.monthly_cents, 0);
+        // Every occurrence must be under $1. A single $5 occurrence breaks
+        // the "trivial-per-line" framing this rule depends on.
+        if (hasOverDollar) continue;
+
         // Per-line >0 cents: a fleet-wide $0 row IS informational but the
         // operator action ("ask the rep to remove it") only matters when
         // something is actually being charged. Skip the all-zero case.
@@ -79,7 +96,6 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
         const firstOccurrence = occurrences[0];
         if (firstOccurrence === undefined) continue;
         const displayName = firstOccurrence.original_name;
-        const lineIndexes = occurrences.map((o) => o.lineIndex);
         const fraction = occurrences.length / lineCount;
 
         findings.push({
@@ -102,7 +118,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
+            per_line_max_cents: perLineMaxCents,
           },
         });
       }
