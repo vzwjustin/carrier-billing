@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2024-05-18 - Replacing Math.max(...array.map()) with array.reduce()
+**Learning:** Using `Math.max(...array.map())` (or `Math.min`) creates an intermediate array allocation for the `.map()` step and spreads it out as arguments to `Math.max`. If the array is very large (e.g. evaluating features across thousands of lines on an enterprise account), this can throw a `RangeError: Maximum call stack size exceeded` in V8 due to too many arguments.
+**Action:** Replace `Math.max(...array.map(fn))` with `array.reduce((max, item) => Math.max(max, fn(item)), -Infinity)`. Use `Infinity` for `Math.min`. This avoids intermediate allocations and bypasses the call stack limitation.

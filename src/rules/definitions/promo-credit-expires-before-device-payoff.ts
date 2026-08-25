@@ -77,8 +77,10 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
           0,
         );
         // The soonest-expiring qualifying credit drives the headline horizon.
-        const soonestCyclesLeft = Math.min(
-          ...expiringCredits.map((c) => creditCyclesLeft(c.expires_on as string)),
+        // ⚡ Bolt: Prevent array allocation and spread limits by using reduce
+        const soonestCyclesLeft = expiringCredits.reduce(
+          (min, c) => Math.min(min, creditCyclesLeft(c.expires_on as string)),
+          Infinity,
         );
         const soonestExpiryMonths = soonestCyclesLeft - 1;
         const gapMonths = dppMonthsLeft - soonestCyclesLeft;
