@@ -103,10 +103,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
             // ⚡ Bolt: Prevent array allocation and spread limits by using reduce
-            per_line_max_cents: occurrences.reduce(
-              (max, o) => Math.max(max, o.monthly_cents),
-              -Infinity,
-            ),
+            per_line_max_cents: occurrences.reduce((max, o) => Math.max(max, o.monthly_cents), -Infinity),
           },
         });
       }
