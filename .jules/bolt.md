@@ -13,3 +13,11 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-08-26 - Spread operator and V8 call stack
+**Learning:** Found instances of `Math.max(...array.map())` where `array` could be very large (e.g., dynamically sized lists of bill lines on enterprise accounts). This pattern not only allocates intermediate arrays due to `.map()`, but also pushes all elements onto the call stack via the spread operator, leading to a risk of `RangeError: Maximum call stack size exceeded` in V8.
+**Action:** Replace `Math.max(...array)` on potentially large dynamic arrays with a single `.reduce()` pass (e.g., `array.reduce((max, item) => Math.max(max, item.val), -Infinity)`). Ensure the initial accumulator value is correctly set to `-Infinity` for `max` and `Infinity` for `min`.
+
+## 2024-08-26 - Running builds locally
+**Learning:** Found that when running `SKIP_ENV_VALIDATION=1 pnpm run build` locally, `src/env.ts` has a strict check (`assertNoPlaceholderSecrets`) that refuses to let the app start if any of the required secrets are set to 'placeholder', 'changeme', etc., even when Zod validation is skipped.
+**Action:** When debugging builds, populate `.env.local` using alternative values like 'dummy' instead of 'placeholder'.
