@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2024-05-30 - Cloudflare Pages Build Env Validation
+**Learning:** Cloudflare Pages sets `CF_PAGES=1` but does not set `SKIP_ENV_VALIDATION=1` during builds by default. This causes Next.js build errors when Zod validates required server secrets in `env.ts` or routes.
+**Action:** When validating Next.js environment configurations (like `env.ts`), always allow builds to skip validation if `process.env.CF_PAGES === "1"`.
