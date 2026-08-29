@@ -35,16 +35,44 @@ function lineMonthlyCost(line: ExtractedLine): number {
   return planBase + features;
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) {
-    return sorted[mid] ?? 0;
+// ⚡ Bolt: Calculates the median of a sorted array excluding a single occurrence of `excludeValue`
+function getMedianExcluding(sorted: number[], excludeValue: number): number {
+  const n = sorted.length;
+  if (n <= 1) return 0;
+
+  // Binary search to find the index of the element to exclude
+  let left = 0;
+  let right = n - 1;
+  let excludeIdx = -1;
+  while (left <= right) {
+    const mid = left + Math.floor((right - left) / 2);
+    const midValue = sorted[mid]!;
+    if (midValue === excludeValue) {
+      excludeIdx = mid;
+      // If there are duplicates, we just need to exclude one of them,
+      // we continue searching left to find the first occurrence just for consistency
+      right = mid - 1;
+    } else if (midValue < excludeValue) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
   }
-  const lo = sorted[mid - 1] ?? 0;
-  const hi = sorted[mid] ?? 0;
-  return (lo + hi) / 2;
+
+  if (excludeIdx === -1) {
+    // Fallback if not found, shouldn't happen based on usage
+    excludeIdx = 0;
+  }
+
+  // Virtual array accessor that skips `excludeIdx`
+  const getVal = (i: number) => (i < excludeIdx ? sorted[i] : sorted[i + 1]);
+  const count = n - 1;
+  const mid = Math.floor(count / 2);
+
+  if (count % 2 === 1) {
+    return getVal(mid) ?? 0;
+  }
+  return ((getVal(mid - 1) ?? 0) + (getVal(mid) ?? 0)) / 2;
 }
 
 /**
@@ -73,14 +101,15 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
 
       if (phones.length < MIN_PEER_LINES + 1) return;
 
+      // ⚡ Bolt: Pre-compute all sorted costs to avoid O(N^2 log N) nested sorting and intermediate array allocations
+      const allCosts = phones.map((p) => lineMonthlyCost(p.line)).sort((a, b) => a - b);
+
       for (const { line, lineIndex } of phones) {
         const cost = lineMonthlyCost(line);
         if (cost <= 0) continue;
 
-        const peers = phones.filter((p) => p.lineIndex !== lineIndex);
-        if (peers.length < MIN_PEER_LINES) continue;
-        const peerCosts = peers.map(({ line: peer }) => lineMonthlyCost(peer));
-        const med = median(peerCosts);
+        // Exclude this line's cost from the sorted array
+        const med = getMedianExcluding(allCosts, cost);
         if (med <= 0) continue;
 
         if (cost < OUTLIER_MULTIPLE * med) continue;
@@ -107,7 +136,7 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
             line_cost_cents: cost,
             peer_median_cents: med,
             multiple: Number((cost / med).toFixed(2)),
-            peer_count: peers.length,
+            peer_count: phones.length - 1,
             plan_name: line.plan_name,
           },
         });
