@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-11-20 - O(N^2 log N) Nested Sorting
+**Learning:** Found a performance bottleneck where a sorted median was calculated within a loop across items `O(N)` times, leading to `O(N^2 log N)` complexity and N array allocations since a new subset of the array was created and sorted on each iteration.
+**Action:** When finding the median or similar subset aggregations iteratively within a loop by excluding an item, pre-compute the full sorted set `O(N log N)` once, then use binary search `O(log N)` within the loop to locate and logically skip the excluded element. This reduces overall complexity to `O(N log N)` and prevents intermediate array allocations.
