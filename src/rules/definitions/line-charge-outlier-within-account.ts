@@ -46,12 +46,13 @@ function getMedianExcluding(sorted: number[], excludeValue: number): number {
   let excludeIdx = -1;
   while (left <= right) {
     const mid = left + Math.floor((right - left) / 2);
-    if (sorted[mid] === excludeValue) {
+    const midValue = sorted[mid]!;
+    if (midValue === excludeValue) {
       excludeIdx = mid;
       // If there are duplicates, we just need to exclude one of them,
       // we continue searching left to find the first occurrence just for consistency
       right = mid - 1;
-    } else if (sorted[mid] < excludeValue) {
+    } else if (midValue < excludeValue) {
       left = mid + 1;
     } else {
       right = mid - 1;
