@@ -10,6 +10,8 @@ export const dynamic = 'force-dynamic';
 if (
   process.env.NODE_ENV === 'production' &&
   process.env.SKIP_ENV_VALIDATION !== '1' &&
+  process.env.CF_PAGES !== '1' &&
+  process.env.CF_PAGES !== 'true' &&
   !env.INNGEST_SIGNING_KEY
 ) {
   throw new Error('INNGEST_SIGNING_KEY is required in production');
