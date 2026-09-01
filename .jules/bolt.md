@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2024-05-24 - Concurrent mutations cause non-deterministic test failures
+**Learning:** Mutating shared arrays (like `push()`) from inside `Promise.all` mapped tasks causes the arrays to populate in resolution order instead of the initial map array order.
+**Action:** When parallelizing operations, return the local results in the mapped task and aggregate them sequentially after the `Promise.all` resolves.
