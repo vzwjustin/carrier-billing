@@ -92,7 +92,7 @@ function shouldSkipValidation(): boolean {
   if (process.env.NODE_ENV === 'test') return true;
   // Cloudflare Pages CI builds expose CF_PAGES=1, which also skips runtime secret validation
   if (process.env.CF_PAGES === '1') return true;
-  if (!process.env.SKIP_ENV_VALIDATION) return false;
+  if (process.env.SKIP_ENV_VALIDATION !== '1') return false;
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;
   }
