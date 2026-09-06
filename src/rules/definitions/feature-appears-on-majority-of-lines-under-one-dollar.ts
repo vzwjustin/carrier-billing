@@ -70,7 +70,20 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
           continue;
         }
 
-        const total = occurrences.reduce((sum, o) => sum + o.monthly_cents, 0);
+        // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocations
+        // from .map() and prevent RangeError from spread operator on large arrays.
+        let total = 0;
+        let perLineMax = -Infinity;
+        const lineIndexes: number[] = [];
+
+        for (const o of occurrences) {
+          total += o.monthly_cents;
+          lineIndexes.push(o.lineIndex);
+          if (o.monthly_cents > perLineMax) {
+            perLineMax = o.monthly_cents;
+          }
+        }
+
         // Per-line >0 cents: a fleet-wide $0 row IS informational but the
         // operator action ("ask the rep to remove it") only matters when
         // something is actually being charged. Skip the all-zero case.
@@ -79,7 +92,6 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
         const firstOccurrence = occurrences[0];
         if (firstOccurrence === undefined) continue;
         const displayName = firstOccurrence.original_name;
-        const lineIndexes = occurrences.map((o) => o.lineIndex);
         const fraction = occurrences.length / lineCount;
 
         findings.push({
@@ -102,7 +114,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
+            per_line_max_cents: perLineMax,
           },
         });
       }
