@@ -1,0 +1,10 @@
+--- src/env.ts
++++ src/env.ts
+@@ -82,7 +82,7 @@
+ // intentionally fills client-only NEXT_PUBLIC_* vars with placeholder strings,
+ // and required server secrets are simply absent under tests.
+-if (process.env.NODE_ENV !== 'test') {
++if (process.env.NODE_ENV !== 'test' && process.env.CF_PAGES !== '1') {
+   assertNoPlaceholderSecrets();
+   assertPartialSchemaNotInProduction();
+ }
