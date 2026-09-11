@@ -76,7 +76,7 @@ export function assertPartialSchemaNotInProduction(source: NodeJS.ProcessEnv = p
 // Skip the runtime placeholder check inside the Vitest harness — `tests/setup.ts`
 // intentionally fills client-only NEXT_PUBLIC_* vars with placeholder strings,
 // and required server secrets are simply absent under tests.
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && process.env.CF_PAGES !== '1') {
   assertNoPlaceholderSecrets();
   assertPartialSchemaNotInProduction();
 }
@@ -93,6 +93,9 @@ function shouldSkipValidation(): boolean {
   if (!process.env.SKIP_ENV_VALIDATION) return false;
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;
+  }
+  if (process.env.CF_PAGES === '1') {
+    return true;
   }
   return true;
 }
