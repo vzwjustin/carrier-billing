@@ -19,5 +19,5 @@ if (
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [...functions],
-  signingKey: env.INNGEST_SIGNING_KEY || 'placeholder',
+  signingKey: process.env.CF_PAGES === '1' ? 'placeholder' : env.INNGEST_SIGNING_KEY || 'placeholder',
 });
