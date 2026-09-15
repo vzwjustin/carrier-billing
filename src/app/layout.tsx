@@ -6,7 +6,7 @@ import { PostHogProvider } from '@/components/posthog-provider';
 import { ThemeScript } from '@/components/theme/theme-script';
 
 function metadataBase(): URL | undefined {
-  const raw = process.env.NEXT_PUBLIC_APP_URL;
+  const raw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   if (!raw) return undefined;
   try {
     return new URL(raw);

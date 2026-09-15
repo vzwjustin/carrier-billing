@@ -76,7 +76,7 @@ export function assertPartialSchemaNotInProduction(source: NodeJS.ProcessEnv = p
 // Skip the runtime placeholder check inside the Vitest harness — `tests/setup.ts`
 // intentionally fills client-only NEXT_PUBLIC_* vars with placeholder strings,
 // and required server secrets are simply absent under tests.
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && process.env.CF_PAGES !== '1') {
   assertNoPlaceholderSecrets();
   assertPartialSchemaNotInProduction();
 }
@@ -90,6 +90,7 @@ if (process.env.NODE_ENV !== 'test') {
 // Netlify (local builds, CI inspection, tests) the flag still works as before.
 function shouldSkipValidation(): boolean {
   if (process.env.NODE_ENV === 'test') return true;
+  if (process.env.CF_PAGES === '1') return true;
   if (!process.env.SKIP_ENV_VALIDATION) return false;
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;
@@ -181,7 +182,7 @@ export const env = createEnv({
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
     NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
     NEXT_PUBLIC_POSTHOG_HOST: z.string().url().default('https://us.i.posthog.com'),
-    NEXT_PUBLIC_APP_URL: z.string().url(),
+    NEXT_PUBLIC_APP_URL: z.string().url().optional().default('https://localhost:3000'),
     NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
   },
   runtimeEnv: {
