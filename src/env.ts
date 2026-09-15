@@ -76,6 +76,9 @@ export function assertPartialSchemaNotInProduction(source: NodeJS.ProcessEnv = p
 // Skip the runtime placeholder check inside the Vitest harness — `tests/setup.ts`
 // intentionally fills client-only NEXT_PUBLIC_* vars with placeholder strings,
 // and required server secrets are simply absent under tests.
+// Do NOT gate on CF_PAGES: Cloudflare injects CF_PAGES=1 on every Pages
+// deploy, so treating it like SKIP_ENV_VALIDATION would skip placeholder
+// rejection and the ALLOW_PARTIAL_SCHEMA production tripwire in production.
 if (process.env.NODE_ENV !== 'test') {
   assertNoPlaceholderSecrets();
   assertPartialSchemaNotInProduction();
@@ -88,6 +91,8 @@ if (process.env.NODE_ENV !== 'test') {
 // always want the full Zod schema to run. Netlify exposes `NETLIFY=true` and
 // `CONTEXT` ∈ {production, deploy-preview, branch-deploy, dev}. Outside
 // Netlify (local builds, CI inspection, tests) the flag still works as before.
+// CF_PAGES must NOT auto-skip: Cloudflare sets it on production deploys too.
+// Use the explicit SKIP_ENV_VALIDATION=1 escape hatch for build-time CI.
 function shouldSkipValidation(): boolean {
   if (process.env.NODE_ENV === 'test') return true;
   if (!process.env.SKIP_ENV_VALIDATION) return false;
