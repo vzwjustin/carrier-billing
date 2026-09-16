@@ -90,7 +90,6 @@ if (process.env.NODE_ENV !== 'test') {
 // Netlify (local builds, CI inspection, tests) the flag still works as before.
 function shouldSkipValidation(): boolean {
   if (process.env.NODE_ENV === 'test') return true;
-  if (process.env.CF_PAGES === '1') return true; // Cloudflare Pages CI
   if (!process.env.SKIP_ENV_VALIDATION) return false;
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;
