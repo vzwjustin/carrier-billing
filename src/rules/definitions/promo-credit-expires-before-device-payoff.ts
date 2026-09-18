@@ -45,11 +45,16 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
       account.lines.forEach((line, lineIndex) => {
         // Longest remaining device obligation on the line. DPPs whose
         // remaining term isn't printed (null) can't be compared, so skip them.
-        const remainingTerms = line.dpp_installments
-          .map((d) => d.remaining_payments)
-          .filter((n): n is number => n !== null && n > 0);
-        if (remainingTerms.length === 0) return;
-        const dppMonthsLeft = Math.max(...remainingTerms);
+        // ⚡ Bolt: Single-pass iteration to find the max remaining term without intermediate arrays or spread operators
+        let dppMonthsLeft = -Infinity;
+        for (const d of line.dpp_installments) {
+          if (d.remaining_payments !== null && d.remaining_payments > 0) {
+            if (d.remaining_payments > dppMonthsLeft) {
+              dppMonthsLeft = d.remaining_payments;
+            }
+          }
+        }
+        if (dppMonthsLeft === -Infinity) return;
 
         // Promo credits with an explicit future expiry that lapses well
         // before the device is paid off. Unit care: `remaining_payments` is a
@@ -72,14 +77,17 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
         });
         if (expiringCredits.length === 0) return;
 
-        const futureIncreaseCents = expiringCredits.reduce(
-          (sum, c) => sum + Math.abs(c.monthly_cents),
-          0,
-        );
-        // The soonest-expiring qualifying credit drives the headline horizon.
-        const soonestCyclesLeft = Math.min(
-          ...expiringCredits.map((c) => creditCyclesLeft(c.expires_on as string)),
-        );
+        // ⚡ Bolt: Single-pass iteration to calculate total increase and min cycles left without intermediate array allocation or large spread
+        let futureIncreaseCents = 0;
+        let soonestCyclesLeft = Infinity;
+        for (const c of expiringCredits) {
+          futureIncreaseCents += Math.abs(c.monthly_cents);
+          const cyclesLeft = creditCyclesLeft(c.expires_on as string);
+          if (cyclesLeft < soonestCyclesLeft) {
+            soonestCyclesLeft = cyclesLeft;
+          }
+        }
+
         const soonestExpiryMonths = soonestCyclesLeft - 1;
         const gapMonths = dppMonthsLeft - soonestCyclesLeft;
 

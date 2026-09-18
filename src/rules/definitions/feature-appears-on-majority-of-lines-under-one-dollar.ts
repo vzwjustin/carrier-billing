@@ -70,7 +70,16 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
           continue;
         }
 
-        const total = occurrences.reduce((sum, o) => sum + o.monthly_cents, 0);
+        // ⚡ Bolt: Single-pass iteration to calculate total and max, avoiding intermediate array allocation and large spread operator
+        let total = 0;
+        let perLineMaxCents = -Infinity;
+        for (const o of occurrences) {
+          total += o.monthly_cents;
+          if (o.monthly_cents > perLineMaxCents) {
+            perLineMaxCents = o.monthly_cents;
+          }
+        }
+
         // Per-line >0 cents: a fleet-wide $0 row IS informational but the
         // operator action ("ask the rep to remove it") only matters when
         // something is actually being charged. Skip the all-zero case.
@@ -102,7 +111,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
+            per_line_max_cents: perLineMaxCents,
           },
         });
       }
