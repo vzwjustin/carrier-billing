@@ -446,9 +446,7 @@ describe('POST /api/stripe/webhook — H8 processed_status bookkeeping', () => {
     expect(res.status).toBe(500);
     expect(handleStripeEventMock).not.toHaveBeenCalled();
 
-    const row = billingEvents.find(
-      (r) => r.stripe_event_id === 'evt_markinflight_fail',
-    );
+    const row = billingEvents.find((r) => r.stripe_event_id === 'evt_markinflight_fail');
     expect(row?.processed_status).toBeNull();
   });
 

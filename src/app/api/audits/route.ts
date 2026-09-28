@@ -30,8 +30,7 @@ const ACCEPTED_EXTENSIONS = ['.pdf', '.edi', '.x12', '.811', '.txt'] as const;
  *  Path layout is `<userUuid>/<auditUuid>/<safeFilename>`. Keep this regex
  *  byte-for-byte identical to the DB constraint so a violation surfaces here
  *  with a clear 500 rather than as a Postgres error at insert time. */
-const STORAGE_PATH_RE =
-  /^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[A-Za-z0-9._-]+$/;
+const STORAGE_PATH_RE = /^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[A-Za-z0-9._-]+$/;
 
 async function refundConsumedCredit(
   admin: ReturnType<typeof getAdminClient>,

@@ -117,10 +117,7 @@ export async function POST(
     }
     const uploadedSize = getStorageObjectSize(info.data);
     if (uploadedSize === null) {
-      return NextResponse.json(
-        { error: 'Failed to verify upload.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to verify upload.' }, { status: 500 });
     }
     if (uploadedSize > MAX_UPLOAD_BYTES) {
       return NextResponse.json({ error: 'upload_too_large' }, { status: 413 });
