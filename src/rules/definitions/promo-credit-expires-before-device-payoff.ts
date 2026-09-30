@@ -72,14 +72,14 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
         });
         if (expiringCredits.length === 0) return;
 
-        const futureIncreaseCents = expiringCredits.reduce(
-          (sum, c) => sum + Math.abs(c.monthly_cents),
-          0,
-        );
-        // The soonest-expiring qualifying credit drives the headline horizon.
-        const soonestCyclesLeft = Math.min(
-          ...expiringCredits.map((c) => creditCyclesLeft(c.expires_on as string)),
-        );
+        // ⚡ Bolt: Calculate futureIncreaseCents and soonestCyclesLeft in single pass
+        let futureIncreaseCents = 0;
+        let soonestCyclesLeft = Infinity;
+        for (const c of expiringCredits) {
+          futureIncreaseCents += Math.abs(c.monthly_cents);
+          const cyclesLeft = creditCyclesLeft(c.expires_on as string);
+          if (cyclesLeft < soonestCyclesLeft) soonestCyclesLeft = cyclesLeft;
+        }
         const soonestExpiryMonths = soonestCyclesLeft - 1;
         const gapMonths = dppMonthsLeft - soonestCyclesLeft;
 
