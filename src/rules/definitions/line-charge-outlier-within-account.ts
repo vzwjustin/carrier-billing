@@ -67,9 +67,14 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
     const findings: Finding[] = [];
 
     bill.accounts.forEach((account, accountIndex) => {
-      const phones = account.lines
-        .map((line, lineIndex) => ({ line, lineIndex }))
-        .filter(({ line }) => isPhoneLine(line));
+      // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocation from Array.map().filter()
+      const phones: Array<{ line: ExtractedLine; lineIndex: number }> = [];
+      for (let lineIndex = 0; lineIndex < account.lines.length; lineIndex++) {
+        const line = account.lines[lineIndex];
+        if (line !== undefined && isPhoneLine(line)) {
+          phones.push({ line, lineIndex });
+        }
+      }
 
       if (phones.length < MIN_PEER_LINES + 1) return;
 

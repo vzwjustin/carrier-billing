@@ -260,9 +260,14 @@ export async function GET(
   // Re-order to match the caller's request order so the numbered list in
   // the letter follows the order the operator picked in the UI.
   const findingById = new Map(validatedFindings.map((f) => [f.id, f]));
-  const orderedFindings = findingIds
-    .map((id) => findingById.get(id))
-    .filter((f): f is z.infer<typeof FindingRowSchema> => f !== undefined);
+  // ⚡ Bolt: Use single-pass iteration to avoid intermediate arrays from .map().filter()
+  const orderedFindings: z.infer<typeof FindingRowSchema>[] = [];
+  for (const id of findingIds) {
+    const f = findingById.get(id);
+    if (f !== undefined) {
+      orderedFindings.push(f);
+    }
+  }
 
   // ---- Batched line + account fetch -------------------------------------
   const allLineIds = new Set<string>();

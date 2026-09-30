@@ -84,10 +84,12 @@ export function AssistantChat() {
 
       // Snapshot the outgoing payload BEFORE adding the placeholder — the
       // server doesn't need to see its own pending response.
-      const outgoing = [...messages, userMessage].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // ⚡ Bolt: Single-pass iteration to avoid intermediate array allocation from [...messages, userMessage].map()
+      const outgoing: Array<{ role: string; content: string }> = [];
+      for (const m of messages) {
+        outgoing.push({ role: m.role, content: m.content });
+      }
+      outgoing.push({ role: userMessage.role, content: userMessage.content });
 
       setMessages((prev) => [...prev, userMessage, placeholder]);
       setInput('');

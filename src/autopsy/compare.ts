@@ -310,8 +310,17 @@ function planChangeNote(prev: ExtractedLine, curr: ExtractedLine): string {
 function dppDeltaNote(prev: ExtractedLine | null, curr: ExtractedLine | null): string {
   const prevDevices = new Set((prev?.dpp_installments ?? []).map((d) => d.device));
   const currDevices = new Set((curr?.dpp_installments ?? []).map((d) => d.device));
-  const added = [...currDevices].filter((d) => !prevDevices.has(d));
-  const removed = [...prevDevices].filter((d) => !currDevices.has(d));
+
+  // ⚡ Bolt: Single pass iteration to avoid intermediate array allocation from [...set].filter()
+  const added: string[] = [];
+  for (const d of currDevices) {
+    if (!prevDevices.has(d)) added.push(d);
+  }
+  const removed: string[] = [];
+  for (const d of prevDevices) {
+    if (!currDevices.has(d)) removed.push(d);
+  }
+
   if (added.length && removed.length) {
     return `Devices changed: removed ${removed.join(', ')}, added ${added.join(', ')}`;
   }
