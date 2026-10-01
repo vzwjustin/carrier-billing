@@ -90,6 +90,9 @@ if (process.env.NODE_ENV !== 'test') {
 // Netlify (local builds, CI inspection, tests) the flag still works as before.
 function shouldSkipValidation(): boolean {
   if (process.env.NODE_ENV === 'test') return true;
+  // Cloudflare Pages build environment does not inject all runtime secrets at build time.
+  // We must skip validation during CF_PAGES builds or the build will crash.
+  if (process.env.CF_PAGES) return true;
   if (!process.env.SKIP_ENV_VALIDATION) return false;
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;
