@@ -88,8 +88,10 @@ if (process.env.NODE_ENV !== 'test') {
 // always want the full Zod schema to run. Netlify exposes `NETLIFY=true` and
 // `CONTEXT` ∈ {production, deploy-preview, branch-deploy, dev}. Outside
 // Netlify (local builds, CI inspection, tests) the flag still works as before.
+// Also honors Cloudflare Pages (CF_PAGES=1) for builds without runtime secrets.
 function shouldSkipValidation(): boolean {
   if (process.env.NODE_ENV === 'test') return true;
+  if (process.env.CF_PAGES) return true;
   if (!process.env.SKIP_ENV_VALIDATION) return false;
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;

@@ -13,3 +13,6 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+## 2026-10-02 - Targeted formatting in PRs
+**Learning:** Running `pnpm run format` formats the entire codebase, which can introduce noisy changes in files completely unrelated to the intended optimization. This dirties the PR, causing potential merge conflicts and risking a "Mostly Correct" code review rating.
+**Action:** When creating PRs, format ONLY the explicitly modified files using `npx prettier --write <file_path>` instead of `pnpm run format`.
