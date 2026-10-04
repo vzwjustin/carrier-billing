@@ -147,6 +147,8 @@ export default async function InventoryLinePage({
   if (!headEntry) notFound();
 
   // Sparkline-like spread for the plan-base over time (min/max/delta).
+  // ⚡ Bolt: Single-pass iteration to calculate min/max instead of chaining
+  // .map().filter() and allocating redundant intermediate arrays.
   let minBase: number | null = null;
   let maxBase: number | null = null;
   let validCount = 0;

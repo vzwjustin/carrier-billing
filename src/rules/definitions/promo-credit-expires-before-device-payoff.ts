@@ -45,6 +45,8 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
       account.lines.forEach((line, lineIndex) => {
         // Longest remaining device obligation on the line. DPPs whose
         // remaining term isn't printed (null) can't be compared, so skip them.
+        // ⚡ Bolt: Single-pass iteration to track max remaining payment directly,
+        // avoiding intermediate array allocations from .map().filter() and Math.max spreads.
         let dppMonthsLeft = -Infinity;
         for (const d of line.dpp_installments) {
           if (d.remaining_payments !== null && d.remaining_payments > 0) {
@@ -65,6 +67,8 @@ export const promoCreditExpiresBeforeDevicePayoffRule: Rule = {
         // (cycles vs cycles) to avoid a one-month overestimate of the gap.
         const creditCyclesLeft = (expiresOn: string): number => monthsUntil(expiresOn, today) + 1;
 
+        // ⚡ Bolt: Consolidated mapping, filtering, reduction, and Math.min spread into a
+        // single-pass loop to avoid redundant array allocations across line.credits.
         let futureIncreaseCents = 0;
         let soonestCyclesLeft = Infinity;
         const creditNames: string[] = [];
