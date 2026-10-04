@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-05-18 - Math.max / Math.min Spread Operator Anti-Pattern
+**Learning:** Found instances where maximum and minimum values were calculated using the spread operator on mapped arrays, e.g., `Math.max(...array.map())`. This allocates a new array in memory and spreads it as function arguments. For large dynamic arrays, this creates performance overhead and risks stack overflows.
+**Action:** When finding minimum or maximum values within a collection, especially dynamic ones, avoid mapping into an intermediate array and spreading it. Instead, use a single `for...of` loop tracking the maximum/minimum iteratively against an initial `-Infinity`/`Infinity` accumulator.
