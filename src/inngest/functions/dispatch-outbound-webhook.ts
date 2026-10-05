@@ -143,12 +143,14 @@ export const dispatchOutboundWebhookFn = inngest.createFunction(
     }
 
     const result = (await step.run('post-webhook', async () => {
+
       return postOutboundWebhook({
         url: ctx.url,
         secret: ctx.secret,
         audit: ctx.audit,
         findings: ctx.findings,
       });
+
     })) as { status: number };
 
     logger.info('dispatchOutboundWebhook: delivered', {

@@ -316,7 +316,10 @@ async function onSubscriptionUpserted(
   // For subscription.created only, fall back to userId resolved from the
   // subscription's metadata (Stripe Checkout copies session.metadata onto
   // the subscription), link the profile, and retry the patch by userId.
-  if (applied === NO_MATCH_NON_TERMINAL && eventType === 'customer.subscription.created') {
+  if (
+    applied === NO_MATCH_NON_TERMINAL &&
+    eventType === 'customer.subscription.created'
+  ) {
     const userId = deriveUserIdFromSubscription(subscription);
     if (!userId) {
       Sentry.captureMessage(
@@ -342,7 +345,9 @@ async function onSubscriptionUpserted(
  * copies the session's metadata onto the subscription it creates, so the
  * `userId` we stamp on the Checkout session is reachable here.
  */
-function deriveUserIdFromSubscription(subscription: Stripe.Subscription): string | null {
+function deriveUserIdFromSubscription(
+  subscription: Stripe.Subscription,
+): string | null {
   const md = subscription.metadata;
   if (md && typeof md === 'object') {
     const candidate = (md as Record<string, unknown>)['userId'];
@@ -377,18 +382,25 @@ async function applySubscriptionPatchByUserId(
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)
-    .or(`subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`)
+    .or(
+      `subscription_event_at.is.null,subscription_event_at.lt.${eventCreatedAt}`,
+    )
     .select('id');
 
   if (updateErr) {
-    throw new Error(`subscription patch (fallback by userId) failed: ${updateErr.message}`);
+    throw new Error(
+      `subscription patch (fallback by userId) failed: ${updateErr.message}`,
+    );
   }
   const rows = (updatedRows ?? []) as Array<{ id: string }>;
   if (rows.length === 0) {
-    Sentry.captureMessage('subscription.created fallback: no profile matched by userId', {
-      level: 'warning',
-      extra: { userId, customerId },
-    });
+    Sentry.captureMessage(
+      'subscription.created fallback: no profile matched by userId',
+      {
+        level: 'warning',
+        extra: { userId, customerId },
+      },
+    );
     return;
   }
   Sentry.addBreadcrumb({
@@ -478,7 +490,11 @@ async function applySubscriptionPatchWithOrderGuard(
     return NO_MATCH_NON_TERMINAL;
   }
 
-  const matched = assertExactlyOneProfileMatched(rows, customerId, eventType);
+  const matched = assertExactlyOneProfileMatched(
+    rows,
+    customerId,
+    eventType,
+  );
   // H11: terminal-event no-op signal. Profile was already deleted locally.
   if (matched === NO_MATCH) return;
 
@@ -743,7 +759,10 @@ type NoMatch = typeof NO_MATCH;
 /** H-1: non-terminal 0-row sentinel for `customer.subscription.created`. */
 const NO_MATCH_NON_TERMINAL = Symbol('no-match-non-terminal');
 
-const TERMINAL_EVENT_TYPES = new Set(['customer.subscription.deleted', 'invoice.payment_failed']);
+const TERMINAL_EVENT_TYPES = new Set([
+  'customer.subscription.deleted',
+  'invoice.payment_failed',
+]);
 
 /**
  * Verify that a profile-update affected exactly one row when matching by

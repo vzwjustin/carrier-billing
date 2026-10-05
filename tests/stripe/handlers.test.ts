@@ -504,7 +504,9 @@ describe('handleStripeEvent', () => {
     });
 
     // Must not throw.
-    await expect(handleStripeEvent(event, client as unknown as never)).resolves.toBeUndefined();
+    await expect(
+      handleStripeEvent(event, client as unknown as never),
+    ).resolves.toBeUndefined();
     expect(client.__updates).toHaveLength(0);
   });
 

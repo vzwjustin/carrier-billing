@@ -363,8 +363,13 @@ describe('upload buffer safeguards', () => {
   });
 
   it('rejects buffers over 25MB before extraction', () => {
-    const oversized = Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(MAX_UPLOAD_BYTES - 4)]);
+    const oversized = Buffer.concat([
+      Buffer.from('%PDF-'),
+      Buffer.alloc(MAX_UPLOAD_BYTES - 4),
+    ]);
     expect(oversized.length).toBe(MAX_UPLOAD_BYTES + 1);
-    expect(() => assertSupportedUploadBuffer(oversized)).toThrow('upload-too-large');
+    expect(() => assertSupportedUploadBuffer(oversized)).toThrow(
+      'upload-too-large',
+    );
   });
 });

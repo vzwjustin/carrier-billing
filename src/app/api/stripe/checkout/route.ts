@@ -188,10 +188,13 @@ export async function POST(request: Request): Promise<Response> {
           } else {
             // M-S2: scrub the message before Sentry serialization (the
             // exception text can echo customer email/address).
-            Sentry.captureException(new Error(scrubString(String(delErr))), {
-              tags: { area: 'stripe.checkout.orphan_cleanup' },
-              extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
-            });
+            Sentry.captureException(
+              new Error(scrubString(String(delErr))),
+              {
+                tags: { area: 'stripe.checkout.orphan_cleanup' },
+                extra: { orphanCustomerId: customer.id, winningCustomerId: winner, userId: user.id },
+              },
+            );
           }
         }
         stripeCustomerId = winner;
