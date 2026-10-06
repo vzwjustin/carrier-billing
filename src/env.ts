@@ -94,6 +94,9 @@ function shouldSkipValidation(): boolean {
   if (process.env.NETLIFY === 'true' && process.env.CONTEXT === 'production') {
     return false;
   }
+  if (process.env.CF_PAGES === '1') {
+    return true; // Force skip validation in Cloudflare Pages CI build
+  }
   return true;
 }
 
