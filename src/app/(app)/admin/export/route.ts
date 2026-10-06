@@ -11,6 +11,12 @@ import { getAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
+export async function generateStaticParams() {
+  // Provide an empty array so Next.js knows it can't statically generate this route,
+  // resolving the CI error about environment variables at build time
+  return [];
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getAdminContext();
   if (!ctx) {
