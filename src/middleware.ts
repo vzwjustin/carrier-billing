@@ -52,6 +52,8 @@ export function buildCsp(): string {
   ].join('; ');
 }
 
+export const runtime = 'nodejs';
+
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const csp = buildCsp();
 
