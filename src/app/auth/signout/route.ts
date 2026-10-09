@@ -13,4 +13,3 @@ export async function POST(_request: NextRequest) {
 
   return NextResponse.redirect(`${publicOrigin()}/`, { status: 303 });
 }
-export const dynamic = 'force-dynamic';
