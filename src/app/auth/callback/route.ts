@@ -34,3 +34,4 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.redirect(`${origin}/login?error=auth_callback`);
 }
+export const dynamic = 'force-dynamic';
