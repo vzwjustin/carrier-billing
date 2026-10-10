@@ -38,6 +38,10 @@ export function toCsv(
   header: ReadonlyArray<string>,
   rows: ReadonlyArray<ReadonlyArray<unknown>>,
 ): string {
-  const lines = [csvRow(header), ...rows.map(csvRow)];
+  // Prevent V8 call stack crash when spreading potentially huge row arrays
+  const lines = [csvRow(header)];
+  for (const row of rows) {
+    lines.push(csvRow(row));
+  }
   return lines.join('\r\n');
 }
