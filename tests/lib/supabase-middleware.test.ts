@@ -26,7 +26,7 @@ const createServerClientMock = vi.hoisted(() =>
   })),
 );
 
-vi.mock('@supabase/ssr', () => ({
+vi.mock('@supabase/ssr/dist/module/index.js', () => ({
   createServerClient: createServerClientMock,
 }));
 
