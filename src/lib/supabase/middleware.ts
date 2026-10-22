@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr/dist/module/index.js';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { env } from '@/env';
