@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2024-10-23 - Eliminating array mapping spread max/min anti-pattern
+**Learning:** Found instances where dynamically-sized arrays (like line-level feature occurrences) were mapped to arrays and then spread into `Math.max()` or `Math.min()` (e.g. `Math.max(...occurrences.map(o => o.monthly_cents))`). This creates unnecessary intermediate mapped arrays and risks `RangeError: Maximum call stack size exceeded` in V8 when the occurrences are very large.
+**Action:** Replace `Math.max(...array.map(fn))` with `array.reduce((m, o) => { const v = fn(o); return v > m ? v : m; }, -Infinity)` to eliminate the intermediate array and the spread operator, ensuring safe processing of large lists in O(N) without excessive memory allocation. Use `Infinity` for `Math.min()` equivalents.
