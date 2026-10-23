@@ -9,7 +9,6 @@ export const contentType = 'image/png';
 export const alt = 'CarrierAudit — Audit findings preview';
 
 // Revalidate every hour so updated audit findings refresh the social card.
-export const revalidate = 3600;
 
 interface Params {
   params: Promise<{ token: string }>;
