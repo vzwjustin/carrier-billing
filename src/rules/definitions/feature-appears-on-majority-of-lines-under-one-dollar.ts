@@ -78,8 +78,21 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
 
         const firstOccurrence = occurrences[0];
         if (firstOccurrence === undefined) continue;
+
+        // ⚡ Bolt: Single-pass iteration to extract line indexes and track max cents.
+        // Prevents V8 call stack crashes from spreading large arrays (Math.max(...map()))
+        // and avoids multiple O(N) array allocations.
+        let per_line_max_cents = -Infinity;
+        const lineIndexes: number[] = new Array(occurrences.length);
+        for (let i = 0; i < occurrences.length; i++) {
+          const o = occurrences[i]!;
+          if (o.monthly_cents > per_line_max_cents) {
+            per_line_max_cents = o.monthly_cents;
+          }
+          lineIndexes[i] = o.lineIndex;
+        }
+
         const displayName = firstOccurrence.original_name;
-        const lineIndexes = occurrences.map((o) => o.lineIndex);
         const fraction = occurrences.length / lineCount;
 
         findings.push({
@@ -102,7 +115,7 @@ export const featureAppearsOnMajorityOfLinesUnderOneDollarRule: Rule = {
             line_count: lineCount,
             fraction: Number(fraction.toFixed(2)),
             total_monthly_cents: total,
-            per_line_max_cents: Math.max(...occurrences.map((o) => o.monthly_cents)),
+            per_line_max_cents,
           },
         });
       }
