@@ -121,3 +121,4 @@ export default function RoadmapPage(): React.JSX.Element {
     </div>
   );
 }
+export const dynamic = 'force-dynamic';
