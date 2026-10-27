@@ -1,4 +1,3 @@
-export const runtime = 'nodejs';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getAdminContext } from '@/lib/admin/guard';
