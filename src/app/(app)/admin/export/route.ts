@@ -10,6 +10,7 @@ import { toCsv } from '@/lib/csv';
 import { getAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getAdminContext();

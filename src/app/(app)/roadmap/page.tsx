@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { cn } from '@/lib/utils';
 import { ROADMAP, overallStats, sectionStats, type RoadmapStats } from '@/lib/roadmap/data';
 
