@@ -67,19 +67,35 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
     const findings: Finding[] = [];
 
     bill.accounts.forEach((account, accountIndex) => {
-      const phones = account.lines
-        .map((line, lineIndex) => ({ line, lineIndex }))
-        .filter(({ line }) => isPhoneLine(line));
+      // ⚡ Bolt: Use a single pass to cache phone lines and their computed cost
+      // to avoid O(N) array mapping and redundant cost calculations.
+      const phones: Array<{ line: (typeof account.lines)[0]; lineIndex: number; cost: number }> =
+        [];
+      for (let lineIndex = 0; lineIndex < account.lines.length; lineIndex++) {
+        const line = account.lines[lineIndex];
+        if (line !== undefined && isPhoneLine(line)) {
+          phones.push({ line, lineIndex, cost: lineMonthlyCost(line) });
+        }
+      }
 
       if (phones.length < MIN_PEER_LINES + 1) return;
 
-      for (const { line, lineIndex } of phones) {
-        const cost = lineMonthlyCost(line);
+      for (let j = 0; j < phones.length; j++) {
+        const pInfo = phones[j];
+        if (pInfo === undefined) continue;
+        const { line, lineIndex, cost } = pInfo;
         if (cost <= 0) continue;
 
-        const peers = phones.filter((p) => p.lineIndex !== lineIndex);
-        if (peers.length < MIN_PEER_LINES) continue;
-        const peerCosts = peers.map(({ line: peer }) => lineMonthlyCost(peer));
+        // ⚡ Bolt: Single pass to construct peerCosts, avoiding intermediate .filter().map()
+        const peerCosts: number[] = [];
+        for (let k = 0; k < phones.length; k++) {
+          const peerInfo = phones[k];
+          if (peerInfo !== undefined && j !== k) {
+            peerCosts.push(peerInfo.cost);
+          }
+        }
+
+        if (peerCosts.length < MIN_PEER_LINES) continue;
         const med = median(peerCosts);
         if (med <= 0) continue;
 
@@ -107,7 +123,7 @@ export const lineChargeOutlierWithinAccountRule: Rule = {
             line_cost_cents: cost,
             peer_median_cents: med,
             multiple: Number((cost / med).toFixed(2)),
-            peer_count: peers.length,
+            peer_count: peerCosts.length,
             plan_name: line.plan_name,
           },
         });
