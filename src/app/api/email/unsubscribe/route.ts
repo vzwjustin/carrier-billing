@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit';
 import { getAdminClient } from '@/lib/supabase/admin';
 
-export const runtime = 'nodejs';
+
 export const dynamic = 'force-dynamic';
 
 // `randomBytes(24).toString('base64url')` is exactly 32 characters.

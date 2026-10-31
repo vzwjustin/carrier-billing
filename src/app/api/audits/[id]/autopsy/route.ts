@@ -27,7 +27,7 @@ import { consumeRateLimit, rateLimitedResponse } from '@/lib/security/rate-limit
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-export const runtime = 'nodejs';
+
 export const dynamic = 'force-dynamic';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
