@@ -12,7 +12,7 @@ import { isShareTokenExpired, SHARE_TOKEN_BYTES } from '@/lib/share-token';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-export const runtime = 'nodejs';
+
 export const dynamic = 'force-dynamic';
 
 const ParamsSchema = z.object({
