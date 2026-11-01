@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2026-11-01 - Playwright link ambiguity due to overly broad regex
+**Learning:** In Playwright E2E tests, using a non-exact regex like `/log in/i` to find a link (e.g., `page.getByRole('link', { name: /log in/i })`) can accidentally match completely unintended elements if the regex is a substring of their name. For example, if there is a link named "Login" and another link, or some text that contains "log in", Playwright might click the wrong link or throw a strict mode error if multiple matches occur.
+**Action:** When selecting links with generic names like "Log in", always use an exact string match (e.g., `name: 'Log in', exact: true`) to guarantee Playwright selects the correct element and doesn't get confused by substrings elsewhere on the page.

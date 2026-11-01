@@ -26,7 +26,7 @@ test.describe('landing surface', () => {
     await expect(page.getByText('$99')).toBeVisible();
 
     // Log in entry from the marketing nav.
-    const loginLink = page.getByRole('link', { name: /log in/i }).first();
+    const loginLink = page.getByRole('link', { name: 'Log in', exact: true }).first();
     await loginLink.click();
     await expect(page).toHaveURL(/\/login/);
 
