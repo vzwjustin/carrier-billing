@@ -13,3 +13,7 @@
 ## 2026-06-23 - Eliminating unnecessary chained filter-map logic
 **Learning:** We continue to observe chained array iteration functions (like `.filter(fn1).map(fn2)`) causing significant memory overhead by creating intermediate arrays.
 **Action:** Found instances in analytical/reporting data structures (`src/reports/executive/builder.ts`) mapping through comparisons and drivers. Rewriting these functions using a single-pass `for...of` loop skips creating extra arrays for `.filter()` allowing items to be processed immediately. Keep hunting for chained `.filter().map()` calls.
+
+## 2026-06-23 - Preventing V8 max call stack exceeded on array spread
+**Learning:** Arrays of line-level data (e.g., feature occurrences across an enterprise account) can contain hundreds of thousands of items. Using the spread operator (`...`) on these arrays within functions like `Math.max(...array)` pushes every element onto the call stack as an argument. In V8 (Node/Chrome), this causes a `RangeError: Maximum call stack size exceeded` around ~120k arguments, leading to hard crashes.
+**Action:** When working with dynamically sized arrays that can grow large (like account lines or extracted features), never use the spread operator (`...`). Use `array.reduce((max, val) => Math.max(max, val), -Infinity)` instead to maintain O(1) stack space and prevent crashes, ensuring the correct initialized accumulator value is used based on the function.
