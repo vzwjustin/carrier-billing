@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@/env';
 import { createClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 function publicOrigin(): string {
   return env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
 }
